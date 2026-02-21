@@ -1,12 +1,15 @@
 {
+  "version": 2,
   "builds": [
     {
       "src": "package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "distDir": "dist"   // <- Aquí le dices a Vercel dónde están los archivos generados por Vite
+      }
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/index.html" }
+    { "src": "/(.*)", "dest": "/index.html" }  // <- SPA fallback para React Router
   ]
-}
+    }
