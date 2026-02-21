@@ -7,9 +7,17 @@ import AuthPage from './pages/AuthPage'
 const App: React.FC = () => {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [supabaseError, setSupabaseError] = useState(false)
 
   // Verifica sesión de Supabase al iniciar
   useEffect(() => {
+    if (!supabase) {
+      console.error('Supabase client is not initialized!')
+      setSupabaseError(true)
+      setLoading(false)
+      return
+    }
+
     const session = supabase.auth.session()
     setUser(session?.user ?? null)
     setLoading(false)
@@ -26,6 +34,7 @@ const App: React.FC = () => {
     }
   }, [])
 
+  // Mensaje mientras carga
   if (loading) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-gradient-to-br from-purple-400 to-pink-400 text-white text-xl">
@@ -34,6 +43,16 @@ const App: React.FC = () => {
     )
   }
 
+  // Mensaje si Supabase no inicializó
+  if (supabaseError) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-red-500 text-white text-xl p-4">
+        Error: Supabase no inicializado. Revisa tus variables de entorno.
+      </div>
+    )
+  }
+
+  // Si no hay usuario logueado
   if (!user) {
     return <AuthPage />
   }
