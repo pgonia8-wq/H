@@ -16,7 +16,6 @@ const App: React.FC = () => {
         }
 
         await MiniKit.install()
-
         const user = await MiniKit.getUser()
 
         if (!user?.walletAddress) {
@@ -31,7 +30,6 @@ const App: React.FC = () => {
           world_id: user.nullifierHash,
           created_at: new Date()
         })
-
       } finally {
         setLoading(false)
       }
