@@ -11,56 +11,63 @@ export const useMiniKitUser = () => {
 
     const init = async () => {
       try {
-        // Inicializa explícitamente (MiniKitProvider ya lo hace, pero por seguridad)
-        MiniKit.install();
+        console.log('[MiniKit-DEBUG] Iniciando init...');
 
-        if (!MiniKit.isInstalled()) {
-          console.log("❌ MiniKit.isInstalled() = false → No estás dentro de World App o hay delay inicial");
+        // Instala explícitamente
+        MiniKit.install();
+        console.log('[MiniKit-DEBUG] install() llamado');
+
+        // Chequea isInstalled inmediatamente
+        const isInstalled = MiniKit.isInstalled();
+        console.log('[MiniKit-DEBUG] isInstalled inmediato:', isInstalled);
+
+        // Fallback a window si provider no expuso bien
+        const windowMiniKit = (window as any).MiniKit;
+        const windowInstalled = windowMiniKit?.isInstalled?.() ?? false;
+        console.log('[MiniKit-DEBUG] window.MiniKit.isInstalled:', windowInstalled);
+
+        if (!isInstalled && !windowInstalled) {
+          console.log('[MiniKit-DEBUG] ❌ No detectado entorno World App');
           setWallet(null);
           setLoading(false);
           return;
         }
 
-        console.log("MiniKit.isInstalled() = true → Entorno World App detectado");
+        console.log('[MiniKit-DEBUG] Entorno detectado (uno de los chequeos OK)');
 
         const checkWallet = () => {
-          // Forma recomendada 2026: walletAddress directo o desde user
-          const userWallet = MiniKit.walletAddress || MiniKit.user?.walletAddress || null;
+          let userWallet =
+            MiniKit.walletAddress ||
+            windowMiniKit?.walletAddress ||
+            null;
+
+          console.log('[MiniKit-DEBUG] Chequeo wallet:', userWallet ?? 'null');
 
           if (userWallet) {
-            console.log("✅ Wallet detectada:", userWallet);
+            console.log('[MiniKit-DEBUG] Wallet DETECTADA:', userWallet);
             setWallet(userWallet);
 
-            // Guardar en Supabase si hay sesión activa
             const user = supabase.auth.user();
             if (user) {
               supabase
                 .from('users')
                 .upsert({ id: user.id, wallet: userWallet })
-                .then(({ error }) => {
-                  if (error) console.error("Error upsert wallet en Supabase:", error);
-                });
+                .then(({ error }) => error && console.error('Upsert error:', error));
             }
 
             if (interval) clearInterval(interval);
             setLoading(false);
-          } else {
-            console.log("⚠️ Wallet aún null → reintentando en 3s...");
           }
         };
 
-        // Chequeo inicial
         checkWallet();
+        interval = setInterval(checkWallet, 1500); // chequeo más frecuente para debug
 
-        // Polling cada 3 segundos (máximo \~30s antes de rendirse, pero puedes ajustar)
-        interval = setInterval(checkWallet, 3000);
-
-        // Cleanup
         return () => {
           if (interval) clearInterval(interval);
         };
       } catch (err) {
-        console.error("Error grave en init MiniKit:", err);
+        console.error('[MiniKit-DEBUG] Error en init:', err);
         setLoading(false);
       }
     };
