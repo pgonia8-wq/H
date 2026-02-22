@@ -6,6 +6,7 @@ import FeedPage from "./pages/FeedPage"
 const App: React.FC = () => {
   const [wallet, setWallet] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [verified, setVerified] = useState(false)
 
   useEffect(() => {
     const init = async () => {
@@ -16,6 +17,7 @@ const App: React.FC = () => {
         }
 
         await MiniKit.install()
+
         const user = await MiniKit.getUser()
 
         if (!user?.walletAddress) {
@@ -30,6 +32,10 @@ const App: React.FC = () => {
           world_id: user.nullifierHash,
           created_at: new Date()
         })
+
+        const proof = await MiniKit.getProof()
+        if (proof) setVerified(true)
+
       } finally {
         setLoading(false)
       }
@@ -50,6 +56,14 @@ const App: React.FC = () => {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Esta aplicación solo funciona dentro de World App.
+      </div>
+    )
+  }
+
+  if (!verified) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
+        Verificando World ID...
       </div>
     )
   }
