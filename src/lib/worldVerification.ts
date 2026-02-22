@@ -11,5 +11,5 @@ export async function verifyWorldIDProof(proof: any) {
     })
 
   if (error) throw error
-  return data
+  return data // { is_valid, message }
 }
