@@ -8,23 +8,21 @@ const App: React.FC = () => {
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(true);
 
-  // Debug seguro en consola (siempre funciona)
+  // Debug en consola (siempre se ve)
   useEffect(() => {
-    console.log("[App Debug] Render - wallet:", wallet, "loading:", loading, "verifying:", verifying);
-    console.log("[App Debug] MiniKit.isInstalled():", MiniKit?.isInstalled?.() ?? false);
+    console.log("[App DEBUG] Render → wallet:", wallet, " | loading:", loading, " | verifying:", verifying);
+    console.log("[App DEBUG] MiniKit.isInstalled():", MiniKit?.isInstalled?.() ?? false);
   }, [wallet, loading, verifying]);
 
   useEffect(() => {
     const verify = async () => {
       if (!wallet) {
-        console.log("No wallet detectada aún → skip verify");
+        console.log("No wallet aún → skip verify");
         setVerifying(false);
         return;
       }
 
-      console.log("✅ Wallet OK → Iniciando verify con action: verify_user");
-      console.log("MiniKit.isInstalled en verify?", MiniKit?.isInstalled?.() ?? false);
-
+      console.log("✅ Wallet detectada → iniciando verify");
       try {
         const { finalPayload } = await MiniKit.commandsAsync.verify({
           action: "verify_user",
@@ -33,7 +31,7 @@ const App: React.FC = () => {
         });
 
         if (finalPayload.status !== "success") {
-          console.error("Verification cancelled or failed", finalPayload);
+          console.error("Verification failed/cancelled", finalPayload);
           setVerifying(false);
           return;
         }
@@ -41,23 +39,19 @@ const App: React.FC = () => {
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            payload: finalPayload,
-            action: "verify_user",
-            signal: wallet,
-          }),
+          body: JSON.stringify({ payload: finalPayload, action: "verify_user", signal: wallet }),
         });
 
         const result = await res.json();
 
         if (result.success) {
           setVerified(true);
-          console.log("✅ Usuario verificado correctamente");
+          console.log("✅ Verificado correctamente");
         } else {
-          console.error("Backend rechazó el proof", result.error);
+          console.error("Backend rechazó proof", result.error);
         }
       } catch (err) {
-        console.error("Error en verificación:", err);
+        console.error("Error en verify:", err);
       } finally {
         setVerifying(false);
       }
@@ -66,16 +60,10 @@ const App: React.FC = () => {
     verify();
   }, [wallet]);
 
-  // Pantalla de carga
   if (loading || verifying) {
-    return (
-      <div className="w-screen h-screen flex items-center justify-center bg-black text-white">
-        Cargando...
-      </div>
-    );
+    return <div className="w-screen h-screen flex items-center justify-center bg-black text-white">Cargando...</div>;
   }
 
-  // Pantalla negra con debug seguro (usa optional chaining)
   if (!wallet || !verified) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
@@ -90,7 +78,6 @@ const App: React.FC = () => {
     );
   }
 
-  // App normal (solo se muestra si todo OK)
   return (
     <div className="w-screen h-screen bg-black text-white flex flex-col">
       <header className="p-4 text-xl font-bold text-center">Human Feed</header>
