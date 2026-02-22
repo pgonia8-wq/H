@@ -1,11 +1,35 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import FeedPage from './pages/FeedPage'
 import { useMiniKitUser } from './lib/useMiniKitUser'
+import { verifyWorldIDProof } from './lib/worldVerification'
 
 const App: React.FC = () => {
   const { wallet, loading } = useMiniKitUser()
+  const [verified, setVerified] = useState(false)
+  const [verifying, setVerifying] = useState(true)
 
-  if (loading) {
+  useEffect(() => {
+    const verify = async () => {
+      if (!wallet) {
+        setVerifying(false)
+        return
+      }
+      try {
+        const proof = await window.MiniKit?.getProof?.()
+        if (!proof) {
+          setVerifying(false)
+          return
+        }
+        const { isValid } = await verifyWorldIDProof(proof)
+        setVerified(isValid)
+      } finally {
+        setVerifying(false)
+      }
+    }
+    verify()
+  }, [wallet])
+
+  if (loading || verifying) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white">
         Cargando...
@@ -13,10 +37,10 @@ const App: React.FC = () => {
     )
   }
 
-  if (!wallet) {
+  if (!wallet || !verified) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-        Esta aplicación solo funciona dentro de World App.
+        Esta aplicación solo funciona dentro de World App y con World ID verificado.
       </div>
     )
   }
