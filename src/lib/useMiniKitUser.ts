@@ -1,30 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClients'
 import { MiniKit } from '@worldcoin/minikit-js'
 
-export function useMiniKitUser() {
+export const useMiniKitUser = () => {
   const [wallet, setWallet] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const init = async () => {
-      try {
-        const miniKit = new MiniKit({
-          wallet: '0xdf4a991bc05945bd0212e773adcff6ea619f4c4b',
-        })
-
-        const userWallet = await miniKit.getUser?.()
-        if (userWallet) {
-          setWallet(userWallet)
+      const miniKit = new MiniKit({ wallet: null })
+      const userWallet = await miniKit.getWallet?.()
+      if (userWallet) {
+        setWallet(userWallet)
+        const user = supabase.auth.user()
+        if (user) {
           await supabase
             .from('users')
-            .upsert({ wallet: userWallet }, { onConflict: 'wallet' })
+            .upsert({ id: user.id, wallet: userWallet })
         }
-      } finally {
-        setLoading(false)
       }
+      setLoading(false)
     }
-
     init()
   }, [])
 
