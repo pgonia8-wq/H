@@ -20,8 +20,8 @@ const App: React.FC = () => {
           setVerifying(false)
           return
         }
-        const { isValid } = await verifyWorldIDProof(proof)
-        setVerified(isValid)
+        const { is_valid } = await verifyWorldIDProof(proof)
+        setVerified(is_valid)
       } finally {
         setVerifying(false)
       }
