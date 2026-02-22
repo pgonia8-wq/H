@@ -8,25 +8,23 @@ export const useMiniKitUser = () => {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
+    let timeout: NodeJS.Timeout;
 
     const init = async () => {
-      console.log("[MiniKitUser] Iniciando MiniKit...");
       try {
+        // Inicializa MiniKit
         MiniKit.install();
-        console.log("[MiniKitUser] MiniKit.install() llamado");
 
         if (!MiniKit.isInstalled()) {
-          console.log("❌ No estás dentro de World App o MiniKit no está disponible");
+          console.log("❌ No estás dentro de World App");
           setWallet(null);
           setLoading(false);
           return;
         }
 
-        console.log("✅ MiniKit detectado. Wallet inicial:", MiniKit.walletAddress);
-
+        // Función que revisa si wallet ya está disponible
         const checkWallet = async () => {
           const userWallet = MiniKit.walletAddress;
-          console.log("[CheckWallet] Wallet actual:", userWallet);
 
           if (userWallet) {
             console.log("✅ Wallet detectada:", userWallet);
@@ -35,14 +33,14 @@ export const useMiniKitUser = () => {
             // Guardar en Supabase si hay sesión
             const user = supabase.auth.user();
             if (user) {
-              console.log("[CheckWallet] Guardando wallet en Supabase para user:", user.id);
               await supabase
                 .from('users')
                 .upsert({ id: user.id, wallet: userWallet });
             }
 
+            // Wallet encontrada, limpiar interval y timeout
             if (interval) clearInterval(interval);
-            console.log("[CheckWallet] Interval cleared, loading false");
+            if (timeout) clearTimeout(timeout);
             setLoading(false);
           } else {
             console.log("⚠️ MiniKit instalado pero wallet null, reintentando...");
@@ -56,9 +54,10 @@ export const useMiniKitUser = () => {
         interval = setInterval(checkWallet, 3000);
 
         // Timeout visible a los 60s
-        setTimeout(() => {
+        timeout = setTimeout(() => {
           if (!wallet) {
-            console.log("[Timeout] Wallet no cargó después de 60s");
+            console.warn("[Timeout] Wallet no cargó después de 60s");
+            setLoading(false);
           }
         }, 60000);
 
@@ -70,13 +69,12 @@ export const useMiniKitUser = () => {
 
     init();
 
+    // Cleanup
     return () => {
-      if (interval) {
-        clearInterval(interval);
-        console.log("[Cleanup] Interval limpiado");
-      }
+      if (interval) clearInterval(interval);
+      if (timeout) clearTimeout(timeout);
     };
-  }, [wallet]);
+  }, []);
 
   return { wallet, loading };
 };
