@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient'
+import { supabase } from './supabaseClients'
 
 export async function verifyWorldIDProof(proof: any) {
   const user = supabase.auth.user()
@@ -11,5 +11,5 @@ export async function verifyWorldIDProof(proof: any) {
     })
 
   if (error) throw error
-  return data // { is_valid: boolean, message: string }
+  return data
 }
