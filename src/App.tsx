@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import FeedPage from './pages/FeedPage'
-import { useMiniKitUser } from './lib/useMiniKitUser'
-import { verifyWorldIDProof } from './lib/worldVerification'
+import { useMiniKitUser } from './useMiniKitUser'
+import { verifyWorldIDProof } from './worldVerification'
 
 const App: React.FC = () => {
   const { wallet, loading } = useMiniKitUser()
