@@ -1,12 +1,9 @@
-import { supabase } from './supabaseClients'
+import { supabase } from './supabase'
 
-export async function verifyWorldIDProof(proof: any) {
-  const user = supabase.auth.user()
-  if (!user) throw new Error('Usuario no autenticado')
-
+export async function verifyWorldIDProof(proof: any, walletAddress: string) {
   const { data, error } = await supabase
     .rpc('verify_world_id_proof', {
-      p_user_id: user.id,
+      p_wallet_address: walletAddress,
       p_proof: proof,
     })
 
