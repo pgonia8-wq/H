@@ -1,41 +1,22 @@
-import React, { useEffect, useState } from "react";
-import { MiniKit } from "@worldcoin/minikit-js";
+import React from "react";
 
-export default function App() {
-  const [wallet, setWallet] = useState<string | null>("loading");
-
-  useEffect(() => {
-    const init = async () => {
-      console.log("MiniKit:", MiniKit);
-      console.log("isInstalled:", MiniKit.isInstalled());
-
-      if (!MiniKit.isInstalled()) {
-        setWallet("NOT INSTALLED");
-        return;
-      }
-
-      try {
-        const result = await MiniKit.commandsAsync.getWallet();
-        console.log("FULL RESULT:", result);
-
-        if (result && result.address) {
-          setWallet(result.address);
-        } else {
-          setWallet("NULL RESULT");
-        }
-      } catch (e) {
-        console.error(e);
-        setWallet("ERROR");
-      }
-    };
-
-    setTimeout(init, 1500);
-  }, []);
-
+const App: React.FC = () => {
   return (
-    <div style={{ background: "black", color: "white", height: "100vh", padding: 20 }}>
-      <h2>Wallet Test</h2>
-      <p>{wallet}</p>
+    <div
+      style={{
+        background: "black",
+        color: "white",
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "24px",
+        fontWeight: "bold"
+      }}
+    >
+      VERSION TEST 12345
     </div>
   );
-}
+};
+
+export default App;
