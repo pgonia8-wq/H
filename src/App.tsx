@@ -1,74 +1,90 @@
 import React, { useEffect, useState } from "react";
 import FeedPage from "./pages/FeedPage";
 import { useMiniKitUser } from "./lib/useMiniKitUser";
-import { MiniKit } from "@worldcoin/minikit-js";
 
 const App: React.FC = () => {
-  const { walletAddress, status, verifyOrb, proof, isVerifying } = useMiniKitUser();
+  const { walletAddress, status, verifyOrb, isVerifying } = useMiniKitUser();
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  // Polling cada 3 segundos para forzar verificación
+  // Debug para ver siempre el estado actual
+  console.log('Estado actual:', { 
+    status: status || 'sin status', 
+    wallet: walletAddress ? walletAddress.slice(0,8) + '...' : 'sin wallet', 
+    isVerifying, 
+    verified 
+  });
+
   useEffect(() => {
-    const interval = setInterval(async () => {
-      if (MiniKit.isInstalled() && walletAddress && !verified) {
-        setVerifying(true);
-        try {
-          const orbProof = await verifyOrb("verify_user", walletAddress);
+    const doVerify = async () => {
+      if (status !== "found" || !walletAddress) return;
 
-          const res = await fetch("/api/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              payload: orbProof,
-              action: "verify_user",
-              signal: walletAddress,
-            }),
-          });
+      setVerifying(true);
+      try {
+        console.log("Iniciando verificación con wallet:", walletAddress);
+        const orbProof = await verifyOrb("verify_user", walletAddress);
 
-          const result = await res.json();
-          if (result.success) {
-            setVerified(true);
-            clearInterval(interval);
-          }
-        } catch (err) {
-          console.error("Verification failed", err);
-        } finally {
-          setVerifying(false);
+        const res = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payload: orbProof,
+            action: "verify_user",
+            signal: walletAddress,
+          }),
+        });
+
+        const result = await res.json();
+        if (result.success) {
+          setVerified(true);
+          console.log("Verificación OK");
+        } else {
+          console.error("Rechazado por backend:", result);
         }
+      } catch (err) {
+        console.error("Error en verify:", err);
+      } finally {
+        setVerifying(false);
       }
-    }, 3000);
+    };
 
-    return () => clearInterval(interval);
-  }, [walletAddress, verifyOrb, verified]);
+    doVerify();
+  }, [status, walletAddress, verifyOrb]);
 
-  // Pantalla de carga
-  if (status === "initializing" || status === "polling" || isVerifying || verifying) {
+  // Carga (incluye caso status undefined para evitar blanco total)
+  if (!status || status === "initializing" || status === "polling" || isVerifying || verifying) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-black text-white">
-        Cargando World ID...
+      <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-4">
+        Cargando World ID...  
+        <br />
+        Status: {status || 'cargando...'} 
       </div>
     );
   }
 
-  // Pantalla cuando no hay wallet o timeout
+  // No detectado en World App o sin wallet
   if (!walletAddress || status === "not-installed" || status === "timeout") {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-        Esta aplicación solo funciona dentro de World App y con World ID verificado.
+        Esta app solo funciona dentro de World App con World ID verificado.  
+        <br /><br />
+        Debug: status = {status || 'desconocido'}
       </div>
     );
   }
 
-  // Pantalla principal cuando wallet y proof están listos
+  // Verificando
   if (!verified) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-        Verificando World ID...
+        Verificando World ID...  
+        <br />
+        Wallet detectada
       </div>
     );
   }
 
+  // Pantalla principal
   return (
     <div className="w-screen h-screen bg-black text-white flex flex-col">
       <header className="p-4 text-xl font-bold text-center">Human Feed</header>
