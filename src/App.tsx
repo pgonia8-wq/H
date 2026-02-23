@@ -1,79 +1,74 @@
 import React, { useEffect, useState } from "react";
 import FeedPage from "./pages/FeedPage";
-import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { useMiniKitUser } from "./lib/useMiniKitUser";
 
 const App: React.FC = () => {
-  const { wallet, loading } = useMiniKitUser();
+  const { walletAddress, status, verifyOrb, proof, isVerifying } = useMiniKitUser();
   const [verified, setVerified] = useState(false);
-  const [verifying, setVerifying] = useState(true);
-
-  // Debug en consola (siempre se ve)
-  useEffect(() => {
-    console.log("[App DEBUG] Render → wallet:", wallet, " | loading:", loading, " | verifying:", verifying);
-    console.log("[App DEBUG] MiniKit.isInstalled():", MiniKit?.isInstalled?.() ?? false);
-  }, [wallet, loading, verifying]);
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    const verify = async () => {
-      if (!wallet) {
-        console.log("No wallet aún → skip verify");
-        setVerifying(false);
-        return;
-      }
+    const doVerify = async () => {
+      if (status !== "found" || !walletAddress) return;
 
-      console.log("✅ Wallet detectada → iniciando verify");
+      setVerifying(true);
       try {
-        const { finalPayload } = await MiniKit.commandsAsync.verify({
-          action: "verify_user",
-          signal: wallet,
-          verification_level: VerificationLevel.Orb,
-        });
+        console.log("Intentando verify - walletAddress:", walletAddress);
+        console.log("MiniKit status:", status);
 
-        if (finalPayload.status !== "success") {
-          console.error("Verification failed/cancelled", finalPayload);
-          setVerifying(false);
-          return;
-        }
+        // Ejecuta la verificación Orb
+        const orbProof = await verifyOrb("verify_user", walletAddress);
 
+        // Enviar proof al backend (Supabase)
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ payload: finalPayload, action: "verify_user", signal: wallet }),
+          body: JSON.stringify({
+            payload: orbProof,
+            action: "verify_user",
+            signal: walletAddress,
+          }),
         });
 
         const result = await res.json();
-
         if (result.success) {
           setVerified(true);
-          console.log("✅ Verificado correctamente");
         } else {
-          console.error("Backend rechazó proof", result.error);
+          console.error("Proof invalid or backend rejected it", result.error);
         }
       } catch (err) {
-        console.error("Error en verify:", err);
+        console.error("Verification failed", err);
       } finally {
         setVerifying(false);
       }
     };
 
-    verify();
-  }, [wallet]);
+    doVerify();
+  }, [status, walletAddress, verifyOrb]);
 
-  if (loading || verifying) {
-    return <div className="w-screen h-screen flex items-center justify-center bg-black text-white">Cargando...</div>;
+  // Pantalla de carga
+  if (status === "initializing" || status === "polling" || isVerifying) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-black text-white">
+        Cargando World ID...
+      </div>
+    );
   }
 
-  if (!wallet || !verified) {
+  // Pantalla cuando no hay wallet o timeout
+  if (!walletAddress || status === "not-installed" || status === "timeout") {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Esta aplicación solo funciona dentro de World App y con World ID verificado.
-        <br /><br />
-        <strong>DEBUG (pantalla negra):</strong><br />
-        loading: {loading ? 'true' : 'false'}<br />
-        verifying: {verifying ? 'true' : 'false'}<br />
-        wallet: {wallet || 'null'}<br />
-        MiniKit.isInstalled(): {MiniKit?.isInstalled?.() ?? false ? 'true' : 'false'}
+      </div>
+    );
+  }
+
+  // Pantalla principal cuando wallet y proof están listos
+  if (!verified) {
+    return (
+      <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
+        Verificando World ID...
       </div>
     );
   }
@@ -82,7 +77,7 @@ const App: React.FC = () => {
     <div className="w-screen h-screen bg-black text-white flex flex-col">
       <header className="p-4 text-xl font-bold text-center">Human Feed</header>
       <main className="flex-1 overflow-auto p-4">
-        <FeedPage wallet={wallet} />
+        <FeedPage wallet={walletAddress} />
       </main>
     </div>
   );
