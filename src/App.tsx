@@ -8,6 +8,7 @@ const App: React.FC = () => {
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [loadTimeout, setLoadTimeout] = useState(false);
 
   // Logs de debug detallados
   useEffect(() => {
@@ -19,7 +20,16 @@ const App: React.FC = () => {
     console.log('🔍 Intentos de retry:', retryCount);
   }, [status, walletAddress, isVerifying, verified, retryCount]);
 
-  // Verificación solo cuando status sea "found" (evita llamadas prematuras)
+  // Timeout de 20 segundos para detectar si está atascado en carga
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadTimeout(true);
+    }, 20000); // 20 segundos
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Verificación solo cuando status sea "found"
   useEffect(() => {
     if (status !== "found" || !walletAddress || verified) {
       console.log('⏳ Esperando status "found"... actual:', status);
@@ -65,6 +75,26 @@ const App: React.FC = () => {
 
   // Pantalla de carga / inicializando / polling / verifying
   if (!status || status === "initializing" || status === "polling" || isVerifying || verifying) {
+    if (loadTimeout) {
+      return (
+        <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
+          <div className="text-xl font-bold">Cargando World ID... (tomando mucho tiempo)</div>
+          <div>Status: {status || 'esperando bridge'}</div>
+          <div>Intentos: {retryCount}</div>
+          <button
+            onClick={() => {
+              setRetryCount(c => c + 1);
+              setLoadTimeout(false); // resetea timeout
+              window.location.reload();
+            }}
+            className="px-8 py-4 bg-white text-black rounded-xl font-bold text-lg active:scale-95 transition-transform"
+          >
+            Reintentar ahora
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Cargando World ID...<br />
@@ -89,6 +119,7 @@ const App: React.FC = () => {
         <button
           onClick={() => {
             setRetryCount(c => c + 1);
+            setLoadTimeout(false);
             window.location.reload();
           }}
           className="px-8 py-4 bg-white text-black rounded-xl font-bold text-lg active:scale-95 transition-transform"
