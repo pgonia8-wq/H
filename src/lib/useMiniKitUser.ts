@@ -1,142 +1,121 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from './supabaseClients';
 
-// Declaramos MiniKit de forma global ya que World App lo inyecta en window
+// Declaramos MiniKit global (World App lo inyecta)
 declare var MiniKit: any;
 
-export type MiniKitStatus = 
-  | 'initializing' 
-  | 'not-installed' 
-  | 'polling' 
-  | 'found' 
-  | 'timeout' 
+export type MiniKitStatus =
+  | 'initializing'
+  | 'not-installed'
+  | 'polling'
+  | 'found'
+  | 'timeout'
   | 'error';
 
-export function useMiniKitUser() {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+export const useMiniKitUser = () => {
+  const [wallet, setWallet] = useState<string | null>(null);
   const [status, setStatus] = useState<MiniKitStatus>('initializing');
   const [proof, setProof] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const queryClient = useQueryClient();
-
-  // Integración para guardar en la base de datos (Supabase / Backend)
-  const updateWalletMutation = useMutation({
-    mutationFn: async (wallet: string) => {
-      // Aquí puedes agregar tu token de sesión de Supabase en los headers si llamas a un backend propio,
-      // o utilizar directamente el cliente de supabase (ej: supabase.from('users').update({ wallet }).eq(...))
-      const res = await fetch('/api/users/wallet', {
-        method: 'PATCH',
-        headers: { 
-          'Content-Type': 'application/json',
-          // 'Authorization': `Bearer ${supabaseSessionToken}` // ← Agregar si usas JWT de Supabase
-        },
-        body: JSON.stringify({ wallet }),
-      });
-      
-      if (!res.ok) {
-        throw new Error('Error al actualizar la wallet en Supabase/BD');
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      console.log('Wallet guardada exitosamente en la base de datos');
-      queryClient.invalidateQueries({ queryKey: ['/api/me'] });
-    },
-    onError: (err) => {
-      console.error('Error guardando la wallet:', err);
-    }
-  });
 
   useEffect(() => {
     let isMounted = true;
-    let pollInterval: ReturnType<typeof setInterval>;
+    let interval: ReturnType<typeof setInterval>;
     let timeoutId: ReturnType<typeof setTimeout>;
 
-    const initMiniKit = async () => {
+    const init = async () => {
       try {
-        // 1. Detectar si MiniKit está instalado
-        if (typeof MiniKit === 'undefined' || !MiniKit.isInstalled()) {
-          if (isMounted) setStatus('not-installed');
+        // Inicializa MiniKit (Provider ya lo hace, pero reforzamos)
+        MiniKit.install();
+
+        if (!MiniKit.isInstalled()) {
+          console.log("❌ MiniKit no instalado, sal del navegador o World App?");
+          setStatus('not-installed');
+          setWallet(null);
           return;
         }
 
-        if (isMounted) setStatus('polling');
+        setStatus('polling');
 
-        // 2. Polling cada 3 segundos
-        const pollForWallet = async () => {
+        const pollWallet = async () => {
           try {
             const res = await MiniKit.commandsAsync.getWallet();
-            if (res?.wallet && isMounted) {
-              setWalletAddress(res.wallet);
+            const userWallet = res?.wallet ?? null;
+            console.log('[Poll] MiniKit.getWallet ->', userWallet);
+
+            if (userWallet && isMounted) {
+              setWallet(userWallet);
               setStatus('found');
-              clearInterval(pollInterval);
+              clearInterval(interval);
               clearTimeout(timeoutId);
-              
-              // 3. Si hay wallet, guardarla en Supabase/Backend
-              updateWalletMutation.mutate(res.wallet);
+
+              // Guardar wallet en Supabase si hay sesión
+              const user = supabase.auth.user();
+              if (user) {
+                await supabase
+                  .from('users')
+                  .upsert({ id: user.id, wallet: userWallet });
+                console.log('[Supabase] Wallet guardada:', userWallet);
+              }
             }
-          } catch (e) {
-            console.error('[MiniKit] Error obteniendo la wallet:', e);
-            // Si hay un error transitorio, sigue intentando hasta el timeout.
+          } catch (err) {
+            console.error('[MiniKit] Error polling wallet:', err);
           }
         };
 
-        pollInterval = setInterval(pollForWallet, 3000);
-        pollForWallet(); // Ejecutar inmediatamente la primera vez
+        // Primer chequeo inmediato
+        await pollWallet();
 
-        // 4. Timeout visible de 60 segundos
+        // Polling cada 3 segundos
+        interval = setInterval(pollWallet, 3000);
+
+        // Timeout visible a los 60s
         timeoutId = setTimeout(() => {
-          if (isMounted && status !== 'found') {
-            clearInterval(pollInterval);
+          if (!wallet && isMounted) {
+            console.warn('[Timeout] Wallet no cargó después de 60s');
             setStatus('timeout');
+            clearInterval(interval);
           }
         }, 60000);
-
-      } catch (error) {
-        console.error('[MiniKit] Error en inicialización:', error);
-        if (isMounted) setStatus('error');
+      } catch (err) {
+        console.error('[MiniKit] Error en init:', err);
+        setStatus('error');
       }
     };
 
-    initMiniKit();
+    init();
 
     return () => {
       isMounted = false;
-      if (pollInterval) clearInterval(pollInterval);
+      if (interval) clearInterval(interval);
       if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
-  // 5. Permite ejecutar verificación Orb y capturar el proof
-  const verifyOrb = async (action: string = 'test-action', signal: string = 'test-signal') => {
+  // Función para ejecutar la verificación Orb
+  const verifyOrb = async (action = 'verify_user', signal?: string) => {
+    if (!wallet) throw new Error('Wallet aún no disponible');
     setIsVerifying(true);
     try {
-      if (typeof MiniKit === 'undefined') {
-        throw new Error('MiniKit no está instalado en este entorno');
-      }
-
-      const response = await MiniKit.commandsAsync.verify({ action, signal });
-
-      if (response?.status === 'success' && response?.proof) {
-        setProof(response.proof);
-        return response.proof;
+      if (!MiniKit?.commandsAsync?.verify) throw new Error('MiniKit.commandsAsync.verify no disponible');
+      const result = await MiniKit.commandsAsync.verify({
+        action,
+        signal: signal || wallet,
+      });
+      if (result?.status === 'success') {
+        setProof(result.proof);
+        console.log('[MiniKit] Verificación exitosa', result.proof);
+        return result.proof;
       } else {
-        throw new Error('La verificación no fue exitosa o fue cancelada por el usuario.');
+        throw new Error('Verificación fallida o cancelada');
       }
-    } catch (error: any) {
-      console.error('[MiniKit] Error en verificación Orb:', error);
-      throw error;
+    } catch (err) {
+      console.error('[MiniKit] verifyOrb error:', err);
+      throw err;
     } finally {
       setIsVerifying(false);
     }
   };
 
-  return {
-    walletAddress,
-    status,
-    proof,
-    verifyOrb,
-    isVerifying,
-    isSavingWallet: updateWalletMutation.isPending,
-  };
-}
+  return { wallet, status, proof, verifyOrb, isVerifying };
+};
