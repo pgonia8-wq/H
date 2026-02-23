@@ -6,14 +6,13 @@ import { MiniKit } from '@worldcoin/minikit-js';
 
 const Root = () => {
   useEffect(() => {
-    // Inicializa MiniKit, necesario para detectar si estamos dentro de World App
     MiniKit.install();
-
-    // DEBUG: log para verificar instalación
+    // Debug importante: esto te dice si realmente está dentro de World App
+    console.log('MiniKit instalado:', MiniKit.isInstalled());
     if (MiniKit.isInstalled()) {
-      console.log('MiniKit is installed: running inside World App');
+      console.log('¡Estás dentro de World App! El bridge está activo.');
     } else {
-      console.log('MiniKit is not installed: outside World App');
+      console.log('No detectado como World App (normal si abres en navegador).');
     }
   }, []);
 
