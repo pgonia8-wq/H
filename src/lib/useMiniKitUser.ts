@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { MiniKit } from '@worldcoin/minikit-js';
-import { supabase } from './supabaseClients';
+import { useState, useEffect } from "react";
+import { MiniKit } from "@worldcoin/minikit-js";
+import { supabase } from "./supabaseClients";
 
 export const useMiniKitUser = () => {
   const [wallet, setWallet] = useState<string | null>(null);
@@ -8,57 +8,57 @@ export const useMiniKitUser = () => {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    let timeout: NodeJS.Timeout;
 
     const init = async () => {
       try {
+        // Inicializa MiniKit
         MiniKit.install();
 
         if (!MiniKit.isInstalled()) {
           console.log("❌ No estás dentro de World App");
+          setWallet(null);
           setLoading(false);
           return;
         }
 
         const checkWallet = async () => {
-          try {
-            const userWallet = await MiniKit.commandsAsync.getWallet?.();
-            if (userWallet) {
-              console.log("✅ Wallet detectada:", userWallet);
-              setWallet(userWallet);
+          const userWallet = await MiniKit.commandsAsync.getWallet();
 
-              const user = supabase.auth.user();
-              if (user) {
-                await supabase
-                  .from('users')
-                  .upsert({ id: user.id, wallet: userWallet });
-              }
+          if (userWallet) {
+            console.log("✅ Wallet detectada:", userWallet);
+            setWallet(userWallet);
 
-              if (interval) clearInterval(interval);
-              if (timeout) clearTimeout(timeout);
-              setLoading(false);
-            } else {
-              console.log("⚠️ Wallet aún null, reintentando...");
+            // Guardar en Supabase si hay sesión
+            const user = supabase.auth.user();
+            if (user) {
+              await supabase
+                .from("users")
+                .upsert({ id: user.id, wallet: userWallet });
             }
-          } catch (err) {
-            console.error("Error al obtener wallet con commandsAsync.getWallet():", err);
+
+            // Wallet ya obtenida → detiene polling
+            if (interval) clearInterval(interval);
+            setLoading(false);
+          } else {
+            console.log("⚠️ Wallet todavía no disponible, reintentando...");
           }
         };
 
-        // Primer intento
+        // Primera comprobación inmediata
         await checkWallet();
 
-        // Polling cada 3s
+        // Polling cada 3s hasta obtener wallet
         interval = setInterval(checkWallet, 3000);
 
-        // Timeout visible a 60s
-        timeout = setTimeout(() => {
-          if (!wallet) console.warn("[Timeout] Wallet no cargó después de 60s");
-          setLoading(false);
+        // Timeout visible si no carga después de 60s
+        setTimeout(() => {
+          if (!wallet) {
+            console.log("[Timeout] Wallet no cargó después de 60s");
+          }
         }, 60000);
 
       } catch (err) {
-        console.error("Error init MiniKit:", err);
+        console.error("Error en init MiniKit:", err);
         setLoading(false);
       }
     };
@@ -67,7 +67,6 @@ export const useMiniKitUser = () => {
 
     return () => {
       if (interval) clearInterval(interval);
-      if (timeout) clearTimeout(timeout);
     };
   }, []);
 
