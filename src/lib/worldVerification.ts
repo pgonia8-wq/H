@@ -1,12 +1,29 @@
-import { supabase } from './supabase'
+export async function verifyWorldIDProof(
+  proofData: any,
+  walletAddress: string
+) {
+  const response = await fetch(
+    "https://vtjqfzpfehfofamhowjz.supabase.co/functions/v1/bright-handler",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        proof: proofData.proof,
+        nullifier_hash: proofData.nullifier_hash,
+        merkle_root: proofData.merkle_root,
+        walletAddress,
+      }),
+    }
+  );
 
-export async function verifyWorldIDProof(proof: any, walletAddress: string) {
-  const { data, error } = await supabase
-    .rpc('verify_world_id_proof', {
-      p_wallet_address: walletAddress,
-      p_proof: proof,
-    })
+  const result = await response.json();
 
-  if (error) throw error
-  return data // { is_valid, message }
-}
+  if (!response.ok) {
+    console.error("World verification error:", result);
+    throw new Error("World ID verification failed");
+  }
+
+  return result;
+        }
