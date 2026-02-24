@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import FeedPage from "./pages/FeedPage";
 import { useMiniKitUser } from "./lib/useMiniKitUser";
+import { MiniKit } from "@worldcoin/minikit-js";
 
 const App: React.FC = () => {
-  const { walletAddress, status, verifyOrb, isVerifying } = useMiniKitUser();
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [status, setStatus] = useState("initializing");
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [retryCount, setRetryCount] = useState(() => {
@@ -20,7 +22,39 @@ const App: React.FC = () => {
     localStorage.setItem("retryCount", retryCount.toString());
   }, [retryCount]);
 
-  // Polling automático / retry cada 6 segundos si está stuck
+  // -----------------------------
+  // Inicialización MiniKit con delay
+  // -----------------------------
+  useEffect(() => {
+    const init = async () => {
+      // Espera 2 segundos para que el bridge de World App cargue
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      if (!MiniKit.isInstalled()) {
+        setStatus("not-installed");
+        return;
+      }
+
+      try {
+        const wallet = await MiniKit.commandsAsync.getWallet();
+        if (wallet?.address) {
+          setWalletAddress(wallet.address);
+          setStatus("found");
+        } else {
+          setStatus("no-wallet");
+        }
+      } catch (err) {
+        console.error("Error obteniendo wallet:", err);
+        setStatus("error");
+      }
+    };
+
+    init();
+  }, []);
+
+  // -----------------------------
+  // Polling / retry automático
+  // -----------------------------
   useEffect(() => {
     let interval: NodeJS.Timer;
     if (
@@ -36,7 +70,9 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [status, verified]);
 
-  // Verificación Orb cuando status llegue a "found"
+  // -----------------------------
+  // Verificación Orb
+  // -----------------------------
   useEffect(() => {
     if (status !== "found" || !walletAddress || verified) return;
 
@@ -50,11 +86,13 @@ const App: React.FC = () => {
         const action = "verifica-que-eres-humano";
         setLastAction(action);
 
-        // Generar proof Orb
-        const orbProof = await verifyOrb(action, walletAddress);
+        const orbProof = await MiniKit.commandsAsync.verify({
+          action,
+          signal: walletAddress,
+          verification_level: "Orb",
+        });
         setLastPayload(orbProof);
 
-        // Enviar al backend
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -80,18 +118,15 @@ const App: React.FC = () => {
     };
 
     doVerify();
-  }, [status, walletAddress, verified, verifyOrb]);
+  }, [status, walletAddress, verified]);
 
-  // -------------------------
+  // -----------------------------
   // Renderizado de UI
-  // -------------------------
-
-  // Cargando / verificando
+  // -----------------------------
   if (
     !status ||
     status === "initializing" ||
     status === "polling" ||
-    isVerifying ||
     verifying
   ) {
     return (
@@ -100,7 +135,6 @@ const App: React.FC = () => {
         Status: {status || "esperando"}<br />
         Wallet: {walletAddress || "sin wallet"}<br />
         Verificando: {verifying ? "Sí" : "No"}
-        {/* Panel de debug dentro de carga */}
         <DebugPanel
           status={status}
           walletAddress={walletAddress}
@@ -116,7 +150,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Error o wallet no detectada
   if (!walletAddress || status === "not-installed" || status === "timeout" || status === "error") {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
@@ -143,7 +176,6 @@ const App: React.FC = () => {
             Reintentar detección
           </button>
         )}
-        {/* Panel de debug */}
         <DebugPanel
           status={status}
           walletAddress={walletAddress}
@@ -166,8 +198,6 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-auto p-4">
         <FeedPage wallet={walletAddress} />
       </main>
-
-      {/* Panel de debug siempre visible */}
       <DebugPanel
         status={status}
         walletAddress={walletAddress}
@@ -183,9 +213,9 @@ const App: React.FC = () => {
   );
 };
 
-// -------------------------
-// Componente DebugPanel seguro
-// -------------------------
+// -----------------------------
+// DebugPanel
+// -----------------------------
 interface DebugPanelProps {
   status: string | null;
   walletAddress: string | null;
