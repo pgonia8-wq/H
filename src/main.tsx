@@ -1,20 +1,13 @@
-Main.tsx Replit 
-import React, { useEffect } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { MiniKit } from '@worldcoin/minikit-js';
 
-const Root = () => {
-  useEffect(() => {
-    MiniKit.install();
-  }, []);
+// Instala MiniKit UNA SOLA VEZ, lo más temprano posible (fuera de useEffect y componentes)
+MiniKit.install();  // Si tu app ID es necesario, ponlo aquí: MiniKit.install('tu-app-id-aqui')
 
-  return (
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-};
-
-ReactDOM.createRoot(document.getElementById('root')!).render(<Root />);
+// Render directo SIN StrictMode para evitar double-init y white screen
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <App />
+);
