@@ -3,38 +3,55 @@ import FeedPage from "./pages/FeedPage";
 import { useMiniKitUser } from "./lib/useMiniKitUser";
 import { MiniKit } from "@worldcoin/minikit-js";
 
+// Helper para enviar logs al backend (/api/log)
+async function sendLog(message: string, data?: any) {
+  try {
+    await fetch("/api/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, data, timestamp: new Date().toISOString() }),
+    });
+  } catch (err) {
+    console.error("Error enviando log al backend:", err);
+  }
+}
+
 const App: React.FC = () => {
   const { walletAddress, status, verifyOrb, proof, isVerifying } = useMiniKitUser();
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [retryCount, setRetryCount] = useState(() => {
-    const saved = localStorage.getItem('retryCount');
+    const saved = localStorage.getItem("retryCount");
     return saved ? parseInt(saved, 10) : 0;
   });
   const [isRetrying, setIsRetrying] = useState(false);
 
   // Guardar contador en localStorage
   useEffect(() => {
-    localStorage.setItem('retryCount', retryCount.toString());
+    localStorage.setItem("retryCount", retryCount.toString());
   }, [retryCount]);
 
-  // Logs de debug
+  // Logs de debug en console + backend
   useEffect(() => {
-    console.log('🔍 MiniKit.isInstalled:', MiniKit.isInstalled?.() ?? 'no disponible');
-    console.log('🔍 Status:', status ?? 'sin-status');
-    console.log('🔍 Wallet:', walletAddress ?? 'sin-wallet');
-    console.log('🔍 isVerifying:', isVerifying);
-    console.log('🔍 verified:', verified);
-    console.log('🔍 Intentos totales:', retryCount);
+    const logData = {
+      status: status ?? "sin-status",
+      wallet: walletAddress ?? "sin-wallet",
+      isVerifying,
+      verified,
+      retryCount,
+    };
+    console.log("🔍 Debug MiniKit:", logData);
+    sendLog("Debug MiniKit", logData);
   }, [status, walletAddress, isVerifying, verified, retryCount]);
 
   // AUTO-RETRY cada 6 segundos si está atascado
   useEffect(() => {
     if (status === "initializing" || status === "polling" || status === "error") {
       const interval = setInterval(() => {
-        setRetryCount(c => c + 1);
+        setRetryCount((c) => c + 1);
         window.location.reload(); // reload completo para forzar nuevo polling
-        console.log('Auto-reload por stuck - intento:', retryCount + 1);
+        console.log("Auto-reload por stuck - intento:", retryCount + 1);
+        sendLog("Auto-reload por stuck", { intento: retryCount + 1, status });
       }, 6000);
 
       return () => clearInterval(interval);
@@ -49,6 +66,8 @@ const App: React.FC = () => {
       setVerifying(true);
       try {
         console.log("Iniciando verificación");
+        sendLog("Iniciando verificación", { walletAddress });
+
         const orbProof = await verifyOrb("verify_user", walletAddress);
 
         const res = await fetch("/api/verify", {
@@ -66,11 +85,15 @@ const App: React.FC = () => {
         const result = await res.json();
         if (result.success) {
           setVerified(true);
+          console.log("✅ Verificación exitosa");
+          sendLog("Verificación exitosa", { walletAddress });
         } else {
           console.error("Backend rechazó:", result);
+          sendLog("Backend rechazó", result);
         }
       } catch (err) {
         console.error("Error verificación:", err);
+        sendLog("Error verificación", { err, walletAddress });
       } finally {
         setVerifying(false);
       }
@@ -84,7 +107,7 @@ const App: React.FC = () => {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Cargando World ID...<br />
-        Status: {status || 'esperando'}<br />
+        Status: {status || "esperando"}<br />
         Intentos: {retryCount}
       </div>
     );
@@ -95,11 +118,13 @@ const App: React.FC = () => {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
         <div className="text-xl font-bold">
-          Esta aplicación solo funciona dentro de World App<br />
+          Esta aplicación solo funciona dentro de World App
+          <br />
           y con World ID verificado.
         </div>
         <div className="text-sm text-gray-400">
-          Status: {status || 'desconocido'}<br />
+          Status: {status || "desconocido"}
+          <br />
           Intentos totales: {retryCount}
         </div>
         {isRetrying ? (
@@ -107,11 +132,12 @@ const App: React.FC = () => {
         ) : (
           <button
             onClick={() => {
-              setRetryCount(c => c + 1);
+              setRetryCount((c) => c + 1);
               setIsRetrying(true);
               setTimeout(() => {
                 window.location.reload();
-              }, 1000); // 1 segundo de "Reintentando..." antes de reload
+              }, 1000);
+              sendLog("Reintento manual iniciado", { walletAddress, retryCount: retryCount + 1 });
             }}
             disabled={isRetrying}
             className="px-8 py-4 bg-white text-black rounded-xl font-bold text-lg active:scale-95 transition-transform disabled:opacity-50"
