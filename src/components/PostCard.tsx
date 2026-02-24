@@ -9,17 +9,34 @@ interface PostCardProps {
     content: string;
     likes_count?: number;
     comments_count?: number;
+    created_at?: string; // opcional si quieres mostrar fecha
+    [key: string]: any; // para futuros campos extra
   };
 }
 
 const PostCard: React.FC<PostCardProps> = ({ post }) => {
   return (
-    <div className="bg-white shadow-md rounded-xl p-4 w-full max-w-md flex flex-col gap-2">
+    <div className="bg-white shadow-md rounded-xl p-4 w-full max-w-md flex flex-col gap-3">
+      {/* Contenido del post */}
       <p className="text-gray-800">{post.content}</p>
-      <small className="text-gray-500">Por: {post.user_id}</small>
-      <div className="flex items-center gap-2 mt-2">
-        <LikeButton postId={post.id} initialLikes={post.likes_count || 0} />
+      
+      {/* Información del autor y fecha */}
+      <div className="flex justify-between items-center text-sm text-gray-500">
+        <span>Por: {post.user_id}</span>
+        {post.created_at && (
+          <span>{new Date(post.created_at).toLocaleDateString()}</span>
+        )}
       </div>
+
+      {/* Likes y número de comentarios */}
+      <div className="flex items-center gap-4 mt-2">
+        <LikeButton postId={post.id} initialLikes={post.likes_count || 0} />
+        {typeof post.comments_count === 'number' && (
+          <span className="text-gray-500">{post.comments_count} comentarios</span>
+        )}
+      </div>
+
+      {/* Input para agregar comentarios */}
       <CommentInput postId={post.id} />
     </div>
   );
