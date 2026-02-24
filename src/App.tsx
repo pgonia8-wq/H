@@ -16,20 +16,13 @@ const App: React.FC = () => {
   const [lastPayload, setLastPayload] = useState<any>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
-  // Guardar retryCount en localStorage
-  useEffect(() => {
-    localStorage.setItem("retryCount", retryCount.toString());
-  }, [retryCount]);
-
-  // -----------------------------
-  // Inicialización MiniKit con delay 9s
-  // -----------------------------
   useEffect(() => {
     const init = async () => {
-      // Espera 9 segundos para asegurar que el bridge de World App cargue
+      // ✅ Delay de 9 segundos para asegurar que MiniKit tenga tiempo de inicializar
       await new Promise((resolve) => setTimeout(resolve, 9000));
 
-      console.log("MiniKit.isInstalled():", MiniKit.isInstalled());
+      // ✅ Log explícito para verificar si MiniKit está instalado
+      console.log("🔹 MiniKit.isInstalled():", MiniKit.isInstalled());
 
       if (!MiniKit.isInstalled()) {
         setStatus("not-installed");
@@ -38,6 +31,7 @@ const App: React.FC = () => {
 
       try {
         const wallet = await MiniKit.commandsAsync.getWallet();
+        console.log("🔹 Wallet RAW:", wallet);
         if (wallet?.address) {
           setWalletAddress(wallet.address);
           setStatus("found");
@@ -45,7 +39,7 @@ const App: React.FC = () => {
           setStatus("no-wallet");
         }
       } catch (err) {
-        console.error("Error obteniendo wallet:", err);
+        console.error("🔹 Error obteniendo wallet:", err);
         setStatus("error");
       }
     };
@@ -192,7 +186,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Pantalla principal
   return (
     <div className="w-screen h-screen bg-black text-white flex flex-col">
       <header className="p-4 text-xl font-bold text-center">Human Feed</header>
