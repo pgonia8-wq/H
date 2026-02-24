@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing payload or action" });
     }
 
-    const app_id = process.env.APP_ID || "app_18e24371c2f0aeaa6348745bf40add01";
+    const app_id = "app_6a98c88249208506dcd4e04b529111fc";
 
     const verifyRes = await verifyCloudProof(payload, app_id, action, signal);
 
