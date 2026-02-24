@@ -6,7 +6,7 @@ import { MiniKit } from '@worldcoin/minikit-js';
 
 const Root = () => {
   useEffect(() => {
-    MiniKit.install();
+    MiniKit.install('app_6a98c88249208506dcd4e04b529111fc');
   }, []);
 
   return (
