@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import FeedPage from "./pages/FeedPage";
 import { useMiniKitUser } from "./lib/useMiniKitUser";
-import { MiniKit } from "@worldcoin/minikit-js";
 
 const App: React.FC = () => {
-  const { walletAddress, status, verifyOrb, proof, isVerifying } = useMiniKitUser();
+  const { walletAddress, status, verifyOrb, isVerifying } = useMiniKitUser();
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [retryCount, setRetryCount] = useState(() => {
@@ -18,34 +17,12 @@ const App: React.FC = () => {
     localStorage.setItem('retryCount', retryCount.toString());
   }, [retryCount]);
 
-  // Logs de debug en consola
-  useEffect(() => {
-    console.log('🔍 MiniKit.isInstalled:', MiniKit.isInstalled?.() ?? 'no disponible');
-    console.log('🔍 Status:', status ?? 'sin-status');
-    console.log('🔍 Wallet:', walletAddress ?? 'sin-wallet');
-    console.log('🔍 isVerifying:', isVerifying);
-    console.log('🔍 verified:', verified);
-    console.log('🔍 Intentos totales:', retryCount);
-  }, [status, walletAddress, isVerifying, verified, retryCount]);
-
-  // Enviar logs al backend
-  useEffect(() => {
-    if (walletAddress || status) {
-      fetch("/api/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, status, retryCount }),
-      }).catch(err => console.error("Error enviando log al backend:", err));
-    }
-  }, [walletAddress, status, retryCount]);
-
   // AUTO-RETRY seguro cada 6 segundos si está atascado
   useEffect(() => {
     let interval: NodeJS.Timer;
-    if ((status === "initializing" || status === "polling" || status === "error") && !verified) {
+    if ((status === "initializing" || status === "error") && !verified) {
       interval = setInterval(() => {
         setRetryCount(c => c + 1);
-        console.log('Auto-retry por stuck - intento:', retryCount + 1);
         setIsRetrying(true);
         setTimeout(() => setIsRetrying(false), 2000);
       }, 6000);
@@ -55,20 +32,23 @@ const App: React.FC = () => {
 
   // Verificación cuando status llegue a "found"
   useEffect(() => {
-    if (status !== "found" || !walletAddress || verified) return;
+    if (status !== "found" || !walletAddress || verified || !verifyOrb) return;
 
     const doVerify = async () => {
       setVerifying(true);
       try {
-        console.log("Iniciando verificación");
-        const orbProof = await verifyOrb("verify_user", walletAddress);
+        console.log("Iniciando verificación...");
 
+        // 🔐 Action exacta del Developer Portal
+        const orbProof = await verifyOrb("verifica-que-eres-humano", walletAddress);
+
+        // Enviar proof al backend
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             payload: orbProof,
-            action: "verify_user",
+            action: "verifica-que-eres-humano",
             signal: walletAddress,
           }),
         });
@@ -77,12 +57,14 @@ const App: React.FC = () => {
 
         const result = await res.json();
         if (result.success) {
+          console.log("Verificación exitosa");
           setVerified(true);
         } else {
           console.error("Backend rechazó:", result);
         }
+
       } catch (err) {
-        console.error("Error verificación:", err);
+        console.error("Error en verificación:", err);
       } finally {
         setVerifying(false);
       }
@@ -91,8 +73,8 @@ const App: React.FC = () => {
     doVerify();
   }, [status, walletAddress, verified, verifyOrb]);
 
-  // Pantalla de carga
-  if (!status || status === "initializing" || status === "polling" || isVerifying || verifying) {
+  // Pantalla de carga inicial
+  if (!status || status === "initializing" || isVerifying || verifying) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Cargando World ID...<br />
@@ -103,7 +85,7 @@ const App: React.FC = () => {
   }
 
   // Pantalla de error / no detectado
-  if (!walletAddress || status === "not-installed" || status === "timeout" || status === "error") {
+  if (!walletAddress || status === "not-installed" || status === "error") {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
         <div className="text-xl font-bold">
@@ -133,23 +115,23 @@ const App: React.FC = () => {
     );
   }
 
-  // Verificando
-  if (!verified) {
+  // Pantalla principal cuando está verificado
+  if (verified) {
     return (
-      <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-        Verificando World ID...<br />
-        Wallet detectada: {walletAddress.slice(0, 6)}...
+      <div className="w-screen h-screen bg-black text-white flex flex-col">
+        <header className="p-4 text-xl font-bold text-center">Human Feed</header>
+        <main className="flex-1 overflow-auto p-4">
+          <FeedPage wallet={walletAddress} />
+        </main>
       </div>
     );
   }
 
-  // Pantalla principal
+  // Pantalla mientras se está verificando
   return (
-    <div className="w-screen h-screen bg-black text-white flex flex-col">
-      <header className="p-4 text-xl font-bold text-center">Human Feed</header>
-      <main className="flex-1 overflow-auto p-4">
-        <FeedPage wallet={walletAddress} />
-      </main>
+    <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
+      Verificando World ID...<br />
+      Wallet detectada: {walletAddress?.slice(0, 6)}...
     </div>
   );
 };
