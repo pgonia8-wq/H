@@ -6,43 +6,20 @@ const App: React.FC = () => {
   const { walletAddress, status, verifyOrb, isVerifying } = useMiniKitUser();
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
-  const [retryCount, setRetryCount] = useState(() => {
-    const saved = localStorage.getItem('retryCount');
-    return saved ? parseInt(saved, 10) : 0;
-  });
-  const [isRetrying, setIsRetrying] = useState(false);
+  const [backendResult, setBackendResult] = useState<string | null>(null);
 
-  // Guardar contador en localStorage
+  // Verificación cuando wallet está lista
   useEffect(() => {
-    localStorage.setItem('retryCount', retryCount.toString());
-  }, [retryCount]);
-
-  // AUTO-RETRY seguro cada 6 segundos si está atascado
-  useEffect(() => {
-    let interval: NodeJS.Timer;
-    if ((status === "initializing" || status === "error") && !verified) {
-      interval = setInterval(() => {
-        setRetryCount(c => c + 1);
-        setIsRetrying(true);
-        setTimeout(() => setIsRetrying(false), 2000);
-      }, 6000);
-    }
-    return () => clearInterval(interval);
-  }, [status, retryCount, verified]);
-
-  // Verificación cuando status llegue a "found"
-  useEffect(() => {
-    if (status !== "found" || !walletAddress || verified || !verifyOrb) return;
+    if (status !== "found" || !walletAddress || verified) return;
 
     const doVerify = async () => {
       setVerifying(true);
-      try {
-        console.log("Iniciando verificación...");
+      setBackendResult(null);
 
-        // 🔐 Action exacta del Developer Portal
+      try {
+        console.log("Iniciando verificación");
         const orbProof = await verifyOrb("verifica-que-eres-humano", walletAddress);
 
-        // Enviar proof al backend
         const res = await fetch("/api/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -53,18 +30,18 @@ const App: React.FC = () => {
           }),
         });
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
         const result = await res.json();
-        if (result.success) {
-          console.log("Verificación exitosa");
-          setVerified(true);
-        } else {
-          console.error("Backend rechazó:", result);
-        }
+        console.log("Resultado backend:", result);
 
-      } catch (err) {
-        console.error("Error en verificación:", err);
+        if (result.success) {
+          setVerified(true);
+          setBackendResult("✅ Verificado correctamente");
+        } else {
+          setBackendResult("❌ Backend rechazó el proof");
+        }
+      } catch (err: any) {
+        console.error("Error verificación:", err);
+        setBackendResult(`❌ Error: ${err.message}`);
       } finally {
         setVerifying(false);
       }
@@ -73,65 +50,49 @@ const App: React.FC = () => {
     doVerify();
   }, [status, walletAddress, verified, verifyOrb]);
 
-  // Pantalla de carga inicial
-  if (!status || status === "initializing" || isVerifying || verifying) {
+  // Pantalla de carga / estados
+  if (!status || status === "initializing" || status === "polling" || isVerifying || verifying) {
     return (
       <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
         Cargando World ID...<br />
-        Status: {status || 'esperando'}<br />
-        Intentos: {retryCount}
+        Status: {status || "esperando"}<br />
+        Wallet: {walletAddress || "sin wallet"}<br />
+        Verificando: {verifying ? "Sí" : "No"}
       </div>
     );
   }
 
-  // Pantalla de error / no detectado
-  if (!walletAddress || status === "not-installed" || status === "error") {
+  // Error o no detectado
+  if (!walletAddress || status === "not-installed" || status === "timeout" || status === "error") {
     return (
       <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
         <div className="text-xl font-bold">
-          Esta aplicación solo funciona dentro de World App<br />
-          y con World ID verificado.
+          Esta aplicación solo funciona dentro de World App y con World ID verificado.
         </div>
         <div className="text-sm text-gray-400">
-          Status: {status || 'desconocido'}<br />
-          Intentos totales: {retryCount}
+          Status: {status || "desconocido"}<br />
+          Wallet: {walletAddress || "sin wallet"}
         </div>
-        {isRetrying ? (
-          <div className="text-lg text-yellow-400">Reintentando...</div>
-        ) : (
-          <button
-            onClick={() => {
-              setRetryCount(c => c + 1);
-              setIsRetrying(true);
-              setTimeout(() => setIsRetrying(false), 1000);
-            }}
-            disabled={isRetrying}
-            className="px-8 py-4 bg-white text-black rounded-xl font-bold text-lg active:scale-95 transition-transform disabled:opacity-50"
-          >
-            Reintentar detección
-          </button>
-        )}
       </div>
     );
   }
 
-  // Pantalla principal cuando está verificado
-  if (verified) {
-    return (
-      <div className="w-screen h-screen bg-black text-white flex flex-col">
-        <header className="p-4 text-xl font-bold text-center">Human Feed</header>
-        <main className="flex-1 overflow-auto p-4">
-          <FeedPage wallet={walletAddress} />
-        </main>
-      </div>
-    );
-  }
-
-  // Pantalla mientras se está verificando
+  // Pantalla principal
   return (
-    <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-      Verificando World ID...<br />
-      Wallet detectada: {walletAddress?.slice(0, 6)}...
+    <div className="w-screen h-screen bg-black text-white flex flex-col">
+      <header className="p-4 text-xl font-bold text-center">Human Feed</header>
+      <main className="flex-1 overflow-auto p-4">
+        <FeedPage wallet={walletAddress} />
+      </main>
+
+      {/* 🔹 Panel de debug en pantalla */}
+      <div className="fixed bottom-0 left-0 w-full bg-black bg-opacity-90 text-white p-2 text-xs z-50 flex flex-col gap-1">
+        <div>Status: {status}</div>
+        <div>Wallet: {walletAddress}</div>
+        <div>Verificando Orb: {verifying ? "Sí" : "No"}</div>
+        <div>Verificado: {verified ? "✅ Sí" : "❌ No"}</div>
+        <div>Backend: {backendResult || "esperando..."}</div>
+      </div>
     </div>
   );
 };
