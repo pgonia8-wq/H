@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import FeedPage from "./pages/FeedPage";
-import { useMiniKitUser } from "./lib/useMiniKitUser";
 import { MiniKit } from "@worldcoin/minikit-js";
 
 const App: React.FC = () => {
@@ -10,7 +9,7 @@ const App: React.FC = () => {
   const [status, setStatus] = useState("initializing");
 
   useEffect(() => {
-    const init = async () => {
+    const getWallet = async () => {
       if (!MiniKit.isInstalled()) {
         setStatus("not-installed");
         return;
@@ -25,11 +24,14 @@ const App: React.FC = () => {
           setStatus("no-wallet");
         }
       } catch (err) {
-        console.error(err);
+        console.error("Error getting wallet:", err);
         setStatus("error");
       }
     };
-    init();
+
+    // Give a tiny bit of time for MiniKit to be ready after install
+    const timer = setTimeout(getWallet, 500);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
@@ -58,13 +60,15 @@ const App: React.FC = () => {
           setVerified(true);
         }
       } catch (err) {
-        console.error("Verification failed", err);
+        console.error("Verification failed:", err);
       } finally {
         setVerifying(false);
       }
     };
 
-    doVerify();
+    if (status === "found" && walletAddress && !verified) {
+      doVerify();
+    }
   }, [status, walletAddress, verified, verifying]);
 
   if (status === "initializing" || verifying) {
