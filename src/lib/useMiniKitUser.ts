@@ -1,70 +1,62 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MiniKit } from '@worldcoin/minikit-js';
 
-type StatusType = 'initializing' | 'not-installed' | 'polling' | 'wallet-found' | 'error' | 'verified';
-
 export const useMiniKitUser = () => {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [status, setStatus] = useState<StatusType>('initializing');
-  const [proof, setProof] = useState<any>(null);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const initialize = async () => {
-      if (!MiniKit.isInstalled()) {
-        setStatus('not-installed');
-        return;
-      }
+    let interval: NodeJS.Timeout | null = null;
 
-      setStatus('polling');
-
+    const init = async () => {
       try {
-        // Pequeño buffer para que el bridge esté completamente listo
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        MiniKit.install();
 
-        const wallet = await MiniKit.commandsAsync.getWallet();
-        if (wallet?.address) {
-          setWalletAddress(wallet.address);
-          setStatus('wallet-found');
-        } else {
-          setStatus('error');
+        if (!MiniKit.isInstalled()) {
+          console.log("[MiniKit] ❌ No estás dentro de World App");
+          setWallet(null);
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error('Error al obtener wallet:', error);
-        setStatus('error');
+
+        console.log("[MiniKit] ✅ Entorno World App detectado");
+
+        const checkWallet = () => {
+          const userWallet = MiniKit.walletAddress || (window as any).MiniKit?.walletAddress || null;
+
+          console.log("[MiniKit] Chequeando wallet:", userWallet ? userWallet : "null");
+
+          if (userWallet) {
+            console.log("[MiniKit] Wallet DETECTADA:", userWallet);
+            setWallet(userWallet);
+            if (interval) clearInterval(interval);
+            setLoading(false);
+          }
+        };
+
+        checkWallet();
+        interval = setInterval(checkWallet, 2000); // cada 2s
+
+        // Timeout de seguridad
+        setTimeout(() => {
+          if (!wallet) {
+            console.log("[MiniKit] Timeout: wallet no cargó después de 45s");
+            setLoading(false);
+          }
+        }, 45000);
+
+      } catch (err) {
+        console.error("[MiniKit] Error grave:", err);
+        setLoading(false);
       }
     };
 
-    initialize();
+    init();
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
-  const verifyOrb = async (action: string, signal: string) => {
-    if (isVerifying) return null;
-    setIsVerifying(true);
-
-    try {
-      const { finalPayload } = await MiniKit.commandsAsync.verify({
-        action,
-        signal,
-      });
-
-      setProof(finalPayload);
-      setStatus('verified');
-      return finalPayload;
-    } catch (error) {
-      console.error('Error en verifyOrb:', error);
-      setStatus('error');
-      return null;
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  return {
-    walletAddress,
-    status,
-    verifyOrb,
-    proof,
-    isVerifying,
-  };
+  return { wallet, loading };
 };
