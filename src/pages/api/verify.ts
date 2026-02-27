@@ -1,33 +1,52 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { verifyCloudProof } from "@worldcoin/minikit-js";
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { verifyCloudProof } from '@worldcoin/minikit-js'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+const APP_ID = 'app_18e24371c2f0aeaa6348745bf40add01'
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, error: 'Method not allowed' })
+  }
+
   try {
-    // Solo aceptamos POST
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
+    const { proof } = req.body
+
+    if (!proof) {
+      return res.status(400).json({ success: false, error: 'Missing proof' })
     }
 
-    const { payload, action, signal } = req.body;
+    // proof ya contiene payload, action y signal dentro
+    const { payload, action, signal } = proof
 
-    if (!payload || !action || !signal) {
-      return res.status(400).json({ error: "Missing payload, action, or signal" });
+    if (!payload || !action) {
+      return res.status(400).json({ success: false, error: 'Invalid proof structure' })
     }
 
-    // 🔑 Nuevo APP_ID
-    const app_id = process.env.APP_ID || "app_6a98c88249208506dcd4e04b529111fc";
+    const result = await verifyCloudProof(
+      payload,
+      APP_ID,
+      action,
+      signal
+    )
 
-    // Verificación real en backend
-    const verifyRes = await verifyCloudProof(payload, app_id, action, signal);
-
-    if (verifyRes.success) {
-      return res.status(200).json({ success: true });
+    if (result.success) {
+      return res.status(200).json({ success: true })
     } else {
-      return res.status(400).json({ success: false, error: "Proof invalid" });
+      return res.status(400).json({
+        success: false,
+        error: result.error || 'Proof invalid'
+      })
     }
 
   } catch (error: any) {
-    console.error("API verify error:", error);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error('Verify error:', error)
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    })
   }
-  }
+}
+

@@ -1,257 +1,98 @@
-import React, { useEffect, useState } from "react";
-import FeedPage from "./pages/FeedPage";
+import { useEffect, useState } from "react";
 import { MiniKit } from "@worldcoin/minikit-js";
 
-const App: React.FC = () => {
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [status, setStatus] = useState("initializing");
-  const [verified, setVerified] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [retryCount, setRetryCount] = useState(() => {
-    const saved = localStorage.getItem("retryCount");
-    return saved ? parseInt(saved, 10) : 0;
-  });
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [backendResult, setBackendResult] = useState<string | null>(null);
-  const [lastPayload, setLastPayload] = useState<any>(null);
-  const [lastAction, setLastAction] = useState<string | null>(null);
+export default function App() {
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const init = async () => {
-      // ✅ Delay de 9 segundos para asegurar que MiniKit tenga tiempo de inicializar
-      await new Promise((resolve) => setTimeout(resolve, 9000));
-
-      // ✅ Log explícito para verificar si MiniKit está instalado
-      console.log("🔹 MiniKit.isInstalled():", MiniKit.isInstalled());
-
-      if (!MiniKit.isInstalled()) {
-        setStatus("not-installed");
-        return;
-      }
-
-      try {
-        const wallet = await MiniKit.commandsAsync.getWallet();
-        console.log("🔹 Wallet RAW:", wallet);
-        if (wallet?.address) {
-          setWalletAddress(wallet.address);
-          setStatus("found");
-        } else {
-          setStatus("no-wallet");
-        }
-      } catch (err) {
-        console.error("🔹 Error obteniendo wallet:", err);
-        setStatus("error");
-      }
-    };
-
-    init();
+    try {
+      MiniKit.install();
+      const installed = MiniKit.isInstalled();
+      console.log("MiniKit installed:", installed);
+      setIsInstalled(installed);
+    } catch (err) {
+      console.error("MiniKit install error:", err);
+    }
   }, []);
 
-  // -----------------------------
-  // Polling / retry automático
-  // -----------------------------
-  useEffect(() => {
-    let interval: NodeJS.Timer;
-    if (
-      (status === "initializing" || status === "polling" || status === "error") &&
-      !verified
-    ) {
-      interval = setInterval(() => {
-        setRetryCount((c) => c + 1);
-        setIsRetrying(true);
-        setTimeout(() => setIsRetrying(false), 2000);
-      }, 6000);
+  const handleVerify = async () => {
+    if (!MiniKit.isInstalled()) {
+      alert("MiniKit no está disponible");
+      return;
     }
-    return () => clearInterval(interval);
-  }, [status, verified]);
 
-  // -----------------------------
-  // Verificación Orb
-  // -----------------------------
-  useEffect(() => {
-    if (status !== "found" || !walletAddress || verified) return;
+    try {
+      setLoading(true);
+      setMessage("Abriendo verificación...");
 
-    const doVerify = async () => {
-      setVerifying(true);
-      setBackendResult(null);
-      setLastPayload(null);
-      setLastAction(null);
+      const verifyRes = await MiniKit.commandsAsync.verify({
+        action: "verify-user",
+      });
 
-      try {
-        const action = "verifica-que-eres-humano";
-        setLastAction(action);
+      console.log("Verify response:", verifyRes);
 
-        const orbProof = await MiniKit.commandsAsync.verify({
-          action,
-          signal: walletAddress,
-          verification_level: "Orb",
-        });
-        setLastPayload(orbProof);
+      const proof = verifyRes?.finalPayload;
 
-        const res = await fetch("/api/verify", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            payload: orbProof,
-            action,
-            signal: walletAddress,
-          }),
-        });
-
-        const result = await res.json();
-        if (result.success) {
-          setVerified(true);
-          setBackendResult("✅ Verificado correctamente");
-        } else {
-          setBackendResult("❌ Backend rechazó el proof");
-        }
-      } catch (err: any) {
-        setBackendResult(`❌ Error: ${err.message}`);
-      } finally {
-        setVerifying(false);
+      if (!proof) {
+        throw new Error("No se recibió proof");
       }
-    };
 
-    doVerify();
-  }, [status, walletAddress, verified]);
+      const backendRes = await fetch("/api/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ proof }),
+      });
 
-  // -----------------------------
-  // Renderizado de UI
-  // -----------------------------
-  if (
-    !status ||
-    status === "initializing" ||
-    status === "polling" ||
-    verifying
-  ) {
-    return (
-      <div className="w-screen h-screen flex items-center justify-center bg-black text-white text-center p-6">
-        Cargando World ID...<br />
-        Status: {status || "esperando"}<br />
-        Wallet: {walletAddress || "sin wallet"}<br />
-        Verificando: {verifying ? "Sí" : "No"}
-        <DebugPanel
-          status={status}
-          walletAddress={walletAddress}
-          verifying={verifying}
-          verified={verified}
-          backendResult={backendResult}
-          lastAction={lastAction}
-          lastPayload={lastPayload}
-          retryCount={retryCount}
-          isRetrying={isRetrying}
-        />
-      </div>
-    );
-  }
+      const backend = await backendRes.json();
+      console.log("Backend response:", backend);
 
-  if (!walletAddress || status === "not-installed" || status === "timeout" || status === "error") {
-    return (
-      <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white text-center p-6 gap-6">
-        <div className="text-xl font-bold">
-          Esta aplicación solo funciona dentro de World App y con World ID verificado.
-        </div>
-        <div className="text-sm text-gray-400">
-          Status: {status || "desconocido"}<br />
-          Wallet: {walletAddress || "sin wallet"}<br />
-          Intentos totales: {retryCount}
-        </div>
-        {isRetrying ? (
-          <div className="text-lg text-yellow-400">Reintentando...</div>
-        ) : (
-          <button
-            onClick={() => {
-              setRetryCount((c) => c + 1);
-              setIsRetrying(true);
-              setTimeout(() => setIsRetrying(false), 1000);
-            }}
-            disabled={isRetrying}
-            className="px-8 py-4 bg-white text-black rounded-xl font-bold text-lg active:scale-95 transition-transform disabled:opacity-50"
-          >
-            Reintentar detección
-          </button>
-        )}
-        <DebugPanel
-          status={status}
-          walletAddress={walletAddress}
-          verifying={verifying}
-          verified={verified}
-          backendResult={backendResult}
-          lastAction={lastAction}
-          lastPayload={lastPayload}
-          retryCount={retryCount}
-          isRetrying={isRetrying}
-        />
-      </div>
-    );
-  }
+      if (backend.success) {
+        setMessage("✅ Verificación exitosa");
+      } else {
+        setMessage("❌ Backend rechazó la prueba");
+      }
+
+    } catch (err) {
+      console.error("Verify error:", err);
+      setMessage("❌ Error durante verificación");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="w-screen h-screen bg-black text-white flex flex-col">
-      <header className="p-4 text-xl font-bold text-center">Human Feed</header>
-      <main className="flex-1 overflow-auto p-4">
-        <FeedPage wallet={walletAddress} />
-      </main>
-      <DebugPanel
-        status={status}
-        walletAddress={walletAddress}
-        verifying={verifying}
-        verified={verified}
-        backendResult={backendResult}
-        lastAction={lastAction}
-        lastPayload={lastPayload}
-        retryCount={retryCount}
-        isRetrying={isRetrying}
-      />
+    <div style={{ padding: 24, fontFamily: "sans-serif" }}>
+      <h1>Human App</h1>
+
+      <p>
+        MiniKit instalado: {isInstalled ? "✅ Sí" : "❌ No"}
+      </p>
+
+      <button
+        onClick={handleVerify}
+        disabled={!isInstalled || loading}
+        style={{
+          padding: "12px 20px",
+          borderRadius: 8,
+          border: "none",
+          backgroundColor: "#000",
+          color: "#fff",
+          cursor: "pointer",
+          marginTop: 10
+        }}
+      >
+        {loading ? "Verificando..." : "Verificar con World ID"}
+      </button>
+
+      {message && (
+        <p style={{ marginTop: 20 }}>
+          {message}
+        </p>
+      )}
     </div>
   );
-};
-
-// -----------------------------
-// DebugPanel
-// -----------------------------
-interface DebugPanelProps {
-  status: string | null;
-  walletAddress: string | null;
-  verifying: boolean;
-  verified: boolean;
-  backendResult: string | null;
-  lastAction: string | null;
-  lastPayload: any;
-  retryCount: number;
-  isRetrying: boolean;
 }
-
-const DebugPanel: React.FC<DebugPanelProps> = ({
-  status,
-  walletAddress,
-  verifying,
-  verified,
-  backendResult,
-  lastAction,
-  lastPayload,
-  retryCount,
-  isRetrying,
-}) => (
-  <div className="fixed bottom-0 left-0 w-full bg-black bg-opacity-90 text-white p-2 text-xs z-50 flex flex-col gap-1 max-h-64 overflow-y-auto">
-    <div>Status: {status}</div>
-    <div>Wallet: {walletAddress || "sin wallet"}</div>
-    <div>Verificando Orb: {verifying ? "Sí" : "No"}</div>
-    <div>Verificado: {verified ? "✅ Sí" : "❌ No"}</div>
-    <div>Backend: {backendResult || "esperando..."}</div>
-    <div>Acción enviada: {lastAction || "-"}</div>
-    <div>
-      Payload Orb (truncado):
-      {lastPayload
-        ? " " +
-          JSON.stringify(lastPayload)
-            .replace(/\s/g, "")
-            .slice(0, 200) + "..."
-        : "-"}
-    </div>
-    <div>Retry count: {retryCount}</div>
-    <div>Retrying: {isRetrying ? "Sí" : "No"}</div>
-  </div>
-);
-
-export default App;
