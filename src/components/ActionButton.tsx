@@ -1,18 +1,23 @@
-import React from 'react';
+import React from "react";
 
-interface ActionButtonProps {
+interface Props {
   label: string;
   onClick: () => void;
-  color?: string;
+  className?: string;
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ label, onClick, color = 'purple' }) => {
+const ActionButton: React.FC<Props> = ({ label, onClick, className = "" }) => {
   return (
     <button
       onClick={onClick}
-      className={`px-6 py-2 rounded-full font-bold text-white shadow ${
-        color === 'purple' ? 'bg-purple-500 hover:bg-purple-600' : ''
-      } transition`}
+      className={`
+        px-6 py-2.5 font-semibold text-white rounded-full 
+        bg-gradient-to-r from-gray-800 to-gray-700 
+        hover:from-gray-700 hover:to-gray-600 
+        shadow-lg shadow-black/40 transition-all duration-300 
+        active:scale-95 border border-gray-700/50 
+        ${className}
+      `}
     >
       {label}
     </button>
