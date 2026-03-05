@@ -1,29 +1,48 @@
-export default async function handler(req, res) {
+export default async function handler(request) {
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+  if (request.method !== "POST") {
+    return new Response(
+      JSON.stringify({ error: "Method not allowed" }),
+      {
+        status: 405,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
   }
 
   try {
 
-    const { plan } = req.body || {};
+    const body = await request.json();
+    const { plan } = body;
 
     console.log("Upgrade request:", plan);
 
-    return res.status(200).json({
-      success: true,
-      plan: plan || null
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        plan: plan || null
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
 
   } catch (err) {
 
     console.error("API ERROR:", err);
 
-    return res.status(500).json({
-      success: false,
-      error: err.message
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: err.message
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
 
   }
 
-}
+      }
