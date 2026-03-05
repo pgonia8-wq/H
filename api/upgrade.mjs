@@ -6,15 +6,7 @@ export default async function handler(req, res) {
 
   try {
 
-    let body = "";
-
-    for await (const chunk of req) {
-      body += chunk;
-    }
-
-    const data = JSON.parse(body || "{}");
-
-    const { plan } = data;
+    const { plan } = req.body || {};
 
     console.log("Upgrade request:", plan);
 
