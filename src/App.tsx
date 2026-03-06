@@ -126,8 +126,8 @@ if (result.success) {
         </div>
       ) : (
         <ErrorBoundary>
-          <HomePage />
-        </ErrorBoundary>
+  <HomePage userId={userId} />
+</ErrorBoundary>
       )}
     </div>
   );
