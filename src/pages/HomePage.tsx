@@ -41,7 +41,7 @@ const HomePage: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { theme, accentColor } = useContext(ThemeContext);
-  const { wallet, verifyUser } = useMiniKitUser();  // ← wallet y función verifyUser
+  const { wallet } = useMiniKitUser();  // wallet address de MiniKit
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -76,12 +76,11 @@ const HomePage: React.FC = () => {
   }, [page, hasMore]);
 
   useEffect(() => {
-    // Set currentUserId con wallet cuando esté disponible
     if (wallet) {
       setCurrentUserId(wallet);
       console.log("[USER] currentUserId seteado con wallet:", wallet);
     } else {
-      console.warn("[USER] Wallet no disponible aún");
+      console.warn("[USER] Wallet aún no disponible");
     }
 
     fetchPosts(true);
@@ -108,7 +107,7 @@ const HomePage: React.FC = () => {
     }
 
     if (!currentUserId) {
-      alert("No se encontró tu wallet. Pulsa 'Verificar Wallet' primero.");
+      alert("No se detectó tu wallet. Recarga la app o verifica con World ID.");
       return;
     }
 
@@ -190,6 +189,13 @@ const HomePage: React.FC = () => {
         </div>
       </header>
 
+      {/* Mensaje pequeño si no hay wallet (para depurar) */}
+      {!currentUserId && (
+        <div className="text-center py-4 bg-red-900/30 text-red-300 text-sm">
+          No se detectó wallet. Recarga la app o verifica con World ID.
+        </div>
+      )}
+
       {/* Pull to refresh */}
       <div
         className="text-center py-4 text-gray-400 text-sm flex items-center justify-center gap-2 cursor-pointer"
@@ -200,24 +206,6 @@ const HomePage: React.FC = () => {
         </svg>
         Tirar para refrescar
       </div>
-
-      {/* Botón para forzar verify si no hay wallet */}
-      {!currentUserId && (
-        <div className="text-center py-6">
-          <button
-            onClick={() => {
-              verifyUser();
-              console.log("[VERIFY] Botón Verificar Wallet pulsado");
-            }}
-            className="px-8 py-4 bg-red-600 hover:bg-red-700 text-white rounded-full font-bold text-lg shadow-lg"
-          >
-            Verificar Wallet para publicar
-          </button>
-          <p className="mt-2 text-gray-500 text-sm">
-            Necesitamos tu wallet para identificarte
-          </p>
-        </div>
-      )}
 
       {/* Modal Nuevo Post */}
       {showNewPostModal && (
