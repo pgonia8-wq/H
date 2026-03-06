@@ -43,7 +43,7 @@ const HomePage = (props: { userId: string | null }) => {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const currentUserId = userId;  // ← usa el nullifier_hash de App.tsx
+  const currentUserId = userId;  // ← nullifier_hash desde App.tsx
 
   const maxChars = userTier === 'premium+' ? 10000 : userTier === 'premium' ? 4000 : 280;
 
@@ -58,7 +58,7 @@ const HomePage = (props: { userId: string | null }) => {
         .from("posts")
         .select("*")
         .order("timestamp", { ascending: false })
-        .range(from, to);  // feed global (sin filtro user_id)
+        .range(from, to);  // ← feed global (todos los posts)
 
       if (error) throw error;
 
@@ -76,15 +76,13 @@ const HomePage = (props: { userId: string | null }) => {
   }, [page, hasMore]);
 
   useEffect(() => {
-    if (userId) {
-      console.log("[HOME] userId recibido de App.tsx:", userId);
-    }
+    console.log("[HOME] userId recibido desde App.tsx:", userId);  // ← log para confirmar
 
-    // Carga tier si tienes columna en users/profiles
+    // Carga tier si tienes columna en profiles
     if (userId) {
       const fetchTier = async () => {
         const { data: profile } = await supabase
-          .from('profiles')  // o 'users'
+          .from('profiles')
           .select('tier')
           .eq('id', userId)
           .single();
