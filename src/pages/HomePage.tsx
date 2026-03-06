@@ -87,32 +87,14 @@ const HomePage = (props: { userId: string | null }) => {
 }, [page, hasMore, userId]);
   
   useEffect(() => {
-    const fetchUserData = async () => {
-      // Intenta Supabase Auth (por si acaso)
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUserId(user.id);
-        console.log("[USER] User ID desde Supabase Auth:", user.id);
-      } else if (wallet) {
-        setCurrentUserId(wallet);  // ← wallet address como ID principal
-        console.log("[USER] User ID desde MiniKit wallet:", wallet);
-      }
+  if (!userId) return; // Espera hasta que userId exista
 
-      // Carga tier si tienes columna en users
-      if (currentUserId) {
-        const { data: profile } = await supabase
-          .from('users')  // cambia a 'profiles' si usas esa tabla
-          .select('tier')
-          .eq('user_id', currentUserId)
-          .single();
+  const fetchUserData = async () => {
+    fetchPosts(true); // Carga los posts usando el userId recibido
+  };
 
-        setUserTier(profile?.tier || 'free');
-      }
-
-      fetchPosts(true);
-    };
-    fetchUserData();
-  }, [fetchPosts, wallet]);
+  fetchUserData();
+}, [fetchPosts, userId]); // userId como dependencia
 
   useEffect(() => {
     const handleScroll = () => {
