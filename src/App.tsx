@@ -36,19 +36,10 @@ function App() {
         setError("No se encontró proof válido");
         return;
       }
-      
+      // Sacamos el userId del nullifier_hash de World ID
+      const id = proofData.nullifier_hash;
 
-      // Obtener el usuario actual de Supabase
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        setError("No estás logueado. Inicia sesión primero.");
-        return;
-      }
-      // Sacamos el userId del nullifier_hash
-const userId = proofData.nullifier_hash;
-
-// Creamos el body para el backend
+// Creamos el body para enviar al backend
 const body = {
   proof: proofData.proof,
   merkle_root: proofData.merkle_root,
@@ -56,7 +47,7 @@ const body = {
   verification_level: proofData.verification_level,
   action: "verify-user",
   max_age: 7200,
-  userId: userId, // <- enviamos al backend
+  userId: id, // <- enviamos al backend
 };
 
 // Llamamos al backend
@@ -65,42 +56,18 @@ const res = await fetch("/api/verify", {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
 const result = await res.json();
 
 if (result.success) {
   setVerified(true);
-  setUserId(userId); // <- guardamos el userId en estado
+  setUserId(id); // <- guardamos el userId en estado
   setMessage("✅ Verificación exitosa");
 } else {
   setError("Backend rechazó la prueba: " + (result.error || ""));
-}
-
-      const body = {
-        proof: proofData.proof,
-        merkle_root: proofData.merkle_root,
-        nullifier_hash: proofData.nullifier_hash,
-        verification_level: proofData.verification_level,
-        action: "verify-user",
-        max_age: 7200,
-        userId: user.id  // Agregado: enviamos el userId al backend
-      };
-
-      const res = await fetch("/api/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const result = await res.json();
-
-      if (result.success) {
-        setVerified(true);
-        setMessage("✅ Verificación exitosa");
-      } else {
-        setError("Backend rechazó la prueba: " + (result.error || ""));
-      }
-    } catch (err: any) {
-      setError("Error durante verificación: " + err.message);
     }
+
+      
   };
 
   return (
