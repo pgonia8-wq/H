@@ -5,7 +5,7 @@ import ActionButton from "../components/ActionButton";
 import { ThemeContext } from "../lib/ThemeContext";
 import ProfileModal from "../components/ProfileModal.tsx";
 import { useUserBalance } from "../lib/useUserBalance";
-import { useMiniKitUser } from "../lib/useMiniKitUser";  // ← IMPORTANTE
+import { useMiniKitUser } from "../lib/useMiniKitUser";  // ← hook para wallet y verify
 
 interface Post {
   id: string;
@@ -41,7 +41,7 @@ const HomePage: React.FC = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { theme, accentColor } = useContext(ThemeContext);
-  const { wallet } = useMiniKitUser();  // ← wallet address de MiniKit
+  const { wallet, verified, verifyUser } = useMiniKitUser();  // ← wallet y verifyUser
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -58,7 +58,7 @@ const HomePage: React.FC = () => {
         .from("posts")
         .select("*")
         .order("timestamp", { ascending: false })
-        .range(from, to);  // ← feed global (sin filtro por user_id)
+        .range(from, to);  // feed global
 
       if (error) throw error;
 
@@ -76,12 +76,10 @@ const HomePage: React.FC = () => {
   }, [page, hasMore]);
 
   useEffect(() => {
-    // Set currentUserId con wallet de MiniKit
+    // Carga userId desde wallet de MiniKit
     if (wallet) {
       setCurrentUserId(wallet);
       console.log("[USER] currentUserId seteado con wallet:", wallet);
-    } else {
-      console.warn("[USER] No hay wallet disponible");
     }
 
     fetchPosts(true);
@@ -108,7 +106,7 @@ const HomePage: React.FC = () => {
     }
 
     if (!currentUserId) {
-      alert("No se encontró tu ID de usuario (wallet). Verifica con World ID primero o recarga la app.");
+      alert("No se encontró tu wallet. Verifica con World ID primero o recarga la app.");
       return;
     }
 
@@ -118,7 +116,7 @@ const HomePage: React.FC = () => {
       const { data: inserted, error: insertError } = await supabase
         .from('posts')
         .insert({
-          user_id: currentUserId,  // wallet address
+          user_id: currentUserId,
           content: newPostContent.trim(),
           timestamp: new Date().toISOString(),
           deleted_flag: false,
@@ -201,6 +199,18 @@ const HomePage: React.FC = () => {
         Tirar para refrescar
       </div>
 
+      {/* Botón temporal para forzar verify si no hay wallet */}
+      {!currentUserId && (
+        <div className="text-center py-4">
+          <button
+            onClick={() => verifyUser()}
+            className="px-6 py-3 bg-red-600 text-white rounded-full font-medium"
+          >
+            Verificar Wallet para publicar
+          </button>
+        </div>
+      )}
+
       {/* Modal Nuevo Post */}
       {showNewPostModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2">
@@ -233,7 +243,7 @@ const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Feed completo con borde blanco de 3px y redondeado */}
+      {/* Feed completo */}
       <main className="w-full px-2 py-6 flex justify-center">
         <div className="w-full max-w-3xl border-[3px] border-white rounded-3xl overflow-hidden space-y-5 p-4">
           {loading && posts.length === 0 ? (
