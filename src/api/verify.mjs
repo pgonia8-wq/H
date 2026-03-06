@@ -26,21 +26,32 @@ export default async function handler(req, res) {
   console.log("[BACKEND] Verificación managed exitosa (MiniKit ya lo hizo)");
 
   // ── Guardar verified: true en Supabase ──
-  if (userId) {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ verified: true })
-      .eq('id', userId);
+if (userId) {
+  // 1️⃣ Crear o actualizar el perfil si no existía
+  const { error: upsertError } = await supabase
+    .from("profiles")
+    .upsert({ id: userId }, { onConflict: ["id"] });
 
-    if (error) {
-      console.error("[BACKEND] Error al guardar verified:", error.message);
-      // No fallamos la respuesta, solo logueamos para depurar
+  if (upsertError) {
+    console.error("[BACKEND] Error al registrar usuario:", upsertError.message);
+  } else {
+    console.log("[BACKEND] Usuario registrado/actualizado correctamente:", userId);
+
+    // 2️⃣ Guardar verified: true SOLO si el perfil se creó o existía
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ verified: true })
+      .eq("id", userId);
+
+    if (updateError) {
+      console.error("[BACKEND] Error al guardar verified:", updateError.message);
     } else {
       console.log("[BACKEND] verified: true guardado correctamente para userId:", userId);
     }
-  } else {
-    console.warn("[BACKEND] No se recibió userId en el body → no se pudo guardar verified");
   }
+} else {
+  console.warn("[BACKEND] No se recibió userId en el body → no se pudo guardar verified");
+      }
 
   return res.status(200).json({ success: true });
 }
