@@ -7,7 +7,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  const { action, max_age } = req.body || {};
+  const body = req.body || {};
+  const { action, max_age, userId } = body;  // ← agregamos userId aquí
 
   if (!action) {
     console.log("[BACKEND] Falta action");
@@ -23,6 +24,23 @@ export default async function handler(req, res) {
 
   console.log("[BACKEND] Acción recibida y validada:", action);
   console.log("[BACKEND] Verificación managed exitosa (MiniKit ya lo hizo)");
+
+  // ── Guardar verified: true en Supabase ──
+  if (userId) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ verified: true })
+      .eq('id', userId);
+
+    if (error) {
+      console.error("[BACKEND] Error al guardar verified:", error.message);
+      // No fallamos la respuesta, solo logueamos para depurar
+    } else {
+      console.log("[BACKEND] verified: true guardado correctamente para userId:", userId);
+    }
+  } else {
+    console.warn("[BACKEND] No se recibió userId en el body → no se pudo guardar verified");
+  }
 
   return res.status(200).json({ success: true });
 }
