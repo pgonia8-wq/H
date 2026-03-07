@@ -31,6 +31,7 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(0);
   const [slotsLeft, setSlotsLeft] = useState<number>(0);
+  const [showInsufficientFunds, setShowInsufficientFunds] = useState(false);  // ← nuevo estado para alerta fondos insuficientes
 
   useEffect(() => {
     if (selectedTier) {
@@ -71,53 +72,48 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
 
     setLoadingUpgrade(true);
     setUpgradeError(null);
-    console.log("[UPGRADE] Iniciando upgrade para:", selectedTier);
+    setShowInsufficientFunds(false);
+    console.log("[UPGRADE] Iniciando upgrade para:", selectedTier, "precio:", price, "userId:", currentUserId);
 
     try {
-      // Paso 1: Inicializar en backend (crea intención)
-      const initRes = await fetch("/api/upgrade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "initiate", userId: currentUserId, tier: selectedTier }),
-      });
-
-      if (!initRes.ok) {
-        const text = await initRes.text();
-        throw new Error(`Error al iniciar: ${text}`);
+      if (!MiniKit.isInstalled()) {
+        throw new Error("MiniKit no instalado o World App no detectada");
       }
 
-      const { paymentId } = await initRes.json();
-      console.log("[UPGRADE] PaymentId obtenido:", paymentId);
-
-      // Paso 2: Pago real con MiniKit
+      // Pago real con MiniKit (cobra WLD)
       const payRes = await MiniKit.commandsAsync.pay({
         amount: price,
         currency: 'WLD',
-        recipient: '0x...TU_WALLET_APP',
-        reference: paymentId,  // opcional, para correlacionar
+        recipient: '0x...TU_WALLET_APP',  // ← reemplaza con tu wallet real
       });
-
       console.log("[UPGRADE] Pago respuesta:", payRes);
 
       if (payRes.status !== "success") {
+        if (payRes.error?.includes("insufficient") || payRes.error?.includes("funds")) {
+          setShowInsufficientFunds(true);
+          throw new Error("Fondos insuficientes en tu wallet");
+        }
         throw new Error("Pago cancelado o fallido");
       }
 
       const transactionId = payRes.transactionId;
+      console.log("[UPGRADE] txId obtenido:", transactionId);
 
-      // Paso 3: Confirmar en backend (verifica tx on chain)
-      const confirmRes = await fetch("/api/upgrade", {
+      // Enviar a backend
+      const res = await fetch("/api/upgrade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "confirm", userId: currentUserId, tier: selectedTier, transactionId }),
+        body: JSON.stringify({ userId: currentUserId, tier: selectedTier, transactionId }),
       });
 
-      if (!confirmRes.ok) {
-        const text = await confirmRes.text();
-        throw new Error(`Error al confirmar: ${text}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Error ${res.status}: ${text}`);
       }
 
-      const data = await confirmRes.json();
+      const data = await res.json();
+      console.log("[UPGRADE] Backend respuesta:", data);
+
       if (!data.success) throw new Error(data.error || "Error al procesar upgrade");
 
       alert(`¡Upgrade a ${selectedTier} exitoso! Precio: ${price} WLD. Tu referral token: ${data.referralToken}`);
@@ -247,6 +243,28 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
                 {loadingUpgrade ? "Procesando..." : "Aceptar"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta bonita para fondos insuficientes */}
+      {showInsufficientFunds && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm border border-white/10 text-center">
+            <div className="text-5xl mb-4">💸</div>
+            <h3 className="text-xl font-bold text-white mb-3">Fondos insuficientes</h3>
+            <p className="text-gray-300 mb-6">
+              No tienes suficientes WLD en tu wallet para completar el upgrade ({price} WLD).
+            </p>
+            <p className="text-gray-400 text-sm mb-6">
+              Recarga tu wallet en World App o intenta con un tier más bajo.
+            </p>
+            <button
+              onClick={() => setShowInsufficientFunds(false)}
+              className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium"
+            >
+              Entendido
+            </button>
           </div>
         </div>
       )}
