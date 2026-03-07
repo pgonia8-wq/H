@@ -3,6 +3,8 @@ import PostCard from '../components/PostCard';
 import { supabase } from '../supabaseClient';
 import { MiniKit } from '@worldcoin/minikit-js';
 
+const PAGE_SIZE = 8;
+
 interface Post {
   id: string;
   content?: string;
