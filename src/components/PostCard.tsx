@@ -66,7 +66,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       const appAmount = tipAmount * 0.1;
 
       await sendWLD(post.user_id, creatorAmount); // 90% al creador
-      await sendWLD("APP_WLD_ACCOUNT", appAmount); // 10% a la app (reemplaza ID real)
+      await sendWLD("APP_WLD_ACCOUNT", appAmount); // 10% a la app (reemplaza con ID real)
 
       alert(`Tip de ${tipAmount} WLD enviado (90% al creador, 10% a la app)`);
       setTipAmount("");
@@ -82,7 +82,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     const boostAmount = 5; // WLD fijo
 
     try {
-      await sendWLD(post.user_id, boostAmount); // envía WLD al creador
+      // Boost 100% para la app
+      await sendWLD("APP_WLD_ACCOUNT", boostAmount); // reemplaza con ID real
+
       // Lógica de boost: activa por 6 horas en DB
       await supabase
         .from("posts")
@@ -91,7 +93,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         })
         .eq("id", post.id);
 
-      alert("Boost enviado 🚀 (dura 6 horas)");
+      alert("Boost enviado 🚀 (dura 6 horas, 100% WLD para la app)");
     } catch (err: any) {
       console.error("Error en boost:", err);
       setError(err.message || "Error en boost");
@@ -121,9 +123,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
-  // NUEVA CONSTANTE PARA TIMESTAMP ACTUAL EN MODAL
-  const currentTimestamp = new Date().toLocaleString();
-
   return (
     <div className="bg-gray-900/60 backdrop-blur-sm rounded-2xl p-4 space-y-4 border border-white/10">
       <div className="flex items-center gap-3">
@@ -139,6 +138,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           <div className="text-gray-400 text-xs flex gap-3 mt-1">
             <span>Followers: {followers}</span>
             <span>Following: {following}</span>
+            <span>🕒 {new Date(post.timestamp || "").toLocaleString()}</span>
           </div>
           {currentUserId && post.user_id !== currentUserId && (
             <button
@@ -198,10 +198,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-3xl p-6 w-full max-w-md border border-white/10">
             <h2 className="text-lg font-bold mb-3 text-white">Comentar</h2>
-            
-            {/* NUEVO: MOSTRAR TIMESTAMP ACTUAL */}
-            <p className="text-gray-400 text-xs mb-2">Hora: {currentTimestamp}</p>
-            
             <textarea
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
