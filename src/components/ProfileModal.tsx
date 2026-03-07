@@ -40,6 +40,9 @@ const emptyProfile: UserProfile = {
   following_count: 0,
 };
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 400; // ms
+
 const ProfileModal: React.FC<ProfileModalProps> = ({
   currentUserId,
   onClose,
@@ -56,27 +59,58 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const { theme, setTheme } = useContext(ThemeContext);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const firstInputRef = useRef<HTMLInputElement | null>(null);
-  const lastFocusableRef = useRef<HTMLButtonElement | null>(null);
+
+  // Persistencia de theme
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme && savedTheme !== theme) {
+      setTheme(savedTheme as "dark" | "light");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+  };
+
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const retryFetch = async <T extends any>(fn: () => Promise<T>) => {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await fn();
+      } catch (err) {
+        if (attempt < MAX_RETRIES - 1) await new Promise(res => setTimeout(res, RETRY_DELAY));
+        else throw err;
+      }
+    }
+  };
 
   const handleUpgrade = async (tier: "premium" | "premium+") => {
     if (!currentUserId) return;
 
     try {
-      const res = await fetch("/api/upgrade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUserId,
-          tier,
-          transactionId: "tx-test-001",
-        }),
-      });
+      const res = await retryFetch(() =>
+        fetch("/api/upgrade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: currentUserId,
+            tier,
+            transactionId: "tx-test-001", // reemplaza con transacción WLD real
+          }),
+        })
+      );
 
       const data = await res.json();
+
       if (data.success) {
         showToast(`Upgrade exitoso: ${tier}`, "success");
-        setProfile((prev) => ({ ...prev, tier }));
+        setProfile(prev => ({ ...prev, tier }));
       } else {
         showToast(`Error en upgrade: ${data.error}`, "error");
       }
@@ -97,81 +131,73 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         return;
       }
 
-      const retryDelay = 400; // 400ms entre retries
-      const maxRetries = 2;
-
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        try {
-          const { data, error: fetchError } = await supabase
+      try {
+        const { data, error: fetchError } = await retryFetch(() =>
+          supabase
             .from("profiles")
             .select("*")
             .eq("id", currentUserId)
-            .single();
+            .single()
+        );
 
-          if (fetchError && fetchError.code !== "PGRST116") {
-            throw fetchError;
-          }
+        if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
-          if (data) {
-            setProfile(data);
-            setBioLength(data.bio?.length || 0);
-          } else {
-            const newProfile = {
-              id: currentUserId,
-              name: "",
-              username: `user_${currentUserId.slice(0, 8)}`,
-              avatar_url: "",
-              tier: "free" as const,
-              bio: "",
-              created_at: new Date().toISOString(),
-              birthdate: "",
-              city: "",
-              country: "",
-              posts_count: 0,
-              followers_count: 0,
-              following_count: 0,
-            };
+        if (data) {
+          setProfile(data);
+          setBioLength(data.bio?.length || 0);
+        } else {
+          const newProfile = {
+            id: currentUserId,
+            name: "",
+            username: `user_${currentUserId.slice(0, 8)}`,
+            avatar_url: "",
+            tier: "free" as const,
+            bio: "",
+            created_at: new Date().toISOString(),
+            birthdate: "",
+            city: "",
+            country: "",
+            posts_count: 0,
+            followers_count: 0,
+            following_count: 0,
+          };
 
-            const { error: upsertError } = await supabase.from("profiles").upsert(newProfile);
+          await retryFetch(() =>
+            supabase.from("profiles").upsert(newProfile)
+          );
 
-            if (upsertError) throw upsertError;
-            setProfile(newProfile);
-          }
-          break; // si no falla, salir del loop
-        } catch (err: any) {
-          console.error(`Intento ${attempt + 1} fallido:`, err);
-          if (attempt < maxRetries) await new Promise((res) => setTimeout(res, retryDelay));
-          else setError("No pudimos cargar tu perfil. Intenta más tarde.");
-        } finally {
-          setLoading(false);
+          setProfile(newProfile);
         }
+      } catch (err: any) {
+        console.error("Error cargando/creando perfil:", err);
+        setError("No pudimos cargar tu perfil. Intenta más tarde.");
+      } finally {
+        setLoading(false);
       }
     };
 
     loadOrCreateProfile();
   }, [currentUserId]);
 
-  const showToast = (message: string, type: "success" | "error" = "success") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
   const handleSave = async () => {
     if (!currentUserId) return;
     setSaving(true);
 
     try {
-      const { error } = await supabase.from("profiles").upsert({
-        id: currentUserId,
-        name: profile.name,
-        bio: profile.bio,
-        birthdate: profile.birthdate,
-        city: profile.city,
-        country: profile.country,
-        avatar_url: profile.avatar_url,
-      });
+      await retryFetch(() =>
+        supabase
+          .from("profiles")
+          .upsert({
+            id: currentUserId,
+            name: profile.name,
+            bio: profile.bio,
+            birthdate: profile.birthdate,
+            city: profile.city,
+            country: profile.country,
+            avatar_url: profile.avatar_url,
+          })
+      );
 
-      if (error) throw error;
       showToast("Perfil guardado correctamente ✅");
       onClose();
     } catch (err: any) {
@@ -199,21 +225,19 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     const fileName = `${currentUserId}/avatar-${timestamp}`;
 
     try {
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file, { upsert: true });
+      const { error: uploadError } = await retryFetch(() =>
+        supabase.storage.from("avatars").upload(fileName, file, { upsert: true })
+      );
+
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(fileName);
-      if (!urlData.publicUrl) throw new Error("URL de avatar no generada");
 
-      const newAvatarUrl = `${urlData.publicUrl}?t=${timestamp}`;
+      const newAvatarUrl = `${urlData?.publicUrl || "/default-avatar.png"}?t=${timestamp}`;
 
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: newAvatarUrl })
-        .eq("id", currentUserId);
-      if (updateError) throw updateError;
+      await retryFetch(() =>
+        supabase.from("profiles").update({ avatar_url: newAvatarUrl }).eq("id", currentUserId)
+      );
 
       setProfile((prev) => ({ ...prev, avatar_url: newAvatarUrl }));
       showToast("Avatar actualizado correctamente");
@@ -225,19 +249,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    localStorage.setItem("user-theme", newTheme);
-  };
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("user-theme");
-    if (savedTheme && savedTheme !== theme) {
-      setTheme(savedTheme as "light" | "dark");
-    }
-  }, []);
-
   const joinedDate = profile.created_at
     ? new Date(profile.created_at).toLocaleDateString("es-MX", {
         month: "long",
@@ -247,6 +258,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const isPremium = profile.tier === "premium" || profile.tier === "premium+";
 
+  // Clases condicionales por tema
   const modalBg = theme === "dark" ? "bg-gray-900 text-white" : "bg-white text-black";
   const headerGradient = theme === "dark" ? "from-indigo-600 to-purple-600" : "from-indigo-500 to-purple-500";
   const inputBg = theme === "dark" ? "bg-gray-800" : "bg-gray-200 text-black";
@@ -278,7 +290,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     );
   }
 
-  // JSX final
   return (
     <div className={`fixed inset-0 bg-black/80 flex flex-col z-50 ${modalBg}`}>
       {/* Toast */}
@@ -311,62 +322,148 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         </button>
       </div>
 
-      {/* Avatar y contenido con focus trap */}
-      <div className="flex-1 overflow-y-auto" tabIndex={-1}>
-        {/* Focus trap start */}
-        <div onKeyDown={(e) => {
-          if (e.key === "Tab") {
-            const focusableElements = Array.from(
-              e.currentTarget.querySelectorAll<HTMLElement>(
-                'input, textarea, button, [tabindex]:not([tabindex="-1"])'
-              )
-            );
-            if (focusableElements.length === 0) return;
-            const firstEl = focusableElements[0];
-            const lastEl = focusableElements[focusableElements.length - 1];
-            if (e.shiftKey && document.activeElement === firstEl) {
-              e.preventDefault();
-              lastEl.focus();
-            } else if (!e.shiftKey && document.activeElement === lastEl) {
-              e.preventDefault();
-              firstEl.focus();
-            }
-          }
-        }}>
-          {/* Avatar, nombre, bio, tabs, etc. */}
-          {/* … Se mantiene todo el JSX original dentro de esta sección … */}
-          {/* Aquí iría todo el contenido de inputs, textarea, tabs, city, country, birthdate */}
+      {/* Avatar */}
+      <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-28 h-28 z-20">
+        <img
+          src={profile.avatar_url || "/default-avatar.png"}
+          alt="Tu avatar"
+          className="w-28 h-28 rounded-full border-4 border-white object-cover shadow-lg"
+          onError={(e) => ((e.target as HTMLImageElement).src = "/default-avatar.png")}
+        />
+        <div
+          onClick={() => avatarInputRef.current?.click()}
+          className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-1.5 cursor-pointer hover:bg-purple-700 shadow-lg flex items-center justify-center"
+          title="Cambiar avatar"
+        >
+          ✏️
         </div>
-        {/* Focus trap end */}
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleAvatarChange}
+          className="hidden"
+          disabled={uploadingAvatar}
+        />
       </div>
 
-      {/* Botones inferiores */}
-      <div className={`border-t ${borderColor} p-4 flex gap-3 flex-shrink-0`}>
-        {showUpgradeButton && (
-          <button
-            onClick={() => handleUpgrade("premium")}
-            className="flex-1 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl font-medium hover:opacity-90 transition"
-          >
-            Upgrade
-          </button>
-        )}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`flex-1 py-3.5 ${buttonGreen} rounded-2xl font-medium disabled:opacity-60 transition`}
-        >
-          {saving ? "Guardando..." : "Guardar cambios"}
-        </button>
+      {/* Contenido principal */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="pt-14 px-6 pb-6">
+          <input
+            value={profile.name}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val.length <= 50) setProfile({ ...profile, name: val });
+            }}
+            className={`bg-transparent text-2xl font-bold w-full focus:outline-none ${textGray}`}
+            placeholder="Tu nombre"
+          />
+          <p className={textGray + " mt-1"}>@{profile.username || "sin_username"}</p>
 
-        <button
-          onClick={() => alert("Reportado (función pendiente)")}
-          className={`px-6 py-3.5 ${buttonRed} rounded-2xl text-sm font-medium transition`}
-        >
-          Reportar
-        </button>
+          {isPremium && (
+            <div className="inline-block mt-2 px-4 py-1 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-xs font-bold rounded-full">
+              PREMIUM
+            </div>
+          )}
+
+          <textarea
+            value={profile.bio}
+            onChange={(e) => {
+              const val = e.target.value.slice(0, 160);
+              setProfile({ ...profile, bio: val });
+              setBioLength(val.length);
+            }}
+            placeholder="Escribe tu bio..."
+            maxLength={160}
+            className={`mt-4 w-full ${inputBg} text-white p-4 rounded-2xl resize-none h-28 focus:outline-none focus:ring-2 focus:ring-purple-500`}
+          />
+          <div className={`text-right text-xs ${textGray} mt-1`}>{bioLength}/160</div>
+
+          <div className="flex gap-6 mt-6 text-sm">
+            <div>
+              <span className="font-bold text-white">{profile.following_count}</span>{" "}
+              <span className={textGray}>Siguiendo</span>
+            </div>
+            <div>
+              <span className="font-bold text-white">{profile.followers_count}</span>{" "}
+              <span className={textGray}>Seguidores</span>
+            </div>
+            <div className={textGray}>
+              Se unió en <span className="text-white">{joinedDate}</span>
+            </div>
+          </div>
+
+          <div className={`mt-5 flex flex-wrap gap-4 text-sm ${textGray}`}>
+            {(profile.city || profile.country) && (
+              <div>📍 {profile.city}{profile.country ? `, ${profile.country}` : ""}</div>
+            )}
+            {profile.birthdate && (
+              <div>🎂 {new Date(profile.birthdate).toLocaleDateString("es-MX")}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className={`flex border-b ${borderColor} sticky top-0 ${modalBg} z-10`}>
+          {(["posts", "responses", "likes"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-4 text-sm font-medium transition-colors ${
+                activeTab === tab ? tabActive : tabInactive
+              }`}
+            >
+              {tab === "posts" ? "Posts" : tab === "responses" ? "Respuestas" : "Likes"}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-6">
+          {activeTab === "posts" && (
+            <p className={`text-center py-10 ${textGray}`}>Tus posts aparecerán aquí</p>
+          )}
+          {activeTab === "responses" && (
+            <p className={`text-center py-10 ${textGray}`}>Tus respuestas aparecerán aquí</p>
+          )}
+          {activeTab === "likes" && (
+            <p className={`text-center py-10 ${textGray}`}>Posts que te gustaron aparecerán aquí</p>
+          )}
+        </div>
+
+        {/* Edición extra */}
+        <div className={`p-6 border-t ${borderColor} space-y-5`}>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={`block text-xs ${textGray} mb-1`}>Nacimiento</label>
+              <input
+                type="date"
+                value={profile.birthdate}
+                onChange={(e) => setProfile({ ...profile, birthdate: e.target.value })}
+                className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
+              />
+            </div>
+            <div>
+              <label className={`block text-xs ${textGray} mb-1`}>Ciudad</label>
+              <input
+                type="text"
+                placeholder="Ciudad"
+                value={profile.city}
+                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
+                className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={`block text-xs ${textGray} mb-1`}>País</label>
+            <input
+              type="text"
+              placeholder="País"
+              value={profile.country}
+              onChange={(e) => setProfile({ ...profile, country: e.target.value })}
+              className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
+            />
+          </div>
+        </div>
       </div>
-    </div>
-  );
-};
-
-export default ProfileModal;
