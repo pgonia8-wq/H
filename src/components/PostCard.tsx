@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
-import { useUserBalance } from "../lib/useUserBalance";
 import { useFollow } from "../lib/useFollow";
+import { useMiniKitUser } from "../lib/useMiniKitUser";
 
 interface PostCardProps {
   post: any;
@@ -10,22 +10,21 @@ interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
-  const { balance, refreshBalance } = useUserBalance(currentUserId);
   const { theme, accentColor } = useContext(ThemeContext);
   const { isFollowing, toggleFollow, loading: followLoading } = useFollow(
     currentUserId,
     post.user_id
   );
+  const { balance, sendWLD } = useMiniKitUser(currentUserId);
 
   const [liked, setLiked] = useState(false);
-  const [likes, setLikes] = useState<number>(post.likes || 0);
-  const [reposts, setReposts] = useState<number>(post.reposts || 0);
+  const [likes, setLikes] = useState(post.likes || 0);
+  const [reposts, setReposts] = useState(post.reposts || 0);
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [tipAmount, setTipAmount] = useState<number | "">("");
   const [isBoosting, setIsBoosting] = useState(false);
 
-  // --- Verificar si ya likeó ---
   useEffect(() => {
     if (!currentUserId) return;
     const checkLike = async () => {
@@ -40,7 +39,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     checkLike();
   }, [currentUserId, post.id]);
 
-  // --- Likes ---
   const handleLike = async () => {
     if (!currentUserId) return;
     try {
@@ -59,19 +57,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         });
         setLikes((prev) => prev + 1);
         setLiked(true);
-        await supabase.from("notifications").insert({
-          user_id: post.user_id,
-          from_user: currentUserId,
-          type: "like",
-          post_id: post.id,
-        });
       }
     } catch (err) {
-      console.error("[LIKE ERROR]", err);
+      console.error(err);
     }
   };
 
-  // --- Repost ---
   const handleRepost = async () => {
     if (!currentUserId) return;
     try {
@@ -80,18 +71,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         user_id: currentUserId,
       });
       setReposts((prev) => prev + 1);
-      await supabase.from("notifications").insert({
-        user_id: post.user_id,
-        from_user: currentUserId,
-        type: "repost",
-        post_id: post.id,
-      });
     } catch (err) {
-      console.error("[REPOST ERROR]", err);
+      console.error(err);
     }
   };
 
-  // --- Comentarios ---
   const handleComment = async () => {
     if (!currentUserId || !commentText.trim()) return;
     try {
@@ -100,70 +84,43 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         user_id: currentUserId,
         content: commentText.trim(),
       });
-      await supabase.from("notifications").insert({
-        user_id: post.user_id,
-        from_user: currentUserId,
-        type: "comment",
-        post_id: post.id,
-      });
       setCommentText("");
       setShowCommentModal(false);
     } catch (err) {
-      console.error("[COMMENT ERROR]", err);
+      console.error(err);
     }
   };
 
-  // --- Tip en WLD real ---
   const handleTip = async () => {
     if (!currentUserId || !tipAmount || tipAmount <= 0) return;
-    if (tipAmount > balance) {
-      alert("No tienes suficiente WLD");
-      return;
-    }
+    if (tipAmount > balance) return alert("No tienes suficiente WLD");
+
     try {
-      await supabase.rpc("transfer_tip", {
-        from_user_id: currentUserId,
-        to_user_id: post.user_id,
-        tip_amount: tipAmount,
-      });
-      await supabase.from("notifications").insert({
-        user_id: post.user_id,
-        from_user: currentUserId,
-        type: "tip",
-        post_id: post.id,
-      });
+      await sendWLD(post.user_id, tipAmount);
+      alert(`Tip enviado: ${tipAmount} WLD`);
       setTipAmount("");
-      refreshBalance();
     } catch (err) {
       console.error("[TIP ERROR]", err);
+      alert("Error enviando WLD");
     }
   };
 
-  // --- Boost en WLD real ---
   const handleBoost = async () => {
-    if (!currentUserId) return;
-    const boostCost = 5; // WLD
-    if (balance < boostCost) {
-      alert("No tienes suficiente WLD para potenciar");
-      return;
-    }
+    const boostCost = 5;
+    if (!currentUserId || balance < boostCost)
+      return alert("No tienes suficiente WLD para potenciar");
     try {
       setIsBoosting(true);
-      await supabase.rpc("boost_post", {
-        user_id: currentUserId,
-        post_id: post.id,
-        boost_amount: boostCost,
-      });
-      refreshBalance();
+      await sendWLD(post.user_id, boostCost);
       alert("Post potenciado 🚀");
     } catch (err) {
       console.error("[BOOST ERROR]", err);
+      alert("Error al potenciar post");
     } finally {
       setIsBoosting(false);
     }
   };
 
-  // --- Render ---
   return (
     <div
       className={`p-4 rounded-3xl border shadow-lg space-y-3 ${
@@ -177,13 +134,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
           <img
-            src={post.profile?.avatar_url || "/default-avatar.png"}
-            alt={post.profile?.username || "User"}
+            src={post.profile?.avatar_url}
+            alt={post.profile?.username}
             className="w-10 h-10 rounded-full object-cover"
           />
           <div className="flex flex-col">
             <span className="font-semibold text-sm">
-              {post.profile?.username || "Anon"}
+              {post.profile?.username}
             </span>
             <span className="text-xs text-gray-400">
               {new Date(post.timestamp).toLocaleString()}
@@ -191,11 +148,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           </div>
         </div>
 
+        {/* BOTON FOLLOW */}
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
             disabled={followLoading}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition"
+            className="px-3 py-1 rounded-full text-xs font-semibold transition shadow-sm"
             style={{
               backgroundColor: isFollowing ? "#444" : accentColor,
               color: "white",
@@ -209,7 +167,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* CONTENIDO */}
       <div className="text-sm leading-relaxed">{post.content}</div>
 
-      {/* INTERACCIONES */}
+      {/* ACCIONES */}
       <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400 pt-2">
         <button onClick={handleLike}>
           {liked ? "❤️" : "🤍"} {likes}
@@ -251,7 +209,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </button>
       </div>
 
-      {/* MODAL DE COMENTARIOS */}
+      {/* MODAL COMENTARIOS */}
       {showCommentModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-3xl p-6 w-full max-w-md border border-white/10">
