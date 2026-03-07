@@ -7,7 +7,7 @@ import ProfileModal from "../components/ProfileModal";
 import { useUserBalance } from "../lib/useUserBalance";
 import FeedPage from './FeedPage';  // ruta correcta
 
-const PAGE_SIZE = 5;  // ← DEFINIDO AQUÍ, FUERA DEL COMPONENTE
+const PAGE_SIZE = 8;  // ← CORREGIDO: fuera del componente y con valor 8
 
 interface Post {
   id: string;
