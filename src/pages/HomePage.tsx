@@ -5,7 +5,7 @@ import ActionButton from "../components/ActionButton";
 import { ThemeContext } from "../lib/ThemeContext";
 import ProfileModal from "../components/ProfileModal";
 import { useUserBalance } from "../lib/useUserBalance";
-import FeedPage from './FeedPage';  // ← ruta corregida (mismo directorio src/pages/)
+import FeedPage from './FeedPage';  // ruta correcta
 
 interface Post {
   id: string;
@@ -26,7 +26,7 @@ interface Post {
   [key: string]: any;
 }
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 5;  // ← Línea agregada aquí para solucionar el ReferenceError
 
 const HomePage = ({ userId }: { userId: string | null }) => {
   const [posts, setPosts] = useState<Post[]>([]);
