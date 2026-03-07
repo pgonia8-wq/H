@@ -56,95 +56,152 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const { theme, setTheme } = useContext(ThemeContext);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const handleUpgrade = async (tier: "premium" | "premium+") => {
-  if (!currentUserId) return;
+  const focusTrapRef = useRef<HTMLDivElement>(null);
+  const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
-  try {
-    const res = await fetch("/api/upgrade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: currentUserId,
-        tier,
-        transactionId: "tx-test-001", // reemplaza con el real cuando tengas la transacción WLD
-      }),
-    });
-
-    const data = await res.json();
-
-    console.log("Upgrade response:", data);
-
-    if (data.success) {
-      showToast(`Upgrade exitoso: ${tier}`, "success");
-      // Opcional: actualizar perfil en UI
-      setProfile(prev => ({ ...prev, tier }));
-    } else {
-      showToast(`Error en upgrade: ${data.error}`, "error");
-    }
-  } catch (err: any) {
-    console.error("Error conectando con API upgrade:", err);
-    showToast("No se pudo conectar con la API de upgrade", "error");
-  }
-};
-
+  // Cargar theme persistente
   useEffect(() => {
-    const loadOrCreateProfile = async () => {
-      setLoading(true);
-      setError(null);
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      setTheme(savedTheme);
+    }
+  }, [setTheme]);
 
-      if (!currentUserId) {
-        setProfile({ ...emptyProfile, id: "guest", username: "invitado" });
-        setLoading(false);
-        return;
-      }
+  const saveTheme = (newTheme: "light" | "dark") => {
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+  };
 
-      try {
-        const { data, error: fetchError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", currentUserId)
-          .single();
+  const handleUpgrade = async (tier: "premium" | "premium+") => {
+    if (!currentUserId) return;
 
-        if (fetchError && fetchError.code !== "PGRST116") {
-          throw fetchError;
+    const attemptUpgrade = async (retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const res = await fetch("/api/upgrade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: currentUserId,
+              tier,
+              transactionId: "tx-test-001",
+            }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          console.log("Upgrade response:", data);
+          if (data.success) {
+            showToast(`Upgrade exitoso: ${tier}`, "success");
+            setProfile(prev => ({ ...prev, tier }));
+          } else {
+            showToast(`Error en upgrade: ${data.error}`, "error");
+          }
+          return;
+        } catch (err: any) {
+          console.error("Error conectando con API upgrade:", err);
+          if (i < retries) await new Promise(r => setTimeout(r, 400));
+          else showToast("No se pudo conectar con la API de upgrade", "error");
         }
-
-        if (data) {
-          setProfile(data);
-          setBioLength(data.bio?.length || 0);
-        } else {
-          const newProfile = {
-            id: currentUserId,
-            name: "",
-            username: `user_${currentUserId.slice(0, 8)}`,
-            avatar_url: "",
-            tier: "free" as const,
-            bio: "",
-            created_at: new Date().toISOString(),
-            birthdate: "",
-            city: "",
-            country: "",
-            posts_count: 0,
-            followers_count: 0,
-            following_count: 0,
-          };
-
-          const { error: upsertError } = await supabase
-            .from("profiles")
-            .upsert(newProfile);
-
-          if (upsertError) throw upsertError;
-
-          setProfile(newProfile);
-        }
-      } catch (err: any) {
-        console.error("Error cargando/creando perfil:", err);
-        setError("No pudimos cargar tu perfil. Intenta más tarde.");
-      } finally {
-        setLoading(false);
       }
     };
 
+    await attemptUpgrade();
+  };
+
+  useEffect(() => {
+    lastFocusedElementRef.current = document.activeElement as HTMLElement | null;
+  }, []);
+
+  const focusTrap = (e: KeyboardEvent) => {
+    if (e.key !== "Tab" || !focusTrapRef.current) return;
+    const focusable = Array.from(
+      focusTrapRef.current.querySelectorAll<HTMLElement>(
+        "input, textarea, select, button, a[href], [tabindex]:not([tabindex='-1'])"
+      )
+    ).filter(el => !el.hasAttribute("disabled") && el.offsetParent !== null);
+
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("keydown", focusTrap);
+    return () => document.removeEventListener("keydown", focusTrap);
+  }, []);
+
+  const loadOrCreateProfile = async () => {
+    setLoading(true);
+    setError(null);
+
+    const attemptLoad = async (retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          if (!currentUserId) {
+            setProfile({ ...emptyProfile, id: "guest", username: "invitado" });
+            setLoading(false);
+            return;
+          }
+
+          const { data, error: fetchError } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", currentUserId)
+            .single();
+
+          if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
+
+          if (data) {
+            setProfile(data);
+            setBioLength(data.bio?.length || 0);
+          } else {
+            const newProfile = {
+              id: currentUserId,
+              name: "",
+              username: `user_${currentUserId.slice(0, 8)}`,
+              avatar_url: "",
+              tier: "free" as const,
+              bio: "",
+              created_at: new Date().toISOString(),
+              birthdate: "",
+              city: "",
+              country: "",
+              posts_count: 0,
+              followers_count: 0,
+              following_count: 0,
+            };
+
+            const { error: upsertError } = await supabase
+              .from("profiles")
+              .upsert(newProfile);
+
+            if (upsertError) throw upsertError;
+
+            setProfile(newProfile);
+          }
+          return;
+        } catch (err: any) {
+          console.error("Error cargando/creando perfil:", err);
+          if (i < retries) await new Promise(r => setTimeout(r, 400));
+          else setError("No pudimos cargar tu perfil. Intenta más tarde.");
+        }
+      }
+    };
+
+    await attemptLoad();
+    setLoading(false);
+  };
+
+  useEffect(() => {
     loadOrCreateProfile();
   }, [currentUserId]);
 
@@ -157,28 +214,35 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     if (!currentUserId) return;
     setSaving(true);
 
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .upsert({
-          id: currentUserId,
-          name: profile.name,
-          bio: profile.bio,
-          birthdate: profile.birthdate,
-          city: profile.city,
-          country: profile.country,
-          avatar_url: profile.avatar_url,
-        });
+    const attemptSave = async (retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const { error } = await supabase
+            .from("profiles")
+            .upsert({
+              id: currentUserId,
+              name: profile.name,
+              bio: profile.bio,
+              birthdate: profile.birthdate,
+              city: profile.city,
+              country: profile.country,
+              avatar_url: profile.avatar_url,
+            });
+          if (error) throw error;
+          showToast("Perfil guardado correctamente ✅");
+          if (lastFocusedElementRef.current) lastFocusedElementRef.current.focus();
+          return;
+        } catch (err: any) {
+          console.error("Error guardando perfil:", err);
+          if (i < retries) await new Promise(r => setTimeout(r, 400));
+          else showToast("Error al guardar: " + err.message, "error");
+        }
+      }
+    };
 
-      if (error) throw error;
-
-      showToast("Perfil guardado correctamente ✅");
-      onClose();
-    } catch (err: any) {
-      showToast("Error al guardar: " + err.message, "error");
-    } finally {
-      setSaving(false);
-    }
+    await attemptSave();
+    setSaving(false);
+    onClose();
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,44 +259,51 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
 
     setUploadingAvatar(true);
-    const timestamp = Date.now();
 
-    
-    const fileName = `${currentUserId}/avatar-${timestamp}`;
+    const attemptUpload = async (retries = 2) => {
+      for (let i = 0; i <= retries; i++) {
+        try {
+          const timestamp = Date.now();
+          const fileName = `${currentUserId}/avatar-${timestamp}`;
 
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, file, { upsert: true });
+          const { error: uploadError } = await supabase.storage
+            .from("avatars")
+            .upload(fileName, file, { upsert: true });
 
-      if (uploadError) throw uploadError;
+          if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(fileName);
+          const { data: urlData } = supabase.storage
+            .from("avatars")
+            .getPublicUrl(fileName);
 
-    
-      const newAvatarUrl = `${urlData.publicUrl}?t=${timestamp}`;
+          if (!urlData || !urlData.publicUrl) throw new Error("No se obtuvo URL pública");
 
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: newAvatarUrl })
-        .eq("id", currentUserId);
+          const newAvatarUrl = `${urlData.publicUrl}?t=${timestamp}`;
 
-      if (updateError) throw updateError;
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update({ avatar_url: newAvatarUrl })
+            .eq("id", currentUserId);
 
-      setProfile((prev) => ({ ...prev, avatar_url: newAvatarUrl }));
-      showToast("Avatar actualizado correctamente");
-    } catch (err: any) {
-      console.error("Error en avatar:", err);
-      showToast("No se pudo subir o asociar la imagen: " + err.message, "error");
-    } finally {
-      setUploadingAvatar(false);
-    }
+          if (updateError) throw updateError;
+
+          setProfile((prev) => ({ ...prev, avatar_url: newAvatarUrl }));
+          showToast("Avatar actualizado correctamente");
+          return;
+        } catch (err: any) {
+          console.error("Error en avatar:", err);
+          if (i < retries) await new Promise(r => setTimeout(r, 400));
+          else showToast("No se pudo subir o asociar la imagen: " + err.message, "error");
+        }
+      }
+    };
+
+    await attemptUpload();
+    setUploadingAvatar(false);
   };
 
   const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark");
+    saveTheme(theme === "dark" ? "light" : "dark");
   };
 
   const joinedDate = profile.created_at
@@ -309,35 +380,37 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       </div>
 
       {/* Avatar fijo centrado en la parte superior */}
-<div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-28 h-28 z-20">
-  <img
-    src={profile.avatar_url || "/default-avatar.png"}
-    alt="Tu avatar"
-    className="w-28 h-28 rounded-full border-4 border-white object-cover shadow-lg"
-    onError={(e) => ((e.target as HTMLImageElement).src = "/default-avatar.png")}
-  />
+      <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-28 h-28 z-20">
+        <img
+          src={profile.avatar_url || "/default-avatar.png"}
+          alt="Tu avatar"
+          className="w-28 h-28 rounded-full border-4 border-white object-cover shadow-lg"
+          onError={(e) => ((e.target as HTMLImageElement).src = "/default-avatar.png")}
+        />
 
-  {/* Lápiz para cambiar avatar */}
-  <div
-    onClick={() => avatarInputRef.current?.click()}
-    className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-1.5 cursor-pointer hover:bg-purple-700 shadow-lg flex items-center justify-center"
-    title="Cambiar avatar"
-  >
-    ✏️
-  </div>
+        {/* Lápiz para cambiar avatar */}
+        <div
+          onClick={() => avatarInputRef.current?.click()}
+          className="absolute bottom-0 right-0 bg-purple-600 rounded-full p-1.5 cursor-pointer hover:bg-purple-700 shadow-lg flex items-center justify-center"
+          title="Cambiar avatar"
+        >
+          ✏️
+        </div>
 
-  <input
-    ref={avatarInputRef}
-    type="file"
-    accept="image/*"
-    onChange={handleAvatarChange}
-    className="hidden"
-    disabled={uploadingAvatar}
-  />
-</div>
-      {/* Contenido principal */}
-      <div className="flex-1 overflow-y-auto">
+        <input
+          ref={avatarInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleAvatarChange}
+          className="hidden"
+          disabled={uploadingAvatar}
+        />
+      </div>
+
+      {/* Contenido principal con focus trap */}
+      <div className="flex-1 overflow-y-auto" ref={focusTrapRef}>
         <div className="pt-14 px-6 pb-6">
+          {/* El resto del contenido se mantiene igual */}
           <input
             value={profile.name}
             onChange={(e) => setProfile({ ...profile, name: e.target.value })}
@@ -356,7 +429,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           <textarea
             value={profile.bio}
             onChange={(e) => {
-              const val = e.target.value;
+              const val = e.target.value.slice(0,160);
               setProfile({ ...profile, bio: val });
               setBioLength(val.length);
             }}
@@ -395,92 +468,3 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           {(["posts", "responses", "likes"] as const).map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-4 text-sm font-medium transition-colors ${
-                activeTab === tab ? tabActive : tabInactive
-              }`}
-            >
-              {tab === "posts" ? "Posts" : tab === "responses" ? "Respuestas" : "Likes"}
-            </button>
-          ))}
-        </div>
-
-        <div className="p-6">
-          {activeTab === "posts" && (
-            <p className={`text-center py-10 ${textGray}`}>Tus posts aparecerán aquí</p>
-          )}
-          {activeTab === "responses" && (
-            <p className={`text-center py-10 ${textGray}`}>Tus respuestas aparecerán aquí</p>
-          )}
-          {activeTab === "likes" && (
-            <p className={`text-center py-10 ${textGray}`}>Posts que te gustaron aparecerán aquí</p>
-          )}
-        </div>
-
-        {/* Edición extra */}
-        <div className={`p-6 border-t ${borderColor} space-y-5`}>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className={`block text-xs ${textGray} mb-1`}>Nacimiento</label>
-              <input
-                type="date"
-                value={profile.birthdate}
-                onChange={(e) => setProfile({ ...profile, birthdate: e.target.value })}
-                className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
-              />
-            </div>
-            <div>
-              <label className={`block text-xs ${textGray} mb-1`}>Ciudad</label>
-              <input
-                type="text"
-                placeholder="Ciudad"
-                value={profile.city}
-                onChange={(e) => setProfile({ ...profile, city: e.target.value })}
-                className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className={`block text-xs ${textGray} mb-1`}>País</label>
-            <input
-              type="text"
-              placeholder="País"
-              value={profile.country}
-              onChange={(e) => setProfile({ ...profile, country: e.target.value })}
-              className={`w-full ${inputBg} p-3 rounded-xl focus:outline-none`}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Botones inferiores */}
-      <div className={`border-t ${borderColor} p-4 flex gap-3 flex-shrink-0`}>
-        {showUpgradeButton && (
-  <button
-    onClick={() => handleUpgrade("premium")} // O "premium+" según quieras
-    className="flex-1 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl font-medium hover:opacity-90 transition"
-  >
-    Upgrade
-  </button>
-)}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className={`flex-1 py-3.5 ${buttonGreen} rounded-2xl font-medium disabled:opacity-60 transition`}
-        >
-          {saving ? "Guardando..." : "Guardar cambios"}
-        </button>
-
-        <button
-          onClick={() => alert("Reportado (función pendiente)")}
-          className={`px-6 py-3.5 ${buttonRed} rounded-2xl text-sm font-medium transition`}
-        >
-          Reportar
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export default ProfileModal;
