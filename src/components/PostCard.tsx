@@ -16,17 +16,17 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { isFollowing, toggleFollow, loading: followLoading } =
     useFollow(currentUserId, post.user_id);
 
-  const [tipAmount, setTipAmount] = useState<number | "">("");
-  const [likes, setLikes] = useState<number>(post.likes || 0);
   const [liked, setLiked] = useState(false);
-  const [reposts, setReposts] = useState<number>(post.reposts || 0);
-  const [commentsCount, setCommentsCount] = useState<number>(post.comments || 0);
+  const [likes, setLikes] = useState(post.likes || 0);
+  const [reposted, setReposted] = useState(false);
+  const [reposts, setReposts] = useState(post.reposts || 0);
+  const [commentsCount, setCommentsCount] = useState(post.comments || 0);
 
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const [likeAnimating, setLikeAnimating] = useState(false);
+  const [tipAmount, setTipAmount] = useState<number | "">("");
 
-  // Check if user already liked this post
+  // Check if user already liked
   useEffect(() => {
     const checkLike = async () => {
       if (!currentUserId) return;
@@ -35,170 +35,143 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         .select("id")
         .eq("post_id", post.id)
         .eq("user_id", currentUserId)
-        .maybeSingle();
+        .single();
       if (data) setLiked(true);
     };
     checkLike();
   }, [currentUserId, post.id]);
 
-  // LIKE
-  const handleLike = async () => {
-    if (!currentUserId) return;
-    try {
-      if (liked) {
-        const { error } = await supabase
-          .from("likes")
-          .delete()
-          .eq("post_id", post.id)
-          .eq("user_id", currentUserId);
-        if (!error) {
-          setLikes((prev) => prev - 1);
-          setLiked(false);
-          setLikeAnimating(false);
-        }
-      } else {
-        const { error } = await supabase.from("likes").insert({
-          post_id: post.id,
-          user_id: currentUserId,
-        });
-        if (!error) {
-          setLikes((prev) => prev + 1);
-          setLiked(true);
-          setLikeAnimating(true);
-          setTimeout(() => setLikeAnimating(false), 500);
-
-          await supabase.from("notifications").insert({
-            user_id: post.user_id,
-            from_user: currentUserId,
-            type: "like",
-            post_id: post.id,
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Like error", err);
-    }
-  };
-
-  // REPOST
-  const handleRepost = async () => {
-    if (!currentUserId) return;
-    try {
-      const { data: existing } = await supabase
+  // Check if user already reposted
+  useEffect(() => {
+    const checkRepost = async () => {
+      if (!currentUserId) return;
+      const { data } = await supabase
         .from("reposts")
         .select("id")
         .eq("post_id", post.id)
         .eq("user_id", currentUserId)
-        .maybeSingle();
+        .single();
+      if (data) setReposted(true);
+    };
+    checkRepost();
+  }, [currentUserId, post.id]);
 
-      if (existing) {
-        alert("Ya repostaste esto");
-        return;
-      }
+  const handleLike = async () => {
+    if (!currentUserId) return;
 
-      const { error } = await supabase.from("reposts").insert({
+    if (liked) {
+      await supabase
+        .from("likes")
+        .delete()
+        .eq("post_id", post.id)
+        .eq("user_id", currentUserId);
+      setLikes((prev) => prev - 1);
+      setLiked(false);
+    } else {
+      await supabase.from("likes").insert({
         post_id: post.id,
         user_id: currentUserId,
       });
-
-      if (!error) {
-        setReposts((prev) => prev + 1);
-        await supabase.from("notifications").insert({
-          user_id: post.user_id,
-          from_user: currentUserId,
-          type: "repost",
-          post_id: post.id,
-        });
-        alert("Repost enviado 🔁");
-      }
-    } catch (err) {
-      console.error("Repost error", err);
-    }
-  };
-
-  // COMMENT
-  const handleComment = async () => {
-    if (!currentUserId || !commentText.trim()) return;
-
-    try {
-      const { error } = await supabase.from("comments").insert({
-        post_id: post.id,
-        user_id: currentUserId,
-        content: commentText,
-      });
-
-      if (!error) {
-        setCommentsCount((prev) => prev + 1);
-        await supabase.from("notifications").insert({
-          user_id: post.user_id,
-          from_user: currentUserId,
-          type: "comment",
-          post_id: post.id,
-        });
-        setCommentText("");
-        setShowCommentModal(false);
-      }
-    } catch (err) {
-      console.error("Comment error", err);
-    }
-  };
-
-  // TIP
-  const handleTip = async () => {
-    if (!currentUserId || !tipAmount) return;
-
-    try {
-      await supabase.rpc("transfer_tip", {
-        from_user_id: currentUserId,
-        to_user_id: post.user_id,
-        tip_amount: tipAmount,
-      });
-
       await supabase.from("notifications").insert({
         user_id: post.user_id,
         from_user: currentUserId,
-        type: "tip",
+        type: "like",
         post_id: post.id,
       });
-
-      alert(`Tip enviado: ${tipAmount} WLD`);
-      setTipAmount("");
-    } catch (err) {
-      console.error("Tip error", err);
+      setLikes((prev) => prev + 1);
+      setLiked(true);
     }
   };
 
-  // BOOST
+  const handleRepost = async () => {
+    if (!currentUserId || reposted) return;
+    await supabase.from("reposts").insert({
+      post_id: post.id,
+      user_id: currentUserId,
+    });
+    await supabase.from("notifications").insert({
+      user_id: post.user_id,
+      from_user: currentUserId,
+      type: "repost",
+      post_id: post.id,
+    });
+    setReposts((prev) => prev + 1);
+    setReposted(true);
+    alert("Repost enviado 🚀");
+  };
+
+  const handleComment = async () => {
+    if (!currentUserId || !commentText.trim()) return;
+
+    await supabase.from("comments").insert({
+      post_id: post.id,
+      user_id: currentUserId,
+      content: commentText,
+    });
+
+    await supabase.from("notifications").insert({
+      user_id: post.user_id,
+      from_user: currentUserId,
+      type: "comment",
+      post_id: post.id,
+    });
+
+    setCommentsCount((prev) => prev + 1);
+    setCommentText("");
+    setShowCommentModal(false);
+  };
+
+  const handleTip = async () => {
+    if (!currentUserId || !tipAmount) return;
+
+    await supabase.rpc("transfer_tip", {
+      from_user_id: currentUserId,
+      to_user_id: post.user_id,
+      tip_amount: tipAmount,
+    });
+
+    await supabase.from("notifications").insert({
+      user_id: post.user_id,
+      from_user: currentUserId,
+      type: "tip",
+      post_id: post.id,
+    });
+
+    alert(`Tip enviado: ${tipAmount} WLD`);
+    setTipAmount("");
+  };
+
   const handleBoost = async () => {
     const boostCost = 5;
     if (!currentUserId || balance < boostCost)
       return alert("No tienes suficiente WLD");
 
-    try {
-      await supabase
-        .from("user_balances")
-        .update({ wld_balance: balance - boostCost })
-        .eq("user_id", currentUserId);
+    await supabase
+      .from("user_balances")
+      .update({ wld_balance: balance - boostCost })
+      .eq("user_id", currentUserId);
 
-      alert("Post potenciado 🚀");
-    } catch (err) {
-      console.error("Boost error", err);
-    }
+    alert("Post potenciado 🚀");
   };
 
   return (
     <div
-      className={`p-4 rounded-2xl border border-white/10 space-y-3 shadow-lg ${
+      className={`p-4 rounded-2xl border shadow-md space-y-3 ${
         theme === "dark"
-          ? "bg-gray-900 text-white"
-          : "bg-gray-100 text-black"
+          ? "bg-gray-900 text-white border-white/10"
+          : "bg-gray-100 text-black border-black/10"
       }`}
       style={{ borderColor: accentColor }}
     >
       {/* HEADER */}
       <div className="flex justify-between items-center">
-        <div className="font-bold text-sm">
-          {post.profile?.username || "Anon"}
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-gray-700 flex items-center justify-center font-bold text-sm">
+            {post.profile?.username?.charAt(0) || "U"}
+          </div>
+          <div className="font-semibold text-sm">
+            {post.profile?.username || "Anon"}
+          </div>
         </div>
 
         {currentUserId && currentUserId !== post.user_id && (
@@ -216,24 +189,17 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         )}
       </div>
 
-      {/* CONTENIDO */}
+      {/* CONTENT */}
       <div className="text-sm leading-relaxed">{post.content}</div>
 
-      {/* ACCIONES */}
-      <div className="flex gap-4 text-sm text-gray-400 pt-2 items-center">
-        <button
-          onClick={handleLike}
-          className={`transition-transform ${
-            likeAnimating ? "scale-125" : ""
-          }`}
-        >
+      {/* ACTIONS */}
+      <div className="flex flex-wrap gap-4 text-sm text-gray-400 pt-2">
+        <button onClick={handleLike}>
           {liked ? "❤️" : "🤍"} {likes}
         </button>
-
         <button onClick={() => setShowCommentModal(true)}>
           💬 {commentsCount}
         </button>
-
         <button onClick={handleRepost}>
           🔁 {reposts}
         </button>
@@ -243,15 +209,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       <div className="flex gap-2 pt-2">
         <input
           type="number"
-          step={0.1}
+          step={1}
           value={tipAmount}
           onChange={(e) =>
-            setTipAmount(e.target.value ? parseFloat(e.target.value) : "")
+            setTipAmount(e.target.value ? parseInt(e.target.value) : "")
           }
           className="w-20 px-2 py-1 rounded text-black"
           placeholder="Tip"
         />
-
         <button
           onClick={handleTip}
           className="px-3 py-1 rounded text-white"
@@ -259,7 +224,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         >
           Tip
         </button>
-
         <button
           onClick={handleBoost}
           className="px-3 py-1 rounded text-white"
@@ -269,7 +233,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </button>
       </div>
 
-      {/* MODAL COMMENT */}
+      {/* COMMENT MODAL */}
       {showCommentModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10">
