@@ -7,6 +7,8 @@ import ProfileModal from "../components/ProfileModal";
 import { useUserBalance } from "../lib/useUserBalance";
 import FeedPage from './FeedPage';  // ruta correcta
 
+const PAGE_SIZE = 5;  // ← DEFINIDO AQUÍ, FUERA DEL COMPONENTE
+
 interface Post {
   id: string;
   content?: string;
@@ -38,12 +40,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   const { theme } = useContext(ThemeContext);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   const maxChars = userTier === "premium+" ? 10000 : userTier === "premium" ? 4000 : 280;
-
-  // ← INSERCIÓN SOLAMENTE: Definir PAGE_SIZE aquí dentro del componente
-  const PAGE_SIZE = 5;
 
   const fetchPosts = useCallback(async (reset = false) => {
     if (!hasMore && !reset) return;
@@ -76,6 +76,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   useEffect(() => {
     console.log("[HOME] userId recibido desde App.tsx:", userId);
 
+    // Carga tier si tienes columna en profiles
     if (userId) {
       const fetchTier = async () => {
         const { data: profile } = await supabase
