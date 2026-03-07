@@ -69,10 +69,11 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
     setLoadingUpgrade(true);
     setUpgradeError(null);
     try {
+      // Pago real con MiniKit (cobra WLD)
       const payRes = await MiniKit.commandsAsync.pay({
         amount: price,
         currency: 'WLD',
-        recipient: '0x...TU_WALLET_APP',
+        recipient: '0x...TU_WALLET_APP',  // ← wallet de la app para cobrar
       });
 
       if (payRes.status !== "success") {
@@ -81,33 +82,17 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
 
       const transactionId = payRes.transactionId;
 
-      // Registrar upgrade
-      const { error: insertError } = await supabase.from("upgrades").insert({
-        user_id: currentUserId,
-        tier: selectedTier,
-        price,
-        start_date: new Date().toISOString(),
-        transaction_id: transactionId,
+      // Enviar a backend para registrar y verificar tx
+      const res = await fetch("/api/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUserId, tier: selectedTier, transactionId }),
       });
 
-      if (insertError) throw insertError;
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Error al procesar upgrade");
 
-      await supabase
-        .from("profiles")
-        .update({ tier: selectedTier })
-        .eq("id", currentUserId);
-
-      const token = crypto.randomUUID().slice(0, 10);
-      await supabase.from("referral_tokens").insert({
-        token,
-        created_by: currentUserId,
-        tier: selectedTier,
-        boost_limit: 1,
-        tips_allowed: false,
-        created_at: new Date().toISOString(),
-      });
-
-      alert(`¡Upgrade a ${selectedTier} exitoso! Precio: ${price} WLD. Tu referral token: ${token}`);
+      alert(`¡Upgrade a ${selectedTier} exitoso! Precio: ${price} WLD. Tu referral token: ${data.referralToken}`);
       setUserTier(selectedTier);
       cancelUpgrade();
     } catch (err: any) {
@@ -119,7 +104,7 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
 
   return (
     <div className="flex flex-col p-4">
-      {/* Botón Upgrade en feed */}
+      {/* Botón Upgrade */}
       <div className="mb-6">
         <button
           onClick={handleUpgrade}
@@ -189,7 +174,7 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
               {selectedTier === "premium" && (
                 <>
                   <li>Tips ilimitados</li>
-                  <li>Boost 5 veces por semana, extra Boost pagando 5 WLD ilimitados</li>
+                  <li>Boost 5 veces por semana (extra Boost pagando 5 WLD ilimitados)</li>
                   <li>1 WLD por cada referido que se registre</li>
                   <li>Posts hasta 4.000 caracteres</li>
                   <li>Badge Premium visible</li>
@@ -204,7 +189,7 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
                 <>
                   <li>Todo lo de Premium</li>
                   <li>Tips con +10% de bonificación</li>
-                  <li>Boost ilimitado, extra Boost pagando 5 WLD ilimitados</li>
+                  <li>Boost ilimitado (extra Boost pagando 5 WLD ilimitados)</li>
                   <li>Posts hasta 10.000 caracteres</li>
                   <li>Contenido exclusivo (solo premium+)</li>
                   <li>Badge Premium+ dorado</li>
