@@ -17,6 +17,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     useFollow(currentUserId, post.user_id);
 
   const [tipAmount, setTipAmount] = useState<number | "">("");
+
   const [likes, setLikes] = useState<number>(post.likes || 0);
   const [liked, setLiked] = useState(false);
 
@@ -24,6 +25,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentText, setCommentText] = useState("");
+
+  const [loadingLike, setLoadingLike] = useState(false);
+  const [loadingRepost, setLoadingRepost] = useState(false);
 
   useEffect(() => {
     const checkLike = async () => {
@@ -43,70 +47,84 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   }, [currentUserId, post.id]);
 
   const handleLike = async () => {
-    if (!currentUserId) return;
+    if (!currentUserId || loadingLike) return;
+
+    setLoadingLike(true);
 
     if (liked) {
-      await supabase
+      const { error } = await supabase
         .from("likes")
         .delete()
         .eq("post_id", post.id)
         .eq("user_id", currentUserId);
 
-      setLikes((prev) => prev - 1);
-      setLiked(false);
+      if (!error) {
+        setLikes((prev) => prev - 1);
+        setLiked(false);
+      }
     } else {
-      await supabase.from("likes").insert({
+      const { error } = await supabase.from("likes").insert({
         post_id: post.id,
         user_id: currentUserId,
       });
 
-      setLikes((prev) => prev + 1);
-      setLiked(true);
+      if (!error) {
+        setLikes((prev) => prev + 1);
+        setLiked(true);
 
-      await supabase.from("notifications").insert({
-        user_id: post.user_id,
-        from_user: currentUserId,
-        type: "like",
-        post_id: post.id,
-      });
+        await supabase.from("notifications").insert({
+          user_id: post.user_id,
+          from_user: currentUserId,
+          type: "like",
+          post_id: post.id,
+        });
+      }
     }
+
+    setLoadingLike(false);
   };
 
   const handleRepost = async () => {
-    if (!currentUserId) return;
+    if (!currentUserId || loadingRepost) return;
 
-    await supabase.from("reposts").insert({
+    setLoadingRepost(true);
+
+    const { error } = await supabase.from("reposts").insert({
       post_id: post.id,
       user_id: currentUserId,
     });
 
-    setReposts((prev) => prev + 1);
+    if (!error) {
+      setReposts((prev) => prev + 1);
 
-    await supabase.from("notifications").insert({
-      user_id: post.user_id,
-      from_user: currentUserId,
-      type: "repost",
-      post_id: post.id,
-    });
+      await supabase.from("notifications").insert({
+        user_id: post.user_id,
+        from_user: currentUserId,
+        type: "repost",
+        post_id: post.id,
+      });
+    }
 
-    alert("Repost enviado");
+    setLoadingRepost(false);
   };
 
   const handleComment = async () => {
     if (!currentUserId || !commentText.trim()) return;
 
-    await supabase.from("comments").insert({
+    const { error } = await supabase.from("comments").insert({
       post_id: post.id,
       user_id: currentUserId,
       content: commentText,
     });
 
-    await supabase.from("notifications").insert({
-      user_id: post.user_id,
-      from_user: currentUserId,
-      type: "comment",
-      post_id: post.id,
-    });
+    if (!error) {
+      await supabase.from("notifications").insert({
+        user_id: post.user_id,
+        from_user: currentUserId,
+        type: "comment",
+        post_id: post.id,
+      });
+    }
 
     setCommentText("");
     setShowCommentModal(false);
@@ -115,28 +133,28 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const handleTip = async () => {
     if (!currentUserId || !tipAmount) return;
 
-    await supabase.rpc("transfer_tip", {
+    const { error } = await supabase.rpc("transfer_tip", {
       from_user_id: currentUserId,
       to_user_id: post.user_id,
       tip_amount: tipAmount,
     });
 
-    await supabase.from("notifications").insert({
-      user_id: post.user_id,
-      from_user: currentUserId,
-      type: "tip",
-      post_id: post.id,
-    });
+    if (!error) {
+      await supabase.from("notifications").insert({
+        user_id: post.user_id,
+        from_user: currentUserId,
+        type: "tip",
+        post_id: post.id,
+      });
 
-    alert(`Tip enviado: ${tipAmount} WLD`);
-    setTipAmount("");
+      setTipAmount("");
+    }
   };
 
   const handleBoost = async () => {
     const boostCost = 5;
 
-    if (!currentUserId || balance < boostCost)
-      return alert("No tienes suficiente WLD");
+    if (!currentUserId || balance < boostCost) return;
 
     await supabase
       .from("user_balances")
@@ -148,7 +166,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   return (
     <div
-      className={`p-4 rounded-2xl border border-white/10 space-y-3 shadow-lg ${
+      className={`p-4 rounded-2xl border border-white/10 space-y-3 shadow-md ${
         theme === "dark"
           ? "bg-gray-900 text-white"
           : "bg-gray-100 text-black"
@@ -157,7 +175,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     >
       {/* HEADER */}
       <div className="flex justify-between items-center">
-        <div className="font-bold text-sm">
+        <div className="font-semibold text-sm">
           {post.profile?.username || "Anon"}
         </div>
 
@@ -165,7 +183,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           <button
             onClick={toggleFollow}
             disabled={followLoading}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition"
+            className="px-3 py-1 rounded-full text-xs font-semibold transition shadow-sm"
             style={{
               backgroundColor: isFollowing ? "#444" : accentColor,
               color: "white",
@@ -180,16 +198,25 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       <div className="text-sm leading-relaxed">{post.content}</div>
 
       {/* ACCIONES */}
-      <div className="flex gap-4 text-sm text-gray-400 pt-2">
-        <button onClick={handleLike}>
+      <div className="flex gap-6 text-sm text-gray-400 pt-2">
+        <button
+          onClick={handleLike}
+          className="hover:scale-110 transition"
+        >
           {liked ? "❤️" : "🤍"} {likes}
         </button>
 
-        <button onClick={() => setShowCommentModal(true)}>
+        <button
+          onClick={() => setShowCommentModal(true)}
+          className="hover:scale-110 transition"
+        >
           💬 {post.comments || 0}
         </button>
 
-        <button onClick={handleRepost}>
+        <button
+          onClick={handleRepost}
+          className="hover:scale-110 transition"
+        >
           🔁 {reposts}
         </button>
       </div>
@@ -203,13 +230,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           onChange={(e) =>
             setTipAmount(e.target.value ? parseFloat(e.target.value) : "")
           }
-          className="w-20 px-2 py-1 rounded text-black"
+          className="w-20 px-2 py-1 rounded bg-black/30 text-white text-sm"
           placeholder="Tip"
         />
 
         <button
           onClick={handleTip}
-          className="px-3 py-1 rounded text-white"
+          className="px-3 py-1 rounded text-white text-sm shadow-sm"
           style={{ backgroundColor: accentColor }}
         >
           Tip
@@ -217,7 +244,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
         <button
           onClick={handleBoost}
-          className="px-3 py-1 rounded text-white"
+          className="px-3 py-1 rounded text-white text-sm shadow-sm"
           style={{ backgroundColor: accentColor }}
         >
           Boost
@@ -227,8 +254,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* MODAL COMMENT */}
       {showCommentModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10">
-            <h2 className="text-lg font-bold mb-3">Comentar</h2>
+          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-white/10 shadow-xl">
+            <h2 className="text-lg font-semibold mb-3">Comentar</h2>
 
             <textarea
               value={commentText}
