@@ -7,8 +7,6 @@ import ProfileModal from "../components/ProfileModal";
 import { useUserBalance } from "../lib/useUserBalance";
 import FeedPage from './FeedPage';  // ruta correcta
 
-const PAGE_SIZE = 5;  // ← Movido aquí (fuera del componente) para solucionar el ReferenceError
-
 interface Post {
   id: string;
   content?: string;
@@ -46,11 +44,12 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const maxChars = userTier === "premium+" ? 10000 : userTier === "premium" ? 4000 : 280;
 
   const fetchPosts = useCallback(async (reset = false) => {
+    const PAGE_SIZE_LOCAL = 5; // ← variable local para evitar ReferenceError
     if (!hasMore && !reset) return;
     try {
       setLoading(true);
-      const from = reset ? 0 : page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+      const from = reset ? 0 : page * PAGE_SIZE_LOCAL;
+      const to = from + PAGE_SIZE_LOCAL - 1;
 
       const { data, error } = await supabase
         .from("posts")
@@ -62,7 +61,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       const newPosts = data || [];
       setPosts((prev) => (reset ? newPosts : [...prev, ...newPosts]));
-      setHasMore(newPosts.length === PAGE_SIZE);
+      setHasMore(newPosts.length === PAGE_SIZE_LOCAL);
       if (reset) setPage(1);
       else setPage((prev) => prev + 1);
     } catch (err: any) {
