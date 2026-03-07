@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PostCard from '../components/PostCard';
+import axios from "axios";
 
 interface Post {
   id: string;
@@ -17,7 +18,47 @@ interface FeedPageProps {
   error?: string | null;
 }
 
+// ---------------- INSERTION: FeedPage component ----------------
 const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error }) => {
+  // --- Estados para upgrade ---
+  const [showUpgrade, setShowUpgrade] = useState(true);
+  const [loadingUpgrade, setLoadingUpgrade] = useState(false);
+
+  // --- Función para manejar upgrade ---
+  const handleUpgrade = async () => {
+    if (!window.currentUserId) {
+      alert("Usuario no encontrado");
+      return;
+    }
+
+    setLoadingUpgrade(true);
+    try {
+      const transactionId = `txn-${Date.now()}`;
+
+      let newTier: "premium" | "premium+" = "premium"; // por defecto upgrade a premium
+      // Aquí se podría extender lógica premium -> premium+ según usuario actual
+
+      const response = await axios.post("/api/upgrade.mjs", {
+        userId: window.currentUserId,
+        tier: newTier,
+        transactionId,
+      });
+
+      if (response.data?.success) {
+        alert(`Upgrade exitoso! Precio: ${response.data.price}`);
+        setShowUpgrade(false); // desaparece al comprar
+      } else {
+        alert("Error en upgrade: " + response.data?.error);
+      }
+    } catch (err: any) {
+      console.error("Error upgrade:", err);
+      alert("Error al procesar el upgrade: " + (err.message || "Intenta de nuevo"));
+    } finally {
+      setLoadingUpgrade(false);
+    }
+  };
+  // ------------------------------------------------------------
+
   if (loading) {
     return (
       <div className="w-full max-w-2xl space-y-6 px-4">
@@ -50,6 +91,22 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error }) => {
 
   return (
     <div className="w-full max-w-2xl flex flex-col gap-6 px-4">
+      {/* --- BOTÓN DE UPGRADE --- */}
+      {showUpgrade && (
+        <div className="w-full mb-6 flex justify-center">
+          <button
+            onClick={handleUpgrade}
+            disabled={loadingUpgrade}
+            className={`px-6 py-3 rounded-xl font-medium shadow-md text-white ${
+              loadingUpgrade ? "bg-gray-600 cursor-not-allowed" : "bg-purple-600 hover:bg-purple-500"
+            }`}
+          >
+            {loadingUpgrade ? "Procesando..." : "Upgrade a Premium"}
+          </button>
+        </div>
+      )}
+
+      {/* --- POSTS --- */}
       {posts.map((post) => (
         <PostCard key={post.id} post={post} />
       ))}
