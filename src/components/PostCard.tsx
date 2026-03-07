@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { useFollow } from "../lib/useFollow";
@@ -11,20 +11,32 @@ interface PostCardProps {
 
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { theme, accentColor } = useContext(ThemeContext);
+  const { balance, payWLD } = useMiniKitUser(currentUserId);
+
+  // Follow
   const { isFollowing, toggleFollow, loading: followLoading } = useFollow(
     currentUserId,
     post.user_id
   );
-  const { balance, sendWLD } = useMiniKitUser(currentUserId);
 
+  // Reactions
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(post.likes || 0);
   const [reposts, setReposts] = useState(post.reposts || 0);
+  const [comments, setComments] = useState(post.comments || 0);
+
+  // Comment Modal
   const [showCommentModal, setShowCommentModal] = useState(false);
   const [commentText, setCommentText] = useState("");
+
+  // Tip / Boost
   const [tipAmount, setTipAmount] = useState<number | "">("");
   const [isBoosting, setIsBoosting] = useState(false);
 
+  // Error state
+  const [error, setError] = useState<string | null>(null);
+
+  // Check if liked
   useEffect(() => {
     if (!currentUserId) return;
     const checkLike = async () => {
@@ -39,8 +51,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     checkLike();
   }, [currentUserId, post.id]);
 
+  // Like
   const handleLike = async () => {
     if (!currentUserId) return;
+    setError(null);
     try {
       if (liked) {
         await supabase
@@ -60,11 +74,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       }
     } catch (err) {
       console.error(err);
+      setError("Error al dar like");
     }
   };
 
+  // Repost
   const handleRepost = async () => {
     if (!currentUserId) return;
+    setError(null);
     try {
       await supabase.from("reposts").insert({
         post_id: post.id,
@@ -73,107 +90,117 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       setReposts((prev) => prev + 1);
     } catch (err) {
       console.error(err);
+      setError("Error al repostear");
     }
   };
 
+  // Comment
   const handleComment = async () => {
     if (!currentUserId || !commentText.trim()) return;
+    setError(null);
     try {
       await supabase.from("comments").insert({
         post_id: post.id,
         user_id: currentUserId,
         content: commentText.trim(),
+        timestamp: new Date().toISOString(),
       });
-      setCommentText("");
+      setComments((prev) => prev + 1);
       setShowCommentModal(false);
+      setCommentText("");
     } catch (err) {
       console.error(err);
+      setError("Error al publicar comentario");
     }
   };
 
+  // Tip
   const handleTip = async () => {
-    if (!currentUserId || !tipAmount || tipAmount <= 0) return;
-    if (tipAmount > balance) return alert("No tienes suficiente WLD");
-
+    if (!currentUserId || !tipAmount || tipAmount <= 0 || tipAmount > balance) {
+      setError("Cantidad inválida o fondos insuficientes");
+      return;
+    }
+    setError(null);
     try {
-      await sendWLD(post.user_id, tipAmount);
-      alert(`Tip enviado: ${tipAmount} WLD`);
+      await payWLD(tipAmount);
+      await supabase.from("tips").insert({
+        post_id: post.id,
+        user_id: currentUserId,
+        amount: tipAmount,
+        timestamp: new Date().toISOString(),
+      });
       setTipAmount("");
     } catch (err) {
-      console.error("[TIP ERROR]", err);
-      alert("Error enviando WLD");
+      console.error(err);
+      setError("Error al enviar tip");
     }
   };
 
+  // Boost
   const handleBoost = async () => {
-    const boostCost = 5;
-    if (!currentUserId || balance < boostCost)
-      return alert("No tienes suficiente WLD para potenciar");
+    if (!currentUserId || balance < 1) {
+      setError("Fondos insuficientes para boost");
+      return;
+    }
+    setIsBoosting(true);
+    setError(null);
     try {
-      setIsBoosting(true);
-      await sendWLD(post.user_id, boostCost);
-      alert("Post potenciado 🚀");
+      await payWLD(1);
+      await supabase.from("boosts").insert({
+        post_id: post.id,
+        user_id: currentUserId,
+        amount: 1,
+        timestamp: new Date().toISOString(),
+      });
+      // Opcional: actualizar visibility_score
+      await supabase
+        .from("posts")
+        .update({ visibility_score: post.visibility_score + 1 })
+        .eq("id", post.id);
+      setIsBoosting(false);
     } catch (err) {
-      console.error("[BOOST ERROR]", err);
-      alert("Error al potenciar post");
-    } finally {
+      console.error(err);
+      setError("Error al boostear");
       setIsBoosting(false);
     }
   };
 
   return (
-    <div
-      className={`p-4 rounded-3xl border shadow-lg space-y-3 ${
-        theme === "dark"
-          ? "bg-gray-900 text-white border-white/10"
-          : "bg-gray-100 text-black border-black/10"
-      }`}
-      style={{ borderColor: accentColor }}
-    >
-      {/* HEADER */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <img
-            src={post.profile?.avatar_url}
-            alt={post.profile?.username}
-            className="w-10 h-10 rounded-full object-cover"
-          />
-          <div className="flex flex-col">
-            <span className="font-semibold text-sm">
-              {post.profile?.username}
-            </span>
-            <span className="text-xs text-gray-400">
-              {new Date(post.timestamp).toLocaleString()}
-            </span>
-          </div>
+    <div className="bg-gray-900/60 backdrop-blur-sm rounded-2xl p-4 space-y-4 border border-white/10">
+      <div className="flex items-center gap-3">
+        <img
+          src={post.profile.avatar_url || "default-avatar.png"}
+          alt={post.profile.username}
+          className="w-10 h-10 rounded-full object-cover"
+        />
+        <div className="flex-1">
+          <h3 className="font-bold text-white">
+            {post.profile.username || "Anon"} {post.profile.is_premium && '✅'}  {/* Blue check for premium */}
+          </h3>
+          <p className="text-gray-500 text-sm">{new Date(post.timestamp).toLocaleString()}</p>
         </div>
-
-        {/* BOTON FOLLOW */}
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
             disabled={followLoading}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition shadow-sm"
-            style={{
-              backgroundColor: isFollowing ? "#444" : accentColor,
-              color: "white",
-            }}
+            className="px-4 py-1 rounded-full text-sm font-medium"
+            style={{ backgroundColor: accentColor }}
           >
-            {followLoading ? "..." : isFollowing ? "Siguiendo" : "Seguir"}
+            {followLoading ? "..." : isFollowing ? "Unfollow" : "Follow"}
           </button>
         )}
       </div>
 
-      {/* CONTENIDO */}
-      <div className="text-sm leading-relaxed">{post.content}</div>
+      <p className="text-white whitespace-pre-wrap">{post.content}</p>
 
-      {/* ACCIONES */}
-      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400 pt-2">
+      {post.edited_at && <p className="text-gray-500 text-xs">Editado</p>}
+
+      <div className="flex gap-4 text-gray-400 text-sm">
         <button onClick={handleLike}>
-          {liked ? "❤️" : "🤍"} {likes}
+          {liked ? "❤️" : "♡"} {likes}
         </button>
         <button onClick={() => setShowCommentModal(true)}>
-          💬 {post.comments || 0}
+          💬 {comments}
         </button>
         <button onClick={handleRepost}>
           🔁 {reposts}
@@ -237,6 +264,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           </div>
         </div>
       )}
+      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
     </div>
   );
 };
