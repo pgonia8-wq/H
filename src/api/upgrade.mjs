@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 const PREMIUM_LIMIT = 10000;
 const PREMIUM_PLUS_LIMIT = 3000;
 
-// Obtiene precio dinámico según cantidad de usuarios
+// Obtiene precio dinámico
 async function getUpgradePrice(tier) {
   if (tier === "premium") {
     const { count } = await supabase
@@ -21,7 +21,7 @@ async function getUpgradePrice(tier) {
   }
 }
 
-// Crea token de referido único
+// Crea token de referido
 async function createReferralToken(userId) {
   const token = nanoid(10);
   const { error } = await supabase.from("referral_tokens").insert({
@@ -37,42 +37,25 @@ async function createReferralToken(userId) {
   return token;
 }
 
-// Handler principal compatible con World App
+// Handler principal
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.statusCode = 405;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ error: "Method not allowed" }));
-    return;
+    console.log("[BACKEND] Método no permitido:", req.method);
+    return res.status(405).json({ success: false, error: "Method not allowed" });
+  }
+
+  const body = req.body || {};
+  const { userId, tier, transactionId, referralToken } = body;
+
+  if (!userId || !tier || !transactionId) {
+    console.log("[BACKEND] Faltan datos en body");
+    return res.status(400).json({ success: false, error: "Missing required fields" });
   }
 
   try {
-    // Parsear body de forma compatible
-    let body = "";
-    for await (const chunk of req) body += chunk;
-    const data = JSON.parse(body || "{}");
-
-    const { userId, tier, transactionId, referralToken } = data;
-
-    if (!userId || !tier || !transactionId) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Faltan parámetros obligatorios" }));
-      return;
-    }
-
-    // Aquí puedes integrar verificación real con Worldcoin
-    const paymentValid = true; // placeholder
-    if (!paymentValid) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ error: "Transacción inválida" }));
-      return;
-    }
-
     const price = await getUpgradePrice(tier);
 
-    // Inserta upgrade
+    // Insert upgrade
     const { error: insertError } = await supabase.from("upgrades").insert({
       user_id: userId,
       tier,
@@ -83,7 +66,15 @@ export default async function handler(req, res) {
 
     if (insertError) throw insertError;
 
-    // Si viene token de referido, aplica boost
+    // Update profiles.tier
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ tier })
+      .eq("id", userId);
+
+    if (updateError) throw updateError;
+
+    // Si referralToken, aplica
     if (referralToken) {
       const { data: tokenData } = await supabase
         .from("referral_tokens")
@@ -111,19 +102,9 @@ export default async function handler(req, res) {
 
     const newReferralToken = await createReferralToken(userId);
 
-    res.statusCode = 200;
-    res.setHeader("Content-Type", "application/json");
-    res.end(
-      JSON.stringify({
-        success: true,
-        price,
-        referralToken: newReferralToken,
-      })
-    );
+    return res.status(200).json({ success: true, price, referralToken: newReferralToken });
   } catch (err) {
-    console.error("Upgrade API ERROR:", err);
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ success: false, error: err.message }));
+    console.error("[BACKEND] Error:", err);
+    return res.status(500).json({ success: false, error: "Server error" });
   }
 }
