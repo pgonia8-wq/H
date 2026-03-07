@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback, useContext } from "react";
 import { supabase } from "../supabaseClient";
-import FeedPage from "../components/FeedPage";  // ← agregamos FeedPage
+import PostCard from "../components/PostCard";
 import ActionButton from "../components/ActionButton";
 import { ThemeContext } from "../lib/ThemeContext";
 import ProfileModal from "../components/ProfileModal";
 import { useUserBalance } from "../lib/useUserBalance";
+import FeedPage from './FeedPage';  // ← ruta corregida (mismo directorio src/pages/)
 
 interface Post {
   id: string;
@@ -214,7 +215,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           error={error}
           currentUserId={userId}
           userTier={userTier}
-        />  // ← Integra FeedPage aquí para el feed
+        />
       </main>
 
       {/* Modal Nuevo Post */}
@@ -245,7 +246,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         <ProfileModal
           currentUserId={userId}
           onClose={() => setShowProfileModal(false)}
-          showUpgradeButton={userTier === 'free'}  // ← opcional, si quieres mostrar upgrade en profile
+          showUpgradeButton={userTier === 'free'}
         />
       )}
     </div>
