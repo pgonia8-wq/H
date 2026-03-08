@@ -67,7 +67,7 @@ const HomePage = () => {
     }
   }, [page, hasMore, profile?.id]);
 
-  // — Fetch profile directly from Supabase
+  // — Fetch profile directamente desde Supabase
   useEffect(() => {
     const storedUserId = localStorage.getItem("userId");
     if (!storedUserId) {
@@ -79,7 +79,19 @@ const HomePage = () => {
       try {
         const { data, error } = await supabase
           .from("profiles")
-          .select("id, username, tier, avatar_url, wallet_address, minikitData, accent_color, theme, verified, created_at, updated_at")
+          .select(`
+            id, 
+            username, 
+            tier, 
+            avatar_url, 
+            wallet_address, 
+            minikitData, 
+            accent_color, 
+            theme, 
+            verified, 
+            created_at, 
+            updated_at
+          `)
           .eq("id", storedUserId)
           .single();
 
@@ -177,7 +189,13 @@ const HomePage = () => {
 
       {/* Feed */}
       <main className="w-full px-2 py-6 flex justify-center">
-        <FeedPage posts={posts} loading={loading} error={error} currentUserId={profile?.id} userTier={profile?.tier || 'free'} />
+        <FeedPage 
+          posts={posts} 
+          loading={loading} 
+          error={error} 
+          currentUserId={profile?.id} 
+          userTier={profile?.tier || 'free'} 
+        />
       </main>
 
       {/* Modal Nuevo Post */}
