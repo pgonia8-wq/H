@@ -1,3 +1,5 @@
+import { supabase } from "../supabaseClient.js";
+
 export default async function handler(req, res) {
   console.log("[BACKEND] Request recibido - Method:", req.method);
   console.log("[BACKEND] Body recibido:", JSON.stringify(req.body, null, 2));
@@ -8,21 +10,16 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const userId = body.nullifier_hash;
-
-  console.log("[BACKEND] userId extraído del body:", userId);
-
-  if (!body.action) {
-    console.log("[BACKEND] Falta action");
-    return res.status(400).json({ success: false, error: "Missing action" });
-  }
+  const userId = body.nullifier_hash || body.payload?.nullifier_hash;
+  console.log("[BACKEND] userId extraído:", userId);
 
   if (!userId) {
-    console.error("[BACKEND] nullifier_hash es undefined. Abortando.");
-    return res.status(400).json({ success: false, error: "nullifier_hash missing" });
+    console.warn("[BACKEND] No se recibió userId");
+    return res.status(400).json({ success: false, error: "Missing userId" });
   }
 
   console.log("[BACKEND] Llamando a World API v2 verify...");
+
   const verifyResponse = await fetch(
     "https://developer.worldcoin.org/api/v2/verify/app_6a98c88249208506dcd4e04b529111fc",
     {
@@ -46,29 +43,24 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, error: "World verification failed" });
   }
 
-  console.log("[BACKEND] Acción recibida y validada:", body.action);
+  console.log("[BACKEND] Guardando verified en Supabase:", userId);
 
-  try {
-    const { error: upsertError } = await supabase
-      .from("profiles")
-      .upsert({ id: userId }, { onConflict: ["id"] });
+  // Crear o actualizar perfil
+  const { error: upsertError } = await supabase
+    .from("profiles")
+    .upsert({ id: userId }, { onConflict: ["id"] });
 
-    if (upsertError) throw upsertError;
-    console.log("[BACKEND] Usuario registrado/actualizado correctamente:", userId);
+  if (upsertError) console.error("[BACKEND] Error upsert:", upsertError.message);
 
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ verified: true })
-      .eq("id", userId);
+  // Guardar verified: true
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({ verified: true })
+    .eq("id", userId);
 
-    if (updateError) throw updateError;
-    console.log("[BACKEND] verified: true guardado correctamente para userId:", userId);
+  if (updateError) console.error("[BACKEND] Error update verified:", updateError.message);
 
-  } catch (err) {
-    console.error("[BACKEND] Error Supabase al guardar userId:", err);
-    return res.status(500).json({ success: false, error: err.message });
-  }
+  console.log("[BACKEND] verified guardado correctamente para userId:", userId);
 
-  console.log("[BACKEND] Enviando respuesta al frontend con userId:", userId);
   return res.status(200).json({ success: true, userId });
-}
+        }
