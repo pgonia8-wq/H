@@ -107,6 +107,21 @@ const App = () => {
     }
   };
 
+  // Solicitar permisos para wallet y pay (para que walletAddress no sea undefined)
+  useEffect(() => {
+    if (verified && !wallet) {
+      console.log("[APP] Solicitando permisos para wallet y pay...");
+      MiniKit.requestPermissions(['wallet', 'pay'])
+        .then(() => {
+          console.log("[APP] Permisos concedidos");
+          const w = MiniKit.walletAddress;
+          setWallet(w);
+          console.log("[APP] Wallet después de permisos:", w);
+        })
+        .catch(err => console.error("[APP] Error al solicitar permisos:", err));
+    }
+  }, [verified, wallet]);
+
   return (
     <HomePage 
       userId={userId} 
