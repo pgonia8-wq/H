@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Configura Supabase con tu Service Role Key
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -13,17 +14,18 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { payload, action, walletAddress = null, miniKitData = null } = body;
+  const { payload, action } = body;
 
   if (!payload || !payload.nullifier_hash || !payload.proof || !payload.merkle_root) {
     console.error("[BACKEND] Missing proof fields:", body);
     return res.status(400).json({ success: false, error: "Missing proof fields" });
   }
 
-  const userId = payload.nullifier_hash;
-  console.log("[BACKEND] nullifier_hash:", userId);
+  const nullifierHash = payload.nullifier_hash;
+  console.log("[BACKEND] nullifier_hash:", nullifierHash);
 
   // — Call Worldcoin API V2 Verify
+  let verifyData;
   try {
     const verifyResponse = await fetch(
       `https://developer.worldcoin.org/api/v2/verify/${process.env.WORLDCOIN_APP_ID}`,
@@ -40,7 +42,7 @@ export default async function handler(req, res) {
       }
     );
 
-    const verifyData = await verifyResponse.json();
+    verifyData = await verifyResponse.json();
     console.log("[BACKEND] Worldcoin verify response:", verifyData);
 
     if (!verifyData.success) {
@@ -53,31 +55,58 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: "Worldcoin service error" });
   }
 
-  // — Guardar en Supabase
+  // — Guardar en profiles
   try {
     const { error: upsertError } = await supabase
       .from("profiles")
       .upsert(
         {
-          id: userId,
+          nullifier_hash: nullifierHash,
+          wallet_address: payload.wallet_address || null,
+          minikitData: payload.minikitData || null,
           verified: true,
-          wallet_address: walletAddress,
-          minikitData: JSON.stringify(miniKitData)
+          updated_at: new Date().toISOString(),
         },
-        { onConflict: ["id"] }
+        { onConflict: ["nullifier_hash"] } // Actualiza si ya existía
       );
 
     if (upsertError) {
-      console.error("[BACKEND] Supabase upsert error:", upsertError);
+      console.error("[BACKEND] Supabase upsert profiles error:", upsertError);
       return res.status(500).json({ success: false, error: upsertError.message });
     }
 
-    console.log("[BACKEND] Guardado en Supabase:", userId);
-
-    return res.status(200).json({ success: true, userId });
+    console.log("[BACKEND] Guardado en profiles:", nullifierHash);
 
   } catch (err) {
-    console.error("[BACKEND] Supabase error:", err);
+    console.error("[BACKEND] Supabase profiles error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
+
+  // — Guardar en world_id_proofs
+  try {
+    const { error: proofError } = await supabase
+      .from("world_id_proofs")
+      .insert([
+        {
+          nullifier_hash: nullifierHash,
+          merkle_root: payload.merkle_root,
+          proof: payload.proof,
+          verification_level: payload.verification_level,
+          backend_response: JSON.stringify(verifyData),
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+    if (proofError) {
+      console.error("[BACKEND] Supabase insert world_id_proofs error:", proofError);
+      // No retornamos error al frontend para no bloquear la verificación
+    } else {
+      console.log("[BACKEND] Guardado en world_id_proofs:", nullifierHash);
+    }
+
+  } catch (err) {
+    console.error("[BACKEND] Supabase world_id_proofs error:", err);
+  }
+
+  return res.status(200).json({ success: true, nullifier_hash: nullifierHash, verifyData });
 }
