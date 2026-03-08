@@ -12,9 +12,11 @@ function App() {
   useEffect(() => {
     // Carga userId de localStorage si ya verificado
     const storedUserId = localStorage.getItem('userId');
+    console.log("[APP] userId desde localStorage:", storedUserId);
     if (storedUserId) {
       setUserId(storedUserId);
       setVerified(true);
+      console.log("[APP] Usuario ya verificado, estado actualizado");
     }
   }, []);
 
@@ -22,9 +24,11 @@ function App() {
     try {
       setError(null);
       setMessage("Verificando con H…");
+      console.log("[APP] Iniciando verificación MiniKit");
 
       if (!MiniKit.isInstalled()) {
         setError("World App no detectada");
+        console.log("[APP] MiniKit no detectado");
         return;
       }
 
@@ -33,29 +37,24 @@ function App() {
         verification_level: VerificationLevel.Device,
       });
 
+      console.log("[APP] Resultado verify:", verifyRes);
+
       const finalPayload = verifyRes?.finalPayload;
-
-      // ── INSERT LOG PARA DEPURAR nullifier_hash ──
-      console.log("verifyRes:", verifyRes);
-      console.log("finalPayload.proof:", finalPayload?.proof);
-      console.log("nullifier_hash:", finalPayload?.proof?.nullifier_hash);
-
       if (!finalPayload || finalPayload.status !== "success") {
         setError("Verificación cancelada o fallida");
+        console.log("[APP] verify.finalPayload inválido o cancelado");
         return;
       }
 
       const proofData = finalPayload.proof;
       if (!proofData) {
         setError("No se encontró proof válido");
+        console.log("[APP] proofData no existe");
         return;
       }
 
       const id = proofData.nullifier_hash;  // identificador único de World ID
-
-      // Guardar en localStorage antes de renderizar HomePage
-      localStorage.setItem('userId', id);
-      setUserId(id);
+      console.log("[APP] nullifier_hash obtenido:", id);
 
       const body = {
         proof: proofData.proof,
@@ -64,7 +63,6 @@ function App() {
         verification_level: proofData.verification_level,
         action: "verify-user",
         max_age: 7200,
-        userId: id,
       };
 
       const res = await fetch("/api/verify", {
@@ -74,26 +72,32 @@ function App() {
       });
 
       const result = await res.json();
+      console.log("[APP] Respuesta backend /api/verify:", result);
 
       if (result.success) {
-        setVerified(true);  // ahora HomePage se renderizará con userId definido
+        setVerified(true);
+        setUserId(id);
+        localStorage.setItem('userId', id);  // Persiste para futuras sesiones
         setMessage("✅ Verificación exitosa");
+        console.log("[APP] Usuario verificado y guardado:", id);
       } else {
         setError("Backend rechazó la prueba: " + (result.error || ""));
+        console.log("[APP] Backend rechazó la prueba:", result.error);
       }
     } catch (err: any) {
       setError("Error durante verificación: " + err.message);
+      console.log("[APP] Error catch:", err);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       {!verified || !userId ? (
         <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center w-full max-w-md">
           <img
             src="/logo.png"
             alt="Logo H"
-            className="w-40 h-40 rounded-full mb-6 shadow-lg object-contain"  // logo centrado
+            className="w-40 h-40 rounded-full mb-6 shadow-lg object-contain"
           />
           <p className="text-black text-2xl font-bold mb-6 text-center">
             Verificando con H…
