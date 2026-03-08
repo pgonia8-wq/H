@@ -80,15 +80,17 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
         throw new Error("MiniKit no instalado o World App no detectada");
       }
 
-      if (!MiniKit.walletAddress) {
-        throw new Error("Wallet no detectada. Asegúrate de conceder permisos.");
-      }
+      // QUITADO temporalmente el chequeo para forzar que pay pida permisos
+      // if (!MiniKit.walletAddress) {
+      //   setUpgradeError("No se detectó tu wallet. Asegúrate de conceder permisos en World App.");
+      //   return;
+      // }
 
-      // Pago real con MiniKit
+      // Pago real con MiniKit (cobra WLD)
       const payRes = await MiniKit.commandsAsync.pay({
         amount: price,
         currency: 'WLD',
-        recipient: '0x...TU_WALLET_APP',  // ← reemplaza con tu wallet real
+        recipient: '0x4df4a99b05945b0594db02127ad3cdffea619f4cb',  // ← tu wallet real
       });
       console.log("[UPGRADE] Pago respuesta:", payRes);
 
