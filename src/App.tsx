@@ -9,19 +9,21 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  // Carga ID de localStorage
+  // Carga ID de localStorage al inicio
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
     if (storedId) {
       setUserId(storedId);
       setVerified(true);
       console.log("[APP] ID cargado de localStorage:", storedId);
+    } else {
+      console.log("[APP] No hay ID en localStorage");
     }
   }, []);
 
-  // Inicializa MiniKit + fuerza permisos
+  // Inicializa MiniKit
   useEffect(() => {
-    console.log("[APP] Inicializando MiniKit...");
+    console.log("[APP] Intentando instalar MiniKit...");
     try {
       MiniKit.install({
         appId: "app_6a98c88249208506dcd4e04b529111fc",
@@ -31,16 +33,11 @@ const App = () => {
       console.log("[APP] MiniKit.isInstalled():", installed);
 
       if (installed) {
-        // Fuerza fetch de permisos
-        MiniKit.fetchPermissions()
-          .then((perms) => {
-            console.log("[APP] Permisos fetched:", perms);
-            // Intenta forzar wallet
-            const w = MiniKit.walletAddress;
-            setWallet(w);
-            console.log("[APP] Wallet después de fetchPermissions:", w);
-          })
-          .catch((err) => console.error("[APP] Error fetch permissions:", err));
+        const w = MiniKit.walletAddress;
+        setWallet(w);
+        console.log("[APP] Wallet detectada:", w || "undefined – espera permisos");
+      } else {
+        console.warn("[APP] MiniKit no instalado aún");
       }
     } catch (err) {
       console.error("[APP] MiniKit install error:", err);
@@ -48,13 +45,24 @@ const App = () => {
     }
   }, []);
 
+  // Fuerza verify si no hay ID
+  useEffect(() => {
+    if (!userId && !verifying) {
+      console.log("[APP DEBUG] No hay userId → forzando verify");
+      verifyUser();
+    }
+  }, [userId, verifying]);
+
   const verifyUser = async () => {
     if (verifying) return;
     setVerifying(true);
     setError(null);
+    console.log("[APP] Iniciando verificación...");
 
     try {
-      if (!MiniKit.isInstalled()) throw new Error("MiniKit no instalado");
+      if (!MiniKit.isInstalled()) {
+        throw new Error("MiniKit no instalado");
+      }
 
       const verifyRes = await MiniKit.commandsAsync.verify({
         action: "verify-user",
