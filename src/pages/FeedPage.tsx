@@ -80,32 +80,10 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
         throw new Error("MiniKit no instalado o World App no detectada");
       }
 
-      // Si wallet undefined, autentica wallet con walletAuth (pide firma por código)
-      if (!MiniKit.walletAddress) {
-        console.log("[UPGRADE] Autenticando wallet con walletAuth...");
-        const res = await fetch('/api/nonce')  // Backend genera nonce
-        const { nonce } = await res.json();
-
-        const { finalPayload } = await MiniKit.commandsAsync.walletAuth({
-          nonce: nonce,
-          requestId: '0', // Optional
-          expirationTime: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
-          notBefore: new Date(new Date().getTime() - 24 * 60 * 60 * 1000),
-          statement: 'Autenticar wallet para upgrade',
-        });
-
-        if (finalPayload.status !== 'success') {
-          throw new Error("Autenticación de wallet fallida");
-        }
-
-        console.log("[UPGRADE] Wallet autenticada:", MiniKit.walletAddress);
-      }
-
-      // Pago real con MiniKit (cobra WLD)
       const payRes = await MiniKit.commandsAsync.pay({
         amount: price,
         currency: 'WLD',
-        recipient: '0x4df4a99b05945b0594db02127ad3cdffea619f4cb',  // tu wallet
+        recipient: '0x4df4a99b05945b0594db02127ad3cdffea619f4cb',  // TU WALLET AQUÍ
       });
       console.log("[UPGRADE] Pago respuesta:", payRes);
 
@@ -120,7 +98,6 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
       const transactionId = payRes.transactionId;
       console.log("[UPGRADE] txId obtenido:", transactionId);
 
-      // Enviar a backend
       const res = await fetch("/api/upgrade", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -138,7 +115,6 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
       if (!data.success) throw new Error(data.error || "Error al procesar upgrade");
 
       alert(`¡Upgrade a ${selectedTier} exitoso! Precio: ${price} WLD. Tu referral token: ${data.referralToken}`);
-      setUserTier(selectedTier);
       cancelUpgrade();
     } catch (err: any) {
       console.error("[UPGRADE] Error completo:", err);
@@ -148,7 +124,149 @@ const FeedPage: React.FC<FeedPageProps> = ({ posts, loading, error, currentUserI
     }
   };
 
-  // ... resto del código igual (handleUpgrade, selectTier, return, etc.)
+  return (
+    <div className="flex flex-col p-4">
+      {/* Botón Upgrade */}
+      <div className="mb-6">
+        <button
+          onClick={handleUpgrade}
+          className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-lg"
+        >
+          Upgrade
+        </button>
+      </div>
+
+      {/* Opciones */}
+      {showUpgradeOptions && (
+        <div className="space-y-4 mb-6">
+          <button
+            onClick={() => selectTier("premium")}
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md"
+          >
+            Premium
+          </button>
+          <button
+            onClick={() => selectTier("premium+")}
+            className="w-full py-4 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-md"
+          >
+            Premium+
+          </button>
+        </div>
+      )}
+
+      {/* Feed */}
+      {loading ? (
+        <div className="space-y-5">
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <div key={i} className="bg-gray-900/60 backdrop-blur-sm rounded-2xl p-4 animate-pulse space-y-4 border border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gray-700" />
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-gray-700 rounded w-3/4" />
+                  <div className="h-3 bg-gray-700 rounded w-1/2" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-700 rounded w-full" />
+                <div className="h-4 bg-gray-700 rounded w-5/6" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <p className="text-red-500 text-center py-10 px-2">{error}</p>
+      ) : posts.length === 0 ? (
+        <p className="text-gray-500 text-center py-10 px-2">No hay posts todavía.</p>
+      ) : (
+        <div className="space-y-5">
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+          ))}
+        </div>
+      )}
+
+      {upgradeError && <p className="text-red-500 text-center py-4 mt-4">{upgradeError}</p>}
+
+      {/* Slide Modal */}
+      {showSlideModal && selectedTier && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+          <div className="w-full max-w-md bg-gray-900 rounded-t-3xl p-6 animate-slide-up">
+            <h2 className="text-xl font-bold text-white mb-4">Beneficios de {selectedTier}</h2>
+            <ul className="text-gray-200 mb-6 list-disc list-inside space-y-2">
+              {selectedTier === "premium" && (
+                <>
+                  <li>Tips ilimitados</li>
+                  <li>Boost 5 veces por semana (extra Boost pagando 5 WLD ilimitados)</li>
+                  <li>1 WLD por cada referido que se registre</li>
+                  <li>Posts hasta 4.000 caracteres</li>
+                  <li>Badge Premium visible</li>
+                  <li>Prioridad media en el feed</li>
+                  <li>Invita amigos y gana WLD (comparte tu referral token)</li>
+                  <li>Solo premium pueden ver respuestas premium</li>
+                  <li>Prueba primera semana gratis (limitada a primeros 100 usuarios)</li>
+                  <li>Solo quedan {slotsLeft} slots disponibles</li>
+                </>
+              )}
+              {selectedTier === "premium+" && (
+                <>
+                  <li>Todo lo de Premium</li>
+                  <li>Tips con +10% de bonificación</li>
+                  <li>Boost ilimitado (extra Boost pagando 5 WLD ilimitados)</li>
+                  <li>Posts hasta 10.000 caracteres</li>
+                  <li>Contenido exclusivo (solo premium+)</li>
+                  <li>Badge Premium+ dorado</li>
+                  <li>Prioridad máxima en el feed</li>
+                  <li>Recompensa por engagement (0.5 WLD / 100 likes)</li>
+                  <li>Invita amigos y gana WLD (comparte tu referral token)</li>
+                  <li>Premium+ pueden ocultar likes</li>
+                  <li>Prueba primera semana gratis (limitada a primeros 50 usuarios)</li>
+                  <li>Solo quedan {slotsLeft} slots disponibles</li>
+                </>
+              )}
+            </ul>
+            <p className="text-white text-center mb-4">Precio: {price} WLD</p>
+            <div className="flex gap-4">
+              <button
+                onClick={cancelUpgrade}
+                className="flex-1 py-3 bg-gray-700 text-white rounded-2xl font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmUpgrade}
+                disabled={loadingUpgrade}
+                className="flex-1 py-3 bg-yellow-500 text-black rounded-2xl font-bold"
+              >
+                {loadingUpgrade ? "Procesando..." : "Aceptar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alerta fondos insuficientes */}
+      {showInsufficientFunds && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-900 rounded-2xl p-8 w-full max-w-sm border border-white/10 text-center">
+            <div className="text-5xl mb-4">💸</div>
+            <h3 className="text-xl font-bold text-white mb-3">Fondos insuficientes</h3>
+            <p className="text-gray-300 mb-6">
+              No tienes suficientes WLD en tu wallet para completar el upgrade ({price} WLD).
+            </p>
+            <p className="text-gray-400 text-sm mb-6">
+              Recarga tu wallet en World App o intenta con un tier más bajo.
+            </p>
+            <button
+              onClick={() => setShowInsufficientFunds(false)}
+              className="w-full py-3 bg-purple-600 text-white rounded-xl font-medium"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default FeedPage;
