@@ -1,72 +1,76 @@
-import { supabase } from "../supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
-  console.log("[BACKEND] Request recibido - Method:", req.method);
-  console.log("[BACKEND] Body recibido:", JSON.stringify(req.body, null, 2));
+  console.log("[BACKEND] Verifying World ID…");
 
   if (req.method !== "POST") {
-    console.log("[BACKEND] Método no permitido:", req.method);
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
   const body = req.body || {};
-  const { action, max_age, proof, merkle_root, nullifier_hash, verification_level } = body;
+  const { payload, action } = body;
 
-  const userId = nullifier_hash;
-  console.log("[BACKEND] userId extraído del body:", userId);
-
-  if (!action) {
-    console.log("[BACKEND] Falta action");
-    return res.status(400).json({ success: false, error: "Missing action" });
+  if (!payload || !payload.nullifier_hash || !payload.proof || !payload.merkle_root) {
+    console.error("[BACKEND] Missing proof fields:", body);
+    return res.status(400).json({ success: false, error: "Missing proof fields" });
   }
 
-  console.log("[BACKEND] Llamando a World API v2 verify...");
+  const userId = payload.nullifier_hash;
+  console.log("[BACKEND] nullifier_hash:", userId);
 
-  const verifyResponse = await fetch(
-    "https://developer.worldcoin.org/api/v2/verify/app_6a98c88249208506dcd4e04b529111fc",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ merkle_root, nullifier_hash, proof, verification_level, action }),
+  // — Call Worldcoin API V2 Verify
+  try {
+    const verifyResponse = await fetch(
+      // NOTE: Reemplaza con tu app_id válida
+      `https://developer.worldcoin.org/api/v2/verify/${process.env.WORLDCOIN_APP_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merkle_root: payload.merkle_root,
+          nullifier_hash: payload.nullifier_hash,
+          proof: payload.proof,
+          verification_level: payload.verification_level,
+          action,
+        }),
+      }
+    );
+
+    const verifyData = await verifyResponse.json();
+    console.log("[BACKEND] Worldcoin verify response:", verifyData);
+
+    if (!verifyData.success) {
+      console.error("[BACKEND] Worldcoin rejected the proof");
+      return res.status(400).json({ success: false, error: "Worldcoin validation failed", verifyData });
     }
-  );
 
-  const verifyData = await verifyResponse.json();
-  console.log("[BACKEND] Resultado verificación World:", verifyData);
-
-  if (!verifyData.success) {
-    console.log("[BACKEND] World rechazó la prueba");
-    return res.status(400).json({ success: false, error: "World verification failed" });
+  } catch (err) {
+    console.error("[BACKEND] Error calling Worldcoin verify:", err);
+    return res.status(500).json({ success: false, error: "Worldcoin service error" });
   }
 
-  if (userId) {
-    console.log("[BACKEND] Guardando usuario en Supabase:", userId);
-
-    // Crear o actualizar perfil
+  // — Guardar en Supabase
+  try {
     const { error: upsertError } = await supabase
       .from("profiles")
-      .upsert({ id: userId }, { onConflict: ["id"] });
+      .upsert({ id: userId, verified: true }, { onConflict: ["id"] });
 
     if (upsertError) {
-      console.error("[BACKEND] Error al registrar usuario:", upsertError.message);
-    } else {
-      console.log("[BACKEND] Usuario registrado/actualizado correctamente:", userId);
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ verified: true })
-        .eq("id", userId);
-
-      if (updateError) {
-        console.error("[BACKEND] Error al guardar verified:", updateError.message);
-      } else {
-        console.log("[BACKEND] verified: true guardado correctamente para userId:", userId);
-      }
+      console.error("[BACKEND] Supabase upsert error:", upsertError);
+      return res.status(500).json({ success: false, error: upsertError.message });
     }
-  } else {
-    console.warn("[BACKEND] No se recibió userId → no se pudo guardar verified");
-  }
 
-  console.log("[BACKEND] Enviando respuesta al frontend con userId:", userId);
-  return res.status(200).json({ success: true, userId });
-}
+    console.log("[BACKEND] Guardado en Supabase:", userId);
+
+    return res.status(200).json({ success: true, userId });
+
+  } catch (err) {
+    console.error("[BACKEND] Supabase error:", err);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+                      }
