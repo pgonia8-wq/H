@@ -10,20 +10,20 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedUserId = localStorage.getItem("userId");
+    const storedUserId = localStorage.getItem('userId');
     console.log("[APP] userId desde localStorage:", storedUserId);
     if (storedUserId) {
       setUserId(storedUserId);
       setVerified(true);
-      console.log("[APP] Usuario ya verificado, estado actualizado");
+      console.log("[APP] Usuario ya verificado");
     }
   }, []);
 
   const handleVerify = async () => {
     try {
       setError(null);
-      setMessage("Verificando con MiniKit…");
-      console.log("[APP] Iniciando verificación MiniKit");
+      setMessage("Verificando con H…");
+      console.log("[APP] Iniciando MiniKit verify");
 
       if (!MiniKit.isInstalled()) {
         setError("World App no detectada");
@@ -38,14 +38,7 @@ function App() {
 
       console.log("[APP] Resultado verify:", verifyRes);
 
-      const finalPayload = verifyRes?.finalPayload;
-      if (!finalPayload || finalPayload.status !== "success") {
-        setError("Verificación cancelada o fallida");
-        console.log("[APP] verify.finalPayload inválido o cancelado");
-        return;
-      }
-
-      const proofData = finalPayload.proof;
+      const proofData = verifyRes?.finalPayload?.proof;
       if (!proofData) {
         setError("No se encontró proof válido");
         console.log("[APP] proofData no existe");
@@ -55,7 +48,6 @@ function App() {
       const id = proofData.nullifier_hash;
       console.log("[APP] nullifier_hash obtenido:", id);
 
-      // ── ENVÍO AL BACKEND
       const body = {
         proof: proofData.proof,
         merkle_root: proofData.merkle_root,
@@ -64,8 +56,6 @@ function App() {
         action: "verify-user",
         max_age: 7200,
       };
-
-      console.log("[APP] Enviando payload a /api/verify:", body);
 
       const res = await fetch("/api/verify", {
         method: "POST",
@@ -76,12 +66,12 @@ function App() {
       const result = await res.json();
       console.log("[APP] Respuesta backend /api/verify:", result);
 
-      if (result.success && result.userId) {
+      if (result.success) {
         setVerified(true);
-        setUserId(result.userId);
-        localStorage.setItem("userId", result.userId);
+        setUserId(id);
+        localStorage.setItem('userId', id);
         setMessage("✅ Verificación exitosa");
-        console.log("[APP] Usuario verificado y guardado:", result.userId);
+        console.log("[APP] Usuario verificado y guardado:", id);
       } else {
         setError("Backend rechazó la prueba: " + (result.error || ""));
         console.log("[APP] Backend rechazó la prueba:", result.error);
@@ -96,18 +86,9 @@ function App() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       {!verified || !userId ? (
         <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center w-full max-w-md">
-          <img
-            src="/logo.png"
-            alt="Logo H"
-            className="w-40 h-40 rounded-full mb-6 shadow-lg object-contain"
-          />
-          <p className="text-black text-2xl font-bold mb-6 text-center">
-            Verificando con MiniKit…
-          </p>
-          <button
-            onClick={handleVerify}
-            className="px-8 py-3 bg-black text-white rounded-full shadow-lg hover:bg-gray-800 transition"
-          >
+          <img src="/logo.png" alt="Logo H" className="w-40 h-40 rounded-full mb-6 shadow-lg object-contain" />
+          <p className="text-black text-2xl font-bold mb-6 text-center">Verificando con H…</p>
+          <button onClick={handleVerify} className="px-8 py-3 bg-black text-white rounded-full shadow-lg hover:bg-gray-800 transition">
             Iniciar verificación
           </button>
           {message && <p className="mt-4 text-gray-700">{message}</p>}
