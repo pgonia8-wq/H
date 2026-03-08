@@ -85,7 +85,7 @@ function App() {
           <img
             src="/logo.png"
             alt="Logo H"
-            className="w-40 h-40 rounded-full mb-6 shadow-lg object-cover"
+            className="w-40 h-40 rounded-full mb-6 shadow-lg object-cover mx-auto block"
           />
           <p className="text-black text-2xl font-bold mb-6 text-center">
             Verificando con H…
