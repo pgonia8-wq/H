@@ -69,12 +69,11 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     if (userId) {
       const fetchProfile = async () => {
         try {
-
           const { data, error } = await supabase
             .from("profiles")
             .select("*")
             .eq("id", userId)
-            .maybeSingle(); // FIX
+            .maybeSingle(); // Esto evita el error "Cannot coerce the result to a single JSON object"
 
           if (error) {
             console.error("[HOME] Error al cargar perfil:", error);
@@ -83,7 +82,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             console.log("[HOME] Profile cargado:", data);
             setProfile(data || null);
           }
-
         } catch (err) {
           console.error("[HOME] Excepción en fetchProfile:", err);
           setError("Error al cargar perfil");
@@ -94,7 +92,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
 
     fetchPosts(true);
-
   }, [userId, fetchPosts]);
 
   useEffect(() => {
@@ -185,7 +182,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           />
 
           <button
-            onClick={() => (window.location.href = "/chat")}
+            onClick={() => window.open("/chat", "_blank")}
             className="px-5 py-2 bg-gradient-to-r from-indigo-700 to-purple-700 hover:from-indigo-600 hover:to-purple-600 rounded-full shadow-lg shadow-black/40 text-sm sm:text-base font-medium"
           >
             Chat
