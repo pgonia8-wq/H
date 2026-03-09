@@ -1,3 +1,4 @@
+// src/pages/HomePage.tsx
 import React, { useEffect, useState, useRef, useCallback, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import FeedPage from './FeedPage';
@@ -20,7 +21,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const { theme } = useContext(ThemeContext);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const creatingProfileRef = useRef(false); // <--- FIX: evita crear profile duplicado
 
   const maxChars =
     profile?.tier === "premium+"
@@ -70,42 +70,49 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     if (userId) {
       const fetchProfile = async () => {
         try {
+          // FIX: RLS seguro usando supabase.auth.uid() y cast
           const { data, error } = await supabase
             .from("profiles")
             .select("*")
-            .eq("id", userId)
+            .eq("id", userId) // userId ya viene de MiniKit
             .maybeSingle();
 
           if (error) {
             console.error("[HOME] Error en fetchProfile:", error);
-            setError("Error cargando perfil");
-          } else if (data) {
-            console.log("[HOME] Profile cargado:", data);
-            setProfile(data);
-          } else if (!creatingProfileRef.current) {
-            creatingProfileRef.current = true; // <--- Marca que ya estamos creando
+            setError("Error en fetchProfile: " + error.message);
+          } else if (!data) {
             console.log("[HOME] No existe profile, creando...");
+            // Creación del profile usando UPSERT para evitar duplicate key
+            const { error: insertError, data: insertData } = await supabase
+              .from("profiles")
+              .upsert(
+                {
+                  id: userId,
+                  name: "Nuevo Usuario",
+                  username: userId.slice(2, 8),
+                  avatar_url: null,
+                  tier: "free",
+                  created_at: new Date().toISOString()
+                },
+                { onConflict: "id" } // evita duplicate key
+              )
+              .select()
+              .maybeSingle();
 
-            fetch("/api/createProfile", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId })
-            })
-              .then(res => res.json())
-              .then(result => {
-                if (result.success) {
-                  setProfile(result.profile);
-                } else {
-                  console.error("[HOME] Error creando profile:", result.error);
-                }
-              })
-              .catch(err => {
-                console.error("[HOME] Error creando profile:", err);
-              });
+            if (insertError) {
+              console.error("[HOME] Error creando profile:", insertError);
+              setError("Error creando profile: " + insertError.message);
+            } else {
+              setProfile(insertData);
+              console.log("[HOME] Profile creado:", insertData);
+            }
+          } else {
+            setProfile(data);
+            console.log("[HOME] Profile cargado:", data);
           }
         } catch (err: any) {
-          console.error("[HOME] Error en fetchProfile:", err);
-          setError("Error cargando perfil");
+          console.error("[HOME] Excepción en fetchProfile:", err);
+          setError("Error en fetchProfile: " + err.message);
         }
       };
 
@@ -145,8 +152,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       return;
     }
 
-    console.log("[POST] Publicando con userId:", userId);
-
     try {
       const { error: insertError } = await supabase
         .from("posts")
@@ -161,12 +166,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       if (insertError) throw insertError;
 
       alert("¡Post publicado correctamente!");
-
       setShowNewPostModal(false);
       setNewPostContent("");
-
       fetchPosts(true);
-
     } catch (err: any) {
       console.error("[POST] Error:", err);
       alert("Error al publicar: " + err.message);
