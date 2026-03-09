@@ -63,47 +63,61 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     [page, hasMore]
   );
 
-  // ------------------ FIX PROFILE CREATION ------------------
+  // FIX: fetchOrCreateProfile mejorado para evitar duplicados y manejar mejor errores
   const fetchOrCreateProfile = useCallback(async (uid: string) => {
+    if (!uid) {
+      setError("No se encontró userId");
+      return;
+    }
+
     try {
-      const { data, error } = await supabase
+      // 1. Intentamos cargar el perfil existente
+      const { data, error: selectError } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", uid)
         .maybeSingle();
 
-      if (error) throw error;
+      if (selectError) throw selectError;
 
-      if (!data) {
-        console.log("[HOME] No existe profile, creando...");
-
-        // 🔹 Cambiado fetch para manejar Vercel .mjs
-        const res = await fetch("/api/createProfile.mjs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: uid })
-        });
-
-        // 🔹 Uso res.text() y parseo manual
-        const text = await res.text();
-        let result;
-        try {
-          result = JSON.parse(text);
-        } catch {
-          result = { success: false, profile: null, error: "Invalid JSON from server" };
-        }
-
-        if (!result.success) throw new Error(result.error || "Error creando profile");
-
-        setProfile(result.profile);
-        console.log("[HOME] Profile creado:", result.profile);
-      } else {
+      if (data) {
+        // Perfil ya existe → lo seteamos y salimos
         setProfile(data);
         console.log("[HOME] Profile cargado:", data);
+        return;
       }
+
+      // 2. Si no existe → creamos
+      console.log("[HOME] No existe profile, creando...");
+
+      const res = await fetch("/api/createProfile.mjs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: uid })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Error en API createProfile: ${res.status} - ${errText}`);
+      }
+
+      const text = await res.text();
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch (parseErr) {
+        throw new Error("Respuesta inválida del servidor (no es JSON válido)");
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || "Error al crear el perfil");
+      }
+
+      setProfile(result.profile);
+      console.log("[HOME] Profile creado exitosamente:", result.profile);
     } catch (err: any) {
       console.error("[HOME] Error en fetchOrCreateProfile:", err);
-      setError("Error cargando perfil");
+      setError("Error cargando o creando perfil: " + (err.message || "Desconocido"));
     }
   }, []);
 
@@ -111,6 +125,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     console.log("[HOME] userId recibido:", userId);
 
     if (userId) {
+      // Evitamos duplicados: solo llamamos una vez por userId
       fetchOrCreateProfile(userId);
     }
 
