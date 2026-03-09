@@ -1,119 +1,166 @@
-import React,{useEffect,useState} from "react";
-import { supabase } from "../../supabaseClient";
+import React,{useEffect,useRef,useState} from "react"
+import { supabase } from "../../supabaseClient"
 
 const ChatRoom = ({conversationId,currentUserId}) => {
 
-  const [messages,setMessages] = useState([]);
-  const [newMessage,setNewMessage] = useState("");
-  const [typing,setTyping] = useState(false);
+const [messages,setMessages] = useState([])
+const [newMessage,setNewMessage] = useState("")
+const [typing,setTyping] = useState(false)
 
-  useEffect(()=>{
+const bottomRef = useRef(null)
 
-    const loadMessages = async()=>{
+useEffect(()=>{
 
-      const {data} = await supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id",conversationId)
-        .order("created_at",{ascending:true});
+loadMessages()
 
-      setMessages(data || []);
+const channel = supabase
+.channel(`chat-${conversationId}`)
 
-      await supabase
-        .from("messages")
-        .update({read:true})
-        .eq("conversation_id",conversationId)
-        .neq("sender_id",currentUserId);
+.on(
+"postgres_changes",
+{
+event:"INSERT",
+schema:"public",
+table:"messages",
+filter:`conversation_id=eq.${conversationId}`
+},
+payload=>{
+setMessages(prev=>[...prev,payload.new])
+}
+)
 
-    };
+.on(
+"broadcast",
+{event:"typing"},
+payload=>{
 
-    loadMessages();
+if(payload.payload.user !== currentUserId){
 
-    const channel = supabase
-      .channel("chat")
-      .on(
-        "postgres_changes",
-        {
-          event:"INSERT",
-          schema:"public",
-          table:"messages",
-          filter:`conversation_id=eq.${conversationId}`
-        },
-        payload=>{
-          setMessages(prev=>[...prev,payload.new]);
-        }
-      )
-      .subscribe();
+setTyping(true)
 
-    return ()=>{
-      supabase.removeChannel(channel);
-    };
+setTimeout(()=>{
+setTyping(false)
+},2000)
 
-  },[conversationId]);
+}
 
-  const sendMessage = async()=>{
+}
+)
 
-    if(!newMessage.trim()) return;
+.subscribe()
 
-    await supabase
-      .from("messages")
-      .insert({
-        conversation_id:conversationId,
-        sender_id:currentUserId,
-        content:newMessage
-      });
+return ()=>{
+supabase.removeChannel(channel)
+}
 
-    setNewMessage("");
+},[conversationId])
 
-  };
+useEffect(()=>{
+bottomRef.current?.scrollIntoView({behavior:"smooth"})
+},[messages])
 
-  return(
+const loadMessages = async()=>{
 
-    <div className="flex flex-col h-full">
+const {data} = await supabase
+.from("messages")
+.select("*")
+.eq("conversation_id",conversationId)
+.order("created_at",{ascending:false})
+.limit(20)
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+setMessages(data.reverse())
 
-        {messages.map(m=>(
-          <div
-            key={m.id}
-            className={
-              m.sender_id===currentUserId
-              ? "text-right"
-              : "text-left"
-            }
-          >
+await supabase
+.from("messages")
+.update({read:true})
+.eq("conversation_id",conversationId)
+.neq("sender_id",currentUserId)
 
-            <span className="bg-purple-600 text-white px-3 py-1 rounded">
-              {m.content}
-            </span>
+}
 
-          </div>
-        ))}
+const sendTyping = async(channel)=>{
 
-      </div>
+channel.send({
+type:"broadcast",
+event:"typing",
+payload:{user:currentUserId}
+})
 
-      <div className="flex gap-2 p-3 border-t border-gray-800">
+}
 
-        <input
-          value={newMessage}
-          onChange={e=>setNewMessage(e.target.value)}
-          className="flex-1 bg-gray-900 px-3 py-2 rounded"
-          placeholder="Escribe un mensaje..."
-        />
+const sendMessage = async()=>{
 
-        <button
-          onClick={sendMessage}
-          className="bg-purple-600 px-4 py-2 rounded"
-        >
-          Enviar
-        </button>
+if(!newMessage.trim()) return
 
-      </div>
+await supabase
+.from("messages")
+.insert({
+conversation_id:conversationId,
+sender_id:currentUserId,
+content:newMessage
+})
 
-    </div>
+setNewMessage("")
 
-  );
+}
 
-};
+return(
 
-export default ChatRoom;
+<div className="flex flex-col h-full">
+
+<div className="flex-1 overflow-y-auto p-4 space-y-2">
+
+{messages.map(m=>(
+
+<div
+key={m.id}
+className={
+m.sender_id===currentUserId
+? "text-right"
+: "text-left"
+}
+>
+
+<span className="bg-purple-600 text-white px-3 py-1 rounded">
+{m.content}
+</span>
+
+</div>
+
+))}
+
+{typing && (
+<div className="text-xs text-gray-400">
+escribiendo...
+</div>
+)}
+
+<div ref={bottomRef}/>
+
+</div>
+
+<div className="flex gap-2 p-3 border-t border-gray-800">
+
+<input
+value={newMessage}
+onChange={e=>setNewMessage(e.target.value)}
+className="flex-1 bg-gray-900 px-3 py-2 rounded"
+placeholder="Escribe un mensaje..."
+/>
+
+<button
+onClick={sendMessage}
+className="bg-purple-600 px-4 py-2 rounded"
+>
+Enviar
+</button>
+
+</div>
+
+</div>
+
+)
+
+}
+
+export default ChatRoom
