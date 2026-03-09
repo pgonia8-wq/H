@@ -1,14 +1,20 @@
-import React, { useState } from "react";
+import React,{useState} from "react";
 import Inbox from "./Inbox";
 import ChatRoom from "./ChatRoom";
 
-const ChatPage = ({ currentUserId }) => {
+const ChatPage = ({currentUserId})=>{
 
-  const [conversationId, setConversationId] = useState(null);
+  const [conversationId,setConversationId] = useState(null);
+  const [otherUser,setOtherUser] = useState(null);
 
-  return (
+  const openChat = (id,other)=>{
+    setConversationId(id);
+    setOtherUser(other);
+  };
 
-    <div className="h-screen flex flex-col">
+  return(
+
+    <div className="h-screen flex flex-col bg-black text-white">
 
       {conversationId ? (
 
@@ -21,13 +27,15 @@ const ChatPage = ({ currentUserId }) => {
 
         <Inbox
           currentUserId={currentUserId}
-          openChat={setConversationId}
+          openChat={openChat}
         />
 
       )}
 
     </div>
+
   );
+
 };
 
 export default ChatPage;
