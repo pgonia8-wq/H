@@ -20,6 +20,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const { theme } = useContext(ThemeContext);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [creatingProfile, setCreatingProfile] = useState(false);
 
   const maxChars =
     profile?.tier === "premium+"
@@ -54,7 +55,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         if (reset) setPage(1);
         else setPage((prev) => prev + 1);
       } catch (err: any) {
-        console.error("[POSTS] fetch error:", err);
+        console.error("Error fetching posts:", err);
         setError(err.message);
       } finally {
         setLoading(false);
@@ -73,32 +74,36 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             .from("profiles")
             .select("*")
             .eq("id", userId)
-            .maybeSingle(); // FIX: permite null sin error
+            .maybeSingle(); // FIX: evita error si no hay profile
 
           if (error) {
             console.error("[HOME] Error en fetchProfile:", error);
-            setError("No se pudo cargar tu perfil");
+            setError("Error al cargar perfil");
             return;
           }
 
-          if (!data) {
-            // No existe profile, lo creamos
+          if (data) {
+            console.log("[HOME] Profile cargado:", data);
+            setProfile(data);
+          } else if (!creatingProfile) {
+            // Si no existe profile, crearlo una sola vez
+            setCreatingProfile(true);
             console.log("[HOME] No existe profile, creando...");
+
             const res = await fetch("/api/createProfile", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ userId })
             });
+
             const result = await res.json();
+
             if (result.success) {
               setProfile(result.profile);
             } else {
               console.error("[HOME] Error creando profile:", result.error);
             }
-          } else {
-            setProfile(data);
           }
-
         } catch (err: any) {
           console.error("[HOME] Error en fetchProfile:", err);
           setError("Error al cargar perfil");
@@ -109,8 +114,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
 
     fetchPosts(true);
-
-  }, [userId, fetchPosts]);
+  }, [userId, fetchPosts, creatingProfile]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -158,12 +162,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       if (insertError) throw insertError;
 
       alert("¡Post publicado correctamente!");
-
       setShowNewPostModal(false);
       setNewPostContent("");
-
       fetchPosts(true);
-
     } catch (err: any) {
       console.error("[POST] Error:", err);
       alert("Error al publicar: " + err.message);
@@ -200,10 +201,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           />
 
           <button
-            onClick={() => {
-              if (!userId) return alert("Wallet no cargada aún");
-              window.location.href = "/chat";
-            }}
+            onClick={() => (window.location.href = "/chat")}
             className="px-5 py-2 bg-gradient-to-r from-indigo-700 to-purple-700 hover:from-indigo-600 hover:to-purple-600 rounded-full shadow-lg shadow-black/40 text-sm sm:text-base font-medium"
           >
             Chat
@@ -222,10 +220,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
           <div
             className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center font-bold cursor-pointer shadow-md ring-1 ring-white/10"
-            onClick={() => {
-              if (!userId) return alert("Wallet no cargada aún");
-              setShowProfileModal(true);
-            }}
+            onClick={() => setShowProfileModal(true)}
           >
             H
           </div>
@@ -302,11 +297,11 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       )}
 
       {/* Modal Perfil */}
-      {showProfileModal && profile && (
+      {showProfileModal && (
         <ProfileModal
           currentUserId={userId}
           onClose={() => setShowProfileModal(false)}
-          showUpgradeButton={profile.tier === "free"}
+          showUpgradeButton={profile?.tier === "free"}
         />
       )}
     </div>
