@@ -63,46 +63,50 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     [page, hasMore]
   );
 
-  const fetchProfile = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle(); // FIX
-
-      if (error) throw error;
-
-      if (!data) {
-        // Si no existe, crear profile automáticamente
-        const { data: newProfile, error: insertError } = await supabase
-          .from("profiles")
-          .insert({ id: userId, tier: "free", username: "Anon", avatar_url: "" })
-          .select()
-          .maybeSingle();
-
-        if (insertError) throw insertError;
-
-        console.log("[HOME] Nuevo profile creado:", newProfile);
-        setProfile(newProfile);
-      } else {
-        console.log("[HOME] Profile cargado:", data);
-        setProfile(data);
-      }
-    } catch (err: any) {
-      console.error("[HOME] Error en fetchProfile:", err);
-      setError("Error al cargar perfil");
-    }
-  }, [userId]);
-
   useEffect(() => {
     console.log("[HOME] userId recibido:", userId);
 
-    fetchProfile();
+    if (userId) {
+      const fetchProfile = async () => {
+        try {
+          // Intentamos traer profile directamente
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle(); // FIX: devuelve null si no existe
+
+          if (error) {
+            console.warn("[HOME] Error fetching profile, intentando crear:", error);
+
+            // Llamamos a serverless para crear profile si no existe o falla RLS
+            const res = await fetch("/api/createProfile", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId })
+            });
+
+            const result = await res.json();
+            if (result.success) {
+              setProfile(result.profile || null);
+            } else {
+              setProfile(null);
+              setError(result.error || "No se pudo crear perfil");
+            }
+          } else {
+            setProfile(data || null);
+          }
+        } catch (err: any) {
+          console.error("[HOME] Error en fetchProfile:", err);
+          setProfile(null);
+        }
+      };
+
+      fetchProfile();
+    }
+
     fetchPosts(true);
-  }, [userId, fetchProfile, fetchPosts]);
+  }, [userId, fetchPosts]);
 
   useEffect(() => {
     const handleScroll = () => {
