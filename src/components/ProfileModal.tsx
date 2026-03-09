@@ -65,7 +65,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           .from("profiles")
           .select("*")
           .eq("id", currentUserId)
-          .single();
+          .maybeSingle();   // ← CAMBIO 1
 
         if (error) throw error;
         setProfile(data || emptyProfile);
@@ -121,7 +121,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     try {
       const { data, error } = await supabase.storage
         .from("avatars")
-        .upload(`\( {currentUserId}/ \){file.name}`, file);
+        .upload(`${currentUserId}/${file.name}`, file);   // ← CAMBIO 2
 
       if (error) throw error;
 
