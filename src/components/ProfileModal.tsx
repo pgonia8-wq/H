@@ -3,13 +3,9 @@ import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
 
-const CHAT_SUBSCRIPTION_PRICE = 5; // 5 WLD/mes
-const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
-
 interface ProfileModalProps {
-  id: string | null; // ID de MiniKit
+  id: string | null;
   onClose: () => void;
-  showUpgradeButton?: boolean;
 }
 
 interface UserProfile {
@@ -46,18 +42,19 @@ const emptyProfile: UserProfile = {
   profile_visible: true
 };
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeButton = true }) => {
+// Dirección del receiver para pagos WLD
+const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
+
+const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose }) => {
   const [profile, setProfile] = useState<UserProfile>(emptyProfile);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [bioLength, setBioLength] = useState(0);
-  const [hasPremiumChat, setHasPremiumChat] = useState(false);
+  const [subscribed, setSubscribed] = useState(false); // Suscripción al chat premium
+
   const { theme } = useContext(ThemeContext);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
 
   useEffect(() => {
     if (!id) return setLoading(false);
@@ -69,29 +66,23 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeBut
           .select("*")
           .eq("id", id)
           .maybeSingle();
-
         if (error) throw error;
 
         setProfile(data || emptyProfile);
-        setBioLength(data?.bio?.length || 0);
 
-        if (!data?.username && id) {
-          const autoUsername = `@${id.slice(0, 10)}`;
-          setProfile(prev => ({ ...prev, username: autoUsername }));
-        }
-
-        // Verificar si tiene suscripción activa de chat premium
-        const { data: subData } = await supabase
+        // Verificar si tiene suscripción activa
+        const { data: subData, error: subError } = await supabase
           .from("premium_subscriptions")
           .select("*")
           .eq("user_id", id)
           .eq("active", true)
           .maybeSingle();
 
-        setHasPremiumChat(!!subData);
+        if (subError) throw subError;
+        setSubscribed(!!subData);
 
       } catch (err: any) {
-        setError(err.message);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -115,9 +106,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeBut
           profile_visible: profile.profile_visible
         })
         .eq("id", id);
-
       if (error) throw error;
-
       setToast({ message: "Perfil guardado", type: "success" });
     } catch (err: any) {
       setToast({ message: "Error guardando perfil", type: "error" });
@@ -134,98 +123,77 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeBut
       const { data, error } = await supabase.storage
         .from("avatars")
         .upload(`${id}/${file.name}`, file);
-
       if (error) throw error;
 
       const { data: publicURLData } = supabase.storage
         .from("avatars")
         .getPublicUrl(data.path);
-
       const publicUrl = publicURLData.publicUrl;
 
-      await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", id);
+      await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", id);
 
       setProfile(prev => ({ ...prev, avatar_url: publicUrl }));
     } catch (err: any) {
-      setError(err.message);
+      console.error(err);
     } finally {
       setUploadingAvatar(false);
     }
   };
 
-  const startDM = async () => {
-    if (!id || !profile.id) return;
-    try {
-      const { data, error } = await supabase.rpc("get_or_create_conversation", {
-        user_a: id,
-        user_b: profile.id
-      });
-      if (error) throw error;
-      window.location.href = `/chat/${data}`;
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handlePremiumChat = async () => {
+  const handleChatPremium = async () => {
     if (!id) return;
 
+    if (subscribed) {
+      // Abrir chat premium
+      window.location.href = "/chat/premium";
+      return;
+    }
+
+    // Si no está suscripto → pagar 5 WLD
+    if (!MiniKit.isInstalled()) {
+      alert("MiniKit no detectado en World App");
+      return;
+    }
+
     try {
-      if (hasPremiumChat) {
-        window.location.href = "/premium-chat";
-        return;
-      }
-
-      if (!MiniKit.isInstalled()) throw new Error("MiniKit no detectado dentro de World App");
-
+      const price = 5;
       const payRes = await MiniKit.commandsAsync.pay({
-        reference: `premium-chat-${Date.now()}`,
+        reference: "premium_chat-" + Date.now(),
         to: RECEIVER,
         tokens: [
-          { symbol: Tokens.WLD, token_amount: tokenToDecimals(CHAT_SUBSCRIPTION_PRICE, Tokens.WLD).toString() }
+          {
+            symbol: Tokens.WLD,
+            token_amount: tokenToDecimals(price, Tokens.WLD).toString()
+          }
         ],
-        description: "Suscripción chat premium 5 WLD/mes"
+        description: "Suscripción mensual Chat Premium"
       });
 
       if (payRes?.finalPayload?.status !== "success") {
-        throw new Error(payRes?.finalPayload?.description || "Pago cancelado");
+        alert("Pago cancelado o fallido");
+        return;
       }
 
-      const transactionId = payRes.finalPayload.transaction_id;
+      const transactionId = payRes?.finalPayload?.transaction_id;
 
-      await supabase.from("premium_subscriptions").insert({
+      // Guardar la suscripción en Supabase
+      const { error } = await supabase.from("premium_subscriptions").upsert({
         user_id: id,
-        transaction_id: transactionId,
         active: true,
-        created_at: new Date().toISOString()
+        transaction_id: transactionId,
+        started_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
       });
 
-      setHasPremiumChat(true);
-      window.location.href = "/premium-chat";
+      if (error) throw error;
+
+      setSubscribed(true);
+      alert("¡Suscripción activa! Ahora puedes acceder al chat premium.");
+      window.location.href = "/chat/premium";
 
     } catch (err: any) {
       console.error(err);
-      alert("Error al iniciar chat premium: " + err.message);
-    }
-  };
-
-  const blockUser = (userId: string) => {
-    if (!blockedUsers.includes(userId)) setBlockedUsers([...blockedUsers, userId]);
-  };
-
-  const viewProfile = async (userId: string) => {
-    try {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-      if (data) setProfile(data);
-    } catch (err) {
-      console.error(err);
+      alert("Error procesando el pago: " + err.message);
     }
   };
 
@@ -270,56 +238,16 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeBut
               </div>
             </div>
 
-            {/* --- BOTÓN DM --- */}
-            <button
-              onClick={startDM}
-              className="w-full py-3 bg-purple-600 text-white rounded-full font-medium"
-            >
-              Enviar Mensaje
-            </button>
-
-            {/* --- BOTÓN CHAT PREMIUM DINÁMICO --- */}
-            <button
-              onClick={handlePremiumChat}
-              className="w-full py-3 bg-yellow-500 text-black rounded-full font-medium mt-2"
-            >
-              {hasPremiumChat ? "Abrir Chat Premium" : "Suscribirse 5 WLD/mes"}
-            </button>
-
-            {/* --- BOTONES EXISTENTES --- */}
-            <button
-              onClick={() => setProfile(prev => ({ ...prev, profile_visible: !prev.profile_visible }))}
-              className="w-full py-2 bg-gray-700 text-white rounded-xl mt-2"
-            >
-              {profile.profile_visible ? "Perfil Público" : "Perfil Privado"}
-            </button>
-
-            <button
-              onClick={() => blockUser(profile.id)}
-              className="w-full py-2 bg-red-600 text-white rounded-xl"
-            >
-              Bloquear Usuario
-            </button>
-
-            <button
-              onClick={() => viewProfile(profile.id)}
-              className="w-full py-2 bg-blue-600 text-white rounded-xl"
-            >
-              Ver Perfil
-            </button>
-
             <textarea
               value={profile.bio}
               onChange={(e) => {
                 if (e.target.value.length <= 160) {
                   setProfile({ ...profile, bio: e.target.value });
-                  setBioLength(e.target.value.length);
                 }
               }}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white"
+              placeholder="Escribe tu bio"
             />
-
-            <p className="text-gray-500 text-sm text-right">{bioLength}/160</p>
 
             <input
               type="date"
@@ -359,12 +287,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, showUpgradeBut
               </button>
             </div>
 
-            {toast && (
-              <p className={toast.type === "success" ? "text-green-500" : "text-red-500"}>
-                {toast.message}
-              </p>
-            )}
+            {/* === NUEVO BOTÓN CHAT PREMIUM === */}
+            <button
+              onClick={handleChatPremium}
+              className="w-full py-3 bg-purple-600 text-white rounded-full font-medium mt-4"
+            >
+              Abrir Chat Exclusivo para Creadores de Tokens
+            </button>
+
           </>
+        )}
+
+        {toast && (
+          <p className={toast.type === "success" ? "text-green-500" : "text-red-500"}>
+            {toast.message}
+          </p>
         )}
       </div>
     </div>
