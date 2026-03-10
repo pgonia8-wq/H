@@ -1,121 +1,124 @@
 import React,{useEffect,useState,useRef} from "react"
 import { supabase } from "../../supabaseClient"
 
-const PremiumChatPage = ({currentUserId}) => {
+const PremiumChatPage = ({currentUserId, userTier}: {currentUserId: string | null, userTier: "free" | "basic" | "premium" | "premium+"}) => {
 
-const [messages,setMessages] = useState([])
-const [newMessage,setNewMessage] = useState("")
+  const [messages,setMessages] = useState([])
+  const [newMessage,setNewMessage] = useState("")
 
-const bottomRef = useRef(null)
+  const bottomRef = useRef(null)
 
-useEffect(()=>{
+  useEffect(()=>{
 
-loadMessages()
+    loadMessages()
 
-const channel = supabase
-.channel("global-chat")
+    const channel = supabase
+      .channel("global-chat")
+      .on(
+        "postgres_changes",
+        {
+          event:"INSERT",
+          schema:"public",
+          table:"global_chat_messages"
+        },
+        payload=>{
+          setMessages(prev=>[...prev,payload.new])
+        }
+      )
+      .subscribe()
 
-.on(
-"postgres_changes",
-{
-event:"INSERT",
-schema:"public",
-table:"global_chat_messages"
-},
-payload=>{
-setMessages(prev=>[...prev,payload.new])
-}
-)
+    return ()=>{
+      supabase.removeChannel(channel)
+    }
 
-.subscribe()
+  },[])
 
-return ()=>{
-supabase.removeChannel(channel)
-}
+  useEffect(()=>{
+    bottomRef.current?.scrollIntoView({behavior:"smooth"})
+  },[messages])
 
-},[])
+  const loadMessages = async()=>{
 
-useEffect(()=>{
-bottomRef.current?.scrollIntoView({behavior:"smooth"})
-},[messages])
+    const {data} = await supabase
+      .from("global_chat_messages")
+      .select("*")
+      .order("created_at",{ascending:false})
+      .limit(50)
 
-const loadMessages = async()=>{
+    setMessages(data.reverse())
 
-const {data} = await supabase
-.from("global_chat_messages")
-.select("*")
-.order("created_at",{ascending:false})
-.limit(50)
+  }
 
-setMessages(data.reverse())
+  const sendMessage = async()=>{
 
-}
+    if(!newMessage.trim()) return
 
-const sendMessage = async()=>{
+    await supabase
+      .from("global_chat_messages")
+      .insert({
+        sender_id:currentUserId,
+        content:newMessage
+      })
 
-if(!newMessage.trim()) return
+    setNewMessage("")
 
-await supabase
-.from("global_chat_messages")
-.insert({
-sender_id:currentUserId,
-content:newMessage
-})
+  }
 
-setNewMessage("")
+  // --- CHEQUEO DE TIER ---
+  if (userTier !== "premium+") {
+    return <p className="text-center p-10 text-red-500">Upgrade a Premium+ para acceder al chat premium</p>;
+  }
 
-}
+  return(
 
-return(
+    <div className="flex flex-col h-screen bg-black text-white">
 
-<div className="flex flex-col h-screen bg-black text-white">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
 
-<div className="flex-1 overflow-y-auto p-4 space-y-2">
+        {messages.map(m=>(
 
-{messages.map(m=>(
+          <div
+            key={m.id}
+            className={
+              m.sender_id===currentUserId
+              ? "text-right"
+              : "text-left"
+            }
+          >
 
-<div
-key={m.id}
-className={
-m.sender_id===currentUserId
-? "text-right"
-: "text-left"
-}
->
+            <span className="bg-purple-600 px-3 py-1 rounded">
+              {m.content}
+            </span>
 
-<span className="bg-purple-600 px-3 py-1 rounded">
-{m.content}
-</span>
+          </div>
 
-</div>
+        ))}
 
-))}
+        <div ref={bottomRef}/>
 
-<div ref={bottomRef}/>
+      </div>
 
-</div>
+      <div className="flex gap-2 p-3 border-t border-gray-800">
 
-<div className="flex gap-2 p-3 border-t border-gray-800">
+        <input
+          value={newMessage}
+          onChange={e=>setNewMessage(e.target.value)}
+          className="flex-1 bg-gray-900 px-3 py-2 rounded"
+          placeholder="Escribe un mensaje..."
+        />
 
-<input
-value={newMessage}
-onChange={e=>setNewMessage(e.target.value)}
-className="flex-1 bg-gray-900 px-3 py-2 rounded"
-placeholder="Escribe un mensaje..."
-/>
+        <button
+          onClick={sendMessage}
+          className="bg-purple-600 px-4 py-2 rounded"
+        >
+          Enviar
+        </button>
 
-<button
-onClick={sendMessage}
-className="bg-purple-600 px-4 py-2 rounded"
->
-Enviar
-</button>
+      </div>
 
-</div>
+    </div>
 
-</div>
-
-)
+  )
 
 }
 
