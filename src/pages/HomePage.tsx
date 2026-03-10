@@ -63,7 +63,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     [page, hasMore]
   );
 
-  // FIX: fetchOrCreateProfile mejorado para evitar duplicados y manejar mejor errores
   const fetchOrCreateProfile = useCallback(async (uid: string) => {
     if (!uid) {
       setError("No se encontró userId");
@@ -71,7 +70,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
 
     try {
-      // 1. Intentamos cargar el perfil existente
       const { data, error: selectError } = await supabase
         .from("profiles")
         .select("*")
@@ -81,13 +79,11 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       if (selectError) throw selectError;
 
       if (data) {
-        // Perfil ya existe → lo seteamos y salimos
         setProfile(data);
         console.log("[HOME] Profile cargado:", data);
         return;
       }
 
-      // 2. Si no existe → creamos
       console.log("[HOME] No existe profile, creando...");
 
       const res = await fetch("/api/createProfile.mjs", {
@@ -125,7 +121,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     console.log("[HOME] userId recibido:", userId);
 
     if (userId) {
-      // Evitamos duplicados: solo llamamos una vez por userId
       fetchOrCreateProfile(userId);
     }
 
@@ -265,6 +260,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           error={error}
           currentUserId={userId}
           userTier={profile?.tier || "free"}
+          onUpgradeSuccess={fetchOrCreateProfile}  // ← Agregada
         />
       </main>
 
