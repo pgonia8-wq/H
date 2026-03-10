@@ -43,7 +43,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   useEffect(() => {
     const calculateScore = async () => {
       try {
-        // Total tips
         const { data: tipsData } = await supabase
           .from("tips")
           .select("amount_total")
@@ -51,19 +50,15 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
         const totalTips = tipsData?.reduce((sum, tip) => sum + tip.amount_total, 0) || 0;
 
-        // Boost activo
         const boostActive = post.boosted_until && new Date(post.boosted_until) > new Date() ? 1 : 0;
 
-        // Decay avanzado: exponencial
         const hoursSincePost = post.timestamp
           ? Math.max((Date.now() - new Date(post.timestamp).getTime()) / (1000 * 60 * 60), 0)
           : 0;
-        const recencyDecay = 1 / Math.pow(hoursSincePost + 1, 1.2); // decay exponencial
+        const recencyDecay = 1 / Math.pow(hoursSincePost + 1, 1.2);
 
-        // Tags internos (no se muestran en UI)
         const tagScore = tags.length * 0.5;
 
-        // Calculo final
         const calculatedScore =
           (likes || 0) * 1 +
           (comments || 0) * 2 +
@@ -112,6 +107,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       setError("Tip mínimo 1 WLD");
       return;
     }
+
+    // --- CONFIRMACIÓN ---
+    if (!confirm(`¿Confirmar tip de ${tipAmount} WLD?`)) return;
 
     try {
       if (!MiniKit.isInstalled()) {
@@ -164,12 +162,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const handleBoost = async () => {
     if (!currentUserId) return;
 
-    setIsBoosting(true);
-
     const boostAmount = 5;
 
-    try {
+    // --- CONFIRMACIÓN ---
+    if (!confirm(`¿Confirmar boost de ${boostAmount} WLD?`)) return;
 
+    setIsBoosting(true);
+
+    try {
       const payRes = await MiniKit.commandsAsync.pay({
         reference: "boost-" + post.id + "-" + Date.now(),
         to: RECEIVER,
