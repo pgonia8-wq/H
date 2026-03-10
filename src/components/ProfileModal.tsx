@@ -9,6 +9,8 @@ interface ProfileModalProps {
   id: string | null;
   onClose: () => void;
   currentUserId: string | null;
+  showUpgradeButton?: boolean;
+  onOpenChat?: (otherUserId: string) => void; // <<< FIX INSERTADO
 }
 
 interface UserProfile {
@@ -45,7 +47,7 @@ const emptyProfile: UserProfile = {
   profile_visible: true,
 };
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId, onOpenChat }) => {
   const [profile, setProfile] = useState<UserProfile>(emptyProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -56,7 +58,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
   const { theme } = useContext(ThemeContext);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- FIX: Loader si no hay ID ---
   if (!id && loading) {
     return (
       <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
@@ -65,7 +66,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
     );
   }
 
-  // --- Cargar perfil ---
   useEffect(() => {
     if (!id) return setLoading(false);
 
@@ -78,7 +78,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
           .maybeSingle();
         if (error) throw error;
 
-        // --- FIX: fallback seguro ---
         setProfile({
           ...emptyProfile,
           ...data,
@@ -101,7 +100,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
     fetchProfile();
   }, [id]);
 
-  // --- Guardar cambios ---
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
@@ -126,7 +124,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
     }
   };
 
-  // --- Subir avatar ---
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !id) return;
@@ -151,25 +148,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
     }
   };
 
-  // --- Toggle visibilidad ---
   const toggleProfileVisibility = () => {
     setProfile(prev => ({ ...prev, profile_visible: !prev.profile_visible }));
   };
 
-  // --- Abrir Chat Exclusivo para Creadores de Tokens ---
   const handlePremiumChat = async () => {
     if (!currentUserId) {
       setToast({ message: "No se encontró tu ID", type: "error" });
       return;
     }
 
-    // Si ya es premium, abrir chat
     if (profile.tier === "premium" || profile.tier === "premium+") {
       window.location.href = "/chat/premium";
       return;
     }
 
-    // Si no, lanzar pago 5 WLD
     try {
       if (!MiniKit.isInstalled()) throw new Error("MiniKit no detectado dentro de World App");
 
@@ -186,7 +179,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
 
       const transactionId = payRes?.finalPayload?.transaction_id;
 
-      // Guardamos en Supabase que el usuario pagó suscripción
       await fetch("/api/subscribePremiumChat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -233,7 +225,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
 
               <div>
                 <p className="text-white font-bold">{profile.name || "Tu nombre"}</p>
-                {/* FIX: fallback seguro username */}
                 <input
                   value={profile.username || `@${id?.slice(0, 10)}`}
                   disabled
@@ -244,13 +235,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
 
             {/* Botón DM */}
             <button
-              onClick={() => window.location.href = `/chat/${profile.id}`}
+              onClick={() => onOpenChat?.(profile.id)} // <<< FIX INSERTADO
               className="w-full py-3 bg-purple-600 text-white rounded-full font-medium"
             >
               Enviar Mensaje
             </button>
 
-            {/* Botón Chat Premium */}
             <button
               onClick={handlePremiumChat}
               className="w-full py-3 bg-pink-600 text-white rounded-full font-medium"
@@ -258,7 +248,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
               Abrir Chat Exclusivo para Creadores de Tokens
             </button>
 
-            {/* Toggle visibilidad */}
             <button
               onClick={toggleProfileVisibility}
               className="w-full py-2 bg-gray-700 text-white rounded-xl"
@@ -266,7 +255,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
               {profile.profile_visible ? "Perfil Público" : "Perfil Privado"}
             </button>
 
-            {/* Bio */}
             <textarea
               value={profile.bio || ""}
               onChange={(e) => {
@@ -298,7 +286,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId 
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white"
             />
 
-            {/* Guardar / Cancelar */}
             <div className="flex gap-3">
               <button
                 onClick={handleSave}
