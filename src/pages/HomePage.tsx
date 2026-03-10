@@ -28,8 +28,8 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       ? 4000
       : 280;
 
-  const [chatTargetId, setChatTargetId] = useState<string | null>(null); // ← NUEVO
-  const [conversationId, setConversationId] = useState<string | null>(null); // ← NUEVO
+  const [chatTargetId, setChatTargetId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const fetchPosts = useCallback(
     async (reset = false) => {
@@ -183,7 +183,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
   };
 
-  const openChatFromModal = (otherUserId: string) => { // ← NUEVO
+  const openChatFromModal = (otherUserId: string) => {
     setConversationId(otherUserId); 
     setChatTargetId(otherUserId);
     setShowProfileModal(false);
@@ -322,7 +322,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           currentUserId={userId}
           onClose={() => setShowProfileModal(false)}
           showUpgradeButton={profile.tier === "free"}
-          openChat={openChatFromModal} // ← NUEVO
+          onOpenChat={openChatFromModal} // ✅ FIX APLICADO
         />
       )}
 
