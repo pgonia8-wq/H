@@ -22,8 +22,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [newPostContent, setNewPostContent] = useState("");
 
-  const [showDMModal, setShowDMModal] = useState(false);
-
   const { theme } = useContext(ThemeContext);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -32,13 +30,13 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const maxChars =
     profile?.tier === "premium+" ? 10000 : profile?.tier === "premium" ? 4000 : 280;
 
-  // 🔹 Fetch posts con precarga de 2 páginas si es reset
+  // 🔹 Fetch posts con precarga inicial de 2 páginas
   const fetchPosts = useCallback(
     async (reset = false) => {
       if (loading || (!hasMore && !reset)) return;
 
+      setLoading(true);
       try {
-        setLoading(true);
         const currentPage = reset ? 0 : page;
         const pagesToFetch = reset ? 2 : 1; // precarga inicial de 2 páginas
         let allNewPosts: any[] = [];
@@ -177,7 +175,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             className="px-5 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full"
           />
           <button
-            onClick={() => setShowDMModal(true)}
+            onClick={() => alert("Abrir modal DM aquí")}
             className="px-5 py-2 bg-gradient-to-r from-indigo-700 to-purple-700 rounded-full"
           >
             Mensajes
@@ -202,27 +200,19 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       </div>
 
       {/* Contenedor scroll único */}
-      <main
-        ref={containerRef}
-        className="w-full px-2 py-6 flex justify-center overflow-y-auto min-h-screen"
-      >
-        <div className="w-full max-w-xl">
-          <FeedPage
-            posts={posts}
-            loading={loading}
-            error={error}
-            currentUserId={userId}
-            userTier={profile?.tier || "free"}
-            onUpgradeSuccess={() => fetchOrCreateProfile(userId || "")}
-          />
+      <main ref={containerRef} className="min-h-screen w-full overflow-y-auto">
+        <FeedPage
+          posts={posts}
+          loading={loading}
+          error={error}
+          currentUserId={userId}
+          userTier={profile?.tier || "free"}
+          onUpgradeSuccess={() => fetchOrCreateProfile(userId || "")}
+        />
 
-          {/* Loader para scroll infinito */}
-          <div
-            ref={loaderRef}
-            className="h-10 flex items-center justify-center text-gray-500 text-sm"
-          >
-            {loading ? "Cargando..." : hasMore ? "" : "No hay más posts"}
-          </div>
+        {/* Loader para scroll infinito */}
+        <div ref={loaderRef} className="h-10 flex items-center justify-center text-gray-500 text-sm">
+          {loading ? "Cargando..." : hasMore ? "" : "No hay más posts"}
         </div>
       </main>
 
@@ -269,22 +259,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           onClose={() => setShowProfileModal(false)}
           showUpgradeButton={profile?.tier === "free"}
         />
-      )}
-
-      {/* Placeholder DM Modal */}
-      {showDMModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Enviar Mensaje</h2>
-            <p className="text-gray-400 mb-4">Modal de DM listo para implementar.</p>
-            <button
-              className="px-4 py-2 bg-purple-600 rounded-full text-white"
-              onClick={() => setShowDMModal(false)}
-            >
-              Cerrar
-            </button>
-          </div>
-        </div>
       )}
     </div>
   );
