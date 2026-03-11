@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import HomePage from "./pages/HomePage";
 import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
@@ -11,71 +11,94 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [miniKitReady, setMiniKitReady] = useState(false);
-  const walletLoading = useRef(false);
-
-  // Cargar ID de localStorage y forzar verificación si no hay
-  useEffect(() => {
-    const storedId = localStorage.getItem("userId");
-
-    if (storedId) {
-      setUserId(storedId);
-      setVerified(true);
-      console.log("[APP] ID cargado de localStorage:", storedId);
-    } else {
-      console.log("[APP] No hay ID en localStorage, forzando verificación...");
-      verifyUser(); // ← Se dispara automáticamente
-    }
-  }, []);
 
   // Inicializar MiniKit
   useEffect(() => {
-    const initMiniKit = async () => {
-      try {
-        console.log("[APP] Instalando MiniKit...");
+    try {
+      console.log("[APP] Instalando MiniKit...");
+      MiniKit.install({ appId: APP_ID });
+      const installed = MiniKit.isInstalled();
+      console.log("[APP] MiniKit.isInstalled():", installed);
+      if (!installed) {
+        console.error("[APP] MiniKit no está disponible");
+        setError("MiniKit no instalado");
+        return;
+      }
+      setMiniKitReady(true);
+      console.log("[APP] MiniKit listo");
+    } catch (err) {
+      console.error("[APP] Error instalando MiniKit:", err);
+      setError("Error instalando MiniKit");
+    }
+  }, []);
 
-        MiniKit.install({
-          appId: APP_ID,
+  // Verificación forzada
+  useEffect(() => {
+    const forceVerify = async () => {
+      if (!miniKitReady || verifying || verified) return;
+
+      console.log("[APP] Forzando verificación...");
+
+      setVerifying(true);
+      setError(null);
+
+      try {
+        const verifyRes = await MiniKit.commandsAsync.verify({
+          action: "verify-user",
+          verification_level: VerificationLevel.Device,
         });
 
-        const installed = MiniKit.isInstalled();
-        console.log("[APP] MiniKit.isInstalled():", installed);
+        console.log("[APP] Verify response:", verifyRes);
+        const proof = verifyRes?.finalPayload;
 
-        if (!installed) {
-          console.warn("[APP] MiniKit no está disponible");
-          return;
+        if (!proof || proof.status !== "success") {
+          throw new Error("Verificación cancelada o fallida");
         }
 
-        setMiniKitReady(true);
-        console.log("[APP] MiniKit listo");
-      } catch (err) {
-        console.error("[APP] Error instalando MiniKit:", err);
-        setError("Error instalando MiniKit");
+        // Enviar proof al backend
+        const res = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ payload: proof }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Backend error: ${text}`);
+        }
+
+        const backend = await res.json();
+        console.log("[APP] Backend verify:", backend);
+
+        if (backend.success) {
+          const id = proof.nullifier_hash;
+          setUserId(id);
+          setVerified(true);
+          console.log("[APP] Usuario verificado:", id);
+        } else {
+          throw new Error(backend.error || "Backend rechazó la prueba");
+        }
+      } catch (err: any) {
+        console.error("[APP] Error verificando usuario:", err);
+        setError(err.message || "Error verificando usuario");
+      } finally {
+        setVerifying(false);
       }
     };
 
-    initMiniKit();
-  }, []);
+    forceVerify();
+  }, [miniKitReady, verifying, verified]);
 
-  // Obtener wallet usando walletAuth
+  // Cargar wallet solo si hay userId
   useEffect(() => {
     const loadWallet = async () => {
-      if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
-        return;
-      }
-
-      walletLoading.current = true;
-
-      console.log("[APP] Iniciando walletAuth...");
+      if (!userId || wallet || !miniKitReady) return;
 
       try {
+        console.log("[APP] Iniciando walletAuth...");
         const nonceRes = await fetch("/api/nonce");
-
-        if (!nonceRes.ok) {
-          throw new Error("No se pudo obtener nonce");
-        }
-
+        if (!nonceRes.ok) throw new Error("No se pudo obtener nonce");
         const { nonce } = await nonceRes.json();
-
         console.log("[APP] Nonce recibido:", nonce);
 
         const auth = await MiniKit.commandsAsync.walletAuth({
@@ -93,100 +116,32 @@ const App = () => {
             auth.finalPayload.address ||
             auth.finalPayload.wallet_address ||
             null;
-
           if (address) {
             setWallet(address);
             console.log("[APP] Wallet obtenida:", address);
-          } else {
-            console.warn("[APP] WalletAuth success pero sin address");
           }
-        } else {
-          console.warn("[APP] walletAuth no fue success");
         }
       } catch (err: any) {
         console.error("[APP] Error walletAuth:", err);
         setError(err.message || "Error autenticando wallet");
-      } finally {
-        walletLoading.current = false;
       }
     };
 
     loadWallet();
-  }, [verified, wallet, verifying, miniKitReady]);
+  }, [userId, miniKitReady, wallet]);
 
-  const verifyUser = async () => {
-    if (verifying) return;
-    if (userId) {
-      console.log("[APP] Usuario ya verificado");
-      return;
-    }
-
-    setVerifying(true);
-    setError(null);
-
-    try {
-      if (!MiniKit.isInstalled()) {
-        throw new Error("MiniKit no instalado");
-      }
-
-      console.log("[APP] Iniciando verify...");
-
-      const verifyRes = await MiniKit.commandsAsync.verify({
-        action: "verify-user",
-        verification_level: VerificationLevel.Device,
-      });
-
-      console.log("[APP] Verify response:", verifyRes);
-
-      const proof = verifyRes?.finalPayload;
-
-      if (!proof || proof.status !== "success") {
-        throw new Error("Verificación cancelada o fallida");
-      }
-
-      const res = await fetch("/api/verify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          payload: proof,
-        }),
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Backend error: ${text}`);
-      }
-
-      const backend = await res.json();
-
-      console.log("[APP] Backend verify:", backend);
-
-      if (backend.success) {
-        const id = proof.nullifier_hash;
-
-        localStorage.setItem("userId", id);
-
-        setUserId(id);
-        setVerified(true);
-
-        console.log("[APP] Usuario verificado:", id);
-      } else {
-        throw new Error(backend.error || "Backend rechazó la prueba");
-      }
-    } catch (err: any) {
-      console.error("[APP] Verify error:", err);
-      setError(err.message || "Error verificando usuario");
-    } finally {
-      setVerifying(false);
-    }
-  };
+  // No renderizar HomePage hasta que usuario esté verificado
+  if (!verified) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-black text-white">
+        {verifying ? "Verificando usuario..." : error || "Esperando verificación..."}
+      </div>
+    );
+  }
 
   return (
     <HomePage
       userId={userId}
-      verifyUser={verifyUser}
       verified={verified}
       wallet={wallet}
       error={error}
