@@ -5,7 +5,6 @@ import FeedPage from "./FeedPage";
 import { ThemeContext } from "../lib/ThemeContext";
 import ProfileModal from "../components/ProfileModal";
 import ActionButton from "../components/ActionButton";
-import ChatPage from "./chat/ChatPage";
 
 const PAGE_SIZE = 8;
 
@@ -23,39 +22,44 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [newPostContent, setNewPostContent] = useState("");
 
+  const [showDMModal, setShowDMModal] = useState(false);
+
   const { theme } = useContext(ThemeContext);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const loaderRef = useRef<HTMLDivElement | null>(null);
 
-  const [chatTargetId, setChatTargetId] = useState<string | null>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-
   const maxChars =
     profile?.tier === "premium+" ? 10000 : profile?.tier === "premium" ? 4000 : 280;
 
-  // 🔹 Fetch posts con fix de loading
+  // 🔹 Fetch posts con precarga de 2 páginas si es reset
   const fetchPosts = useCallback(
     async (reset = false) => {
       if (loading || (!hasMore && !reset)) return;
 
       try {
         setLoading(true);
-        const from = reset ? 0 : page * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
+        const currentPage = reset ? 0 : page;
+        const pagesToFetch = reset ? 2 : 1; // precarga inicial de 2 páginas
+        let allNewPosts: any[] = [];
 
-        const { data, error } = await supabase
-          .from("posts")
-          .select("*")
-          .order("timestamp", { ascending: false })
-          .range(from, to);
+        for (let i = 0; i < pagesToFetch; i++) {
+          const from = (currentPage + i) * PAGE_SIZE;
+          const to = from + PAGE_SIZE - 1;
 
-        if (error) throw error;
+          const { data, error } = await supabase
+            .from("posts")
+            .select("*")
+            .order("timestamp", { ascending: false })
+            .range(from, to);
 
-        const newPosts = data || [];
-        setPosts((prev) => (reset ? newPosts : [...prev, ...newPosts]));
-        setHasMore(newPosts.length === PAGE_SIZE);
-        setPage(reset ? 1 : page + 1);
+          if (error) throw error;
+          allNewPosts = allNewPosts.concat(data || []);
+        }
+
+        setPosts((prev) => (reset ? allNewPosts : [...prev, ...allNewPosts]));
+        setHasMore(allNewPosts.length === PAGE_SIZE * pagesToFetch);
+        setPage((prev) => (reset ? pagesToFetch : prev + pagesToFetch));
       } catch (err: any) {
         console.error("[HOME] Error fetching posts:", err);
         setError(err.message);
@@ -109,18 +113,16 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   useEffect(() => {
     setUser({ userId });
     if (userId) fetchOrCreateProfile(userId);
-    fetchPosts(true);
+    fetchPosts(true); // precarga inicial
   }, [userId, fetchOrCreateProfile, fetchPosts, setUser]);
 
   // 🔹 IntersectionObserver para scroll infinito
   useEffect(() => {
-    if (!loaderRef.current) return;
+    if (!loaderRef.current || !containerRef.current) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          fetchPosts();
-        }
+        if (entries[0].isIntersecting) fetchPosts();
       },
       {
         root: containerRef.current,
@@ -162,22 +164,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
   };
 
-  // 🔹 Abrir DM desde ProfileModal (solo DM)
-  const openChatFromModal = (otherUserId: string) => {
-    setChatTargetId(otherUserId);
-    setConversationId(null); // Se crea conversación al enviar primer mensaje
-    setShowProfileModal(false);
-  };
-
   const handleRefresh = () => fetchPosts(true);
 
   return (
-    <div
-      ref={containerRef}
-      className={`min-h-screen overflow-y-auto ${
-        theme === "dark" ? "bg-black text-white" : "bg-white text-black"
-      }`}
-    >
+    <div className={`${theme === "dark" ? "bg-black text-white" : "bg-white text-black"}`}>
       <header className="sticky top-0 z-20 w-full px-4 py-3 flex items-center justify-between border-b border-white/10 bg-black/90 backdrop-blur-xl">
         Humans
         <div className="flex gap-3">
@@ -187,10 +177,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             className="px-5 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full"
           />
           <button
-            onClick={() => {}}
+            onClick={() => setShowDMModal(true)}
             className="px-5 py-2 bg-gradient-to-r from-indigo-700 to-purple-700 rounded-full"
           >
-            Chat
+            Mensajes
           </button>
         </div>
         <div className="flex items-center gap-3">
@@ -211,7 +201,11 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         Tirar para refrescar
       </div>
 
-      <main className="w-full px-2 py-6 flex justify-center">
+      {/* Contenedor scroll único */}
+      <main
+        ref={containerRef}
+        className="w-full px-2 py-6 flex justify-center overflow-y-auto min-h-screen"
+      >
         <div className="w-full max-w-xl">
           <FeedPage
             posts={posts}
@@ -222,7 +216,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             onUpgradeSuccess={() => fetchOrCreateProfile(userId || "")}
           />
 
-          {/* Loader para IntersectionObserver */}
+          {/* Loader para scroll infinito */}
           <div
             ref={loaderRef}
             className="h-10 flex items-center justify-center text-gray-500 text-sm"
@@ -232,6 +226,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         </div>
       </main>
 
+      {/* Modal Nuevo Post */}
       {showNewPostModal && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg">
@@ -266,26 +261,30 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         </div>
       )}
 
+      {/* Modal Perfil */}
       {showProfileModal && (
         <ProfileModal
           id={userId}
           currentUserId={userId}
           onClose={() => setShowProfileModal(false)}
           showUpgradeButton={profile?.tier === "free"}
-          onOpenChat={openChatFromModal}
         />
       )}
 
-      {chatTargetId && (
-        <ChatPage
-          currentUserId={userId}
-          conversationId={conversationId}
-          otherUserId={chatTargetId}
-          onClose={() => {
-            setChatTargetId(null);
-            setConversationId(null);
-          }}
-        />
+      {/* Placeholder DM Modal */}
+      {showDMModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-gray-900 p-6 rounded-2xl w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Enviar Mensaje</h2>
+            <p className="text-gray-400 mb-4">Modal de DM listo para implementar.</p>
+            <button
+              className="px-4 py-2 bg-purple-600 rounded-full text-white"
+              onClick={() => setShowDMModal(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
