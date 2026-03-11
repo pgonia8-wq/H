@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import HomePage from "./pages/HomePage";
 import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
@@ -11,7 +11,7 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [miniKitReady, setMiniKitReady] = useState(false);
-
+  const walletLoading = useRef(false);
   // Cargar ID de localStorage
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
@@ -57,7 +57,11 @@ const App = () => {
   // Obtener wallet usando walletAuth
   useEffect(() => {
     const loadWallet = async () => {
-      if (!verified || wallet || verifying || !miniKitReady) return;
+      if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
+  return;
+}
+
+walletLoading.current = true;
 
       console.log("[APP] Iniciando walletAuth...");
 
@@ -75,8 +79,8 @@ const App = () => {
         const auth = await MiniKit.commandsAsync.walletAuth({
           nonce,
           requestId: "wallet-auth-" + Date.now(),
-          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          notBefore: new Date(Date.now() - 60 * 1000),
+          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+notBefore: new Date(Date.now() - 60 * 1000).toISOString(),
           statement: "Autenticar wallet para H humans",
         });
 
