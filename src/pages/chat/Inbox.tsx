@@ -1,4 +1,4 @@
-// src/pages/chat/Inbox.tsx
+import ChatWindow from "./ChatWindow";
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 
