@@ -11,7 +11,6 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [miniKitReady, setMiniKitReady] = useState(false);
-
   const walletLoading = useRef(false);
 
   // Cargar ID desde localStorage
@@ -32,7 +31,6 @@ const App = () => {
       try {
         console.log("[APP] Instalando MiniKit...");
         MiniKit.install({ appId: APP_ID });
-
         const installed = MiniKit.isInstalled();
         console.log("[APP] MiniKit.isInstalled():", installed);
 
@@ -45,7 +43,6 @@ const App = () => {
         setMiniKitReady(true);
         console.log("[APP] MiniKit listo");
 
-        // Guardar wallet si ya existe
         if (MiniKit.walletAddress) {
           setWallet(MiniKit.walletAddress);
           console.log("[APP] Wallet detectada:", MiniKit.walletAddress);
@@ -55,7 +52,6 @@ const App = () => {
         setError("Error instalando MiniKit");
       }
     };
-
     initMiniKit();
   }, []);
 
@@ -97,11 +93,13 @@ const App = () => {
         console.log("[APP] Backend verify:", backend);
 
         if (backend.success) {
+          // 🔑 Guardamos en localStorage antes de actualizar state
           const id = proof.nullifier_hash;
           localStorage.setItem("userId", id);
+
           setUserId(id);
           setVerified(true);
-          console.log("[APP] Usuario verificado:", id);
+          console.log("[APP] Usuario verificado y guardado:", id);
         } else {
           throw new Error(backend.error || "Backend rechazó la prueba");
         }
@@ -112,7 +110,6 @@ const App = () => {
         setVerifying(false);
       }
     };
-
     forceVerify();
   }, [miniKitReady, userId, verified, verifying]);
 
@@ -149,6 +146,15 @@ const App = () => {
           if (address) {
             setWallet(address);
             console.log("[APP] Wallet obtenida:", address);
+
+            // 🔑 Guardamos userId en localStorage si todavía no se había guardado
+            if (!userId && auth.finalPayload.nullifier_hash) {
+              const id = auth.finalPayload.nullifier_hash;
+              localStorage.setItem("userId", id);
+              setUserId(id);
+              setVerified(true);
+              console.log("[APP] userId actualizado desde walletAuth:", id);
+            }
           } else {
             console.warn("[APP] WalletAuth success pero sin address");
           }
@@ -164,7 +170,7 @@ const App = () => {
     };
 
     loadWallet();
-  }, [verified, wallet]);
+  }, [verified, wallet, userId]);
 
   return (
     <HomePage
