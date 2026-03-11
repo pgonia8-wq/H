@@ -1,21 +1,45 @@
+// src/pages/chat/Inbox.tsx
 import React, { useEffect, useState } from "react";
 import { supabase } from "../../supabaseClient";
 
 interface InboxProps {
   currentUserId: string | null;
-  openChat: (conversationId: string, otherUserId: string) => void;
+  onClose: () => void;
 }
 
-const Inbox: React.FC<InboxProps> = ({ currentUserId, openChat }) => {
-  const [conversations, setConversations] = useState<any[]>([]);
+interface Conversation {
+  id: string;
+  user1_id: string;
+  user2_id: string;
+  last_message: string | null;
+  last_message_time: string | null;
+}
+
+interface Profile {
+  id: string;
+  name: string;
+  username: string;
+  avatar_url?: string;
+}
+
+const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [messageText, setMessageText] = useState("");
+  const [matchIds, setMatchIds] = useState<string[]>([]);
+  const [profilesCache, setProfilesCache] = useState<Record<string, Profile>>({});
+  const [newMatches, setNewMatches] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!currentUserId) return; // <<< FIX: no fetch si no hay ID
-    load();
+    if (!currentUserId) return;
+    loadConversations();
+    loadMatches();
   }, [currentUserId]);
 
-  const load = async () => {
+  const loadConversations = async () => {
     if (!currentUserId) return;
     setLoading(true);
     try {
@@ -28,6 +52,9 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, openChat }) => {
       if (error) throw error;
 
       setConversations(data || []);
+      // precargar perfiles de otros usuarios
+      const otherIds = (data || []).map(c => (c.user1_id === currentUserId ? c.user2_id : c.user1_id));
+      await loadProfiles(otherIds);
     } catch (err: any) {
       console.error("[INBOX] Error cargando conversaciones:", err.message);
     } finally {
@@ -35,40 +62,188 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, openChat }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400">Cargando conversaciones...</p>
-      </div>
-    );
-  }
+  const loadMatches = async () => {
+    if (!currentUserId) return;
+    try {
+      const { data: following } = await supabase
+        .from("follows")
+        .select("following_id")
+        .eq("follower_id", currentUserId);
 
-  if (conversations.length === 0) {
+      const { data: followers } = await supabase
+        .from("follows")
+        .select("follower_id")
+        .eq("following_id", currentUserId);
+
+      const followingIds = following?.map(f => f.following_id) || [];
+      const followerIds = followers?.map(f => f.follower_id) || [];
+      const matches = followingIds.filter(id => followerIds.includes(id));
+      setMatchIds(matches);
+
+      // identificar nuevos matches
+      setNewMatches(matches);
+    } catch (err: any) {
+      console.error("[INBOX] Error cargando matches:", err.message);
+    }
+  };
+
+  const loadProfiles = async (ids: string[]) => {
+    const toLoad = ids.filter(id => !profilesCache[id]);
+    if (toLoad.length === 0) return;
+
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id,name,username,avatar_url")
+        .in("id", toLoad);
+
+      if (data) {
+        const newCache = { ...profilesCache };
+        data.forEach(p => (newCache[p.id] = p));
+        setProfilesCache(newCache);
+      }
+    } catch (err: any) {
+      console.error("[INBOX] Error cargando perfiles:", err.message);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!currentUserId || !query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,name,username,avatar_url")
+        .ilike("username", `%${query}%`)
+        .limit(10);
+
+      if (error) throw error;
+
+      const filtered = (data || []).filter(u => matchIds.includes(u.id));
+      setSearchResults(filtered);
+
+      // cachear perfiles
+      const newCache = { ...profilesCache };
+      filtered.forEach(u => (newCache[u.id] = u));
+      setProfilesCache(newCache);
+    } catch (err: any) {
+      console.error("[INBOX] Error buscando usuarios:", err.message);
+      setSearchResults([]);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!selectedUser || !currentUserId || !messageText.trim()) return;
+    try {
+      const conversationId = [currentUserId, selectedUser.id].sort().join("-");
+      const { error } = await supabase
+        .from("messages")
+        .insert({
+          conversation_id: conversationId,
+          sender_id: currentUserId,
+          receiver_id: selectedUser.id,
+          content: messageText.trim(),
+          timestamp: new Date().toISOString(),
+        });
+      if (error) throw error;
+
+      setMessageText("");
+      setSelectedUser(null);
+      loadConversations();
+    } catch (err: any) {
+      console.error("[INBOX] Error enviando mensaje:", err.message);
+    }
+  };
+
+  if (!currentUserId) return <div className="p-4 text-gray-400 text-center">No hay usuario logueado.</div>;
+
+  const renderProfile = (id: string) => {
+    const p = profilesCache[id];
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-gray-400">No hay conversaciones aún</p>
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-white">
+          {p?.avatar_url ? <img src={p.avatar_url} className="w-full h-full rounded-full object-cover" /> : (p?.name?.[0] || p?.username?.[0])}
+        </div>
+        <div className="text-white">{p?.username || id.slice(0, 10)}</div>
+        {newMatches.includes(id) && <span className="ml-1 px-1.5 py-0.5 bg-green-500 text-xs rounded">nuevo</span>}
       </div>
     );
-  }
+  };
 
   return (
-    <div className="p-4 space-y-2">
-      {conversations.map((c) => {
-        const otherId = c.user1_id === currentUserId ? c.user2_id : c.user1_id;
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-2">
+      <div className="bg-gray-900 rounded-2xl p-4 w-full max-w-md border border-white/10 h-[80vh] flex flex-col">
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="text-white font-bold text-lg">Mensajes</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">Cerrar</button>
+        </div>
 
-        return (
-          <div
-            key={c.id}
-            onClick={() => openChat(c.id, otherId)} // <<< FIX INSERTADO
-            className="flex items-center justify-between p-3 bg-gray-900 rounded cursor-pointer hover:bg-gray-800"
-          >
-            <div>
-              <div className="font-bold">{otherId.slice(0, 10)}</div>
-              <div className="text-sm text-gray-400">{c.last_message}</div>
-            </div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => handleSearch(e.target.value)}
+          placeholder="Buscar seguidores..."
+          className="w-full mb-2 p-2 rounded bg-gray-800 text-white focus:outline-none"
+        />
+
+        {searchResults.length > 0 && (
+          <div className="mb-2 max-h-40 overflow-y-auto">
+            {searchResults.map(u => (
+              <div
+                key={u.id}
+                onClick={() => setSelectedUser(u)}
+                className="flex items-center p-2 cursor-pointer hover:bg-gray-700 rounded"
+              >
+                {renderProfile(u.id)}
+              </div>
+            ))}
           </div>
-        );
-      })}
+        )}
+
+        <div className="flex-1 overflow-y-auto mb-2">
+          {loading ? (
+            <p className="text-gray-400 text-center mt-4">Cargando conversaciones...</p>
+          ) : conversations.length === 0 ? (
+            <p className="text-gray-400 text-center mt-4">No hay conversaciones aún</p>
+          ) : (
+            conversations.map(c => {
+              const otherId = c.user1_id === currentUserId ? c.user2_id : c.user1_id;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setSelectedUser(profilesCache[otherId] || { id: otherId, name: "", username: otherId })}
+                  className="flex items-center justify-between p-2 bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-700"
+                >
+                  {renderProfile(otherId)}
+                  <div className="text-gray-400 text-sm">{c.last_message}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {selectedUser && matchIds.includes(selectedUser.id) && (
+          <div className="mt-2 flex gap-2">
+            <input
+              type="text"
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              placeholder={`Enviar mensaje a ${selectedUser.username}`}
+              className="flex-1 p-2 rounded bg-gray-800 text-white focus:outline-none"
+            />
+            <button
+              onClick={handleSendMessage}
+              className="px-4 py-2 bg-purple-600 rounded text-white font-medium"
+            >
+              Enviar
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
