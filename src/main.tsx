@@ -8,10 +8,10 @@ import { UserProvider } from './context/UserContext'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <MiniKitProvider appId="app_6a98c88249208506dcd4e04b529111fc">
-    <ThemeProvider>
-      <UserProvider>
+    <UserProvider>
+      <ThemeProvider>
         <App />
-      </UserProvider>
-    </ThemeProvider>
+      </ThemeProvider>
+    </UserProvider>
   </MiniKitProvider>
 )
