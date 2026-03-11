@@ -1,4 +1,3 @@
-// src/pages/HomePage.tsx
 import React, { useEffect, useState, useRef, useCallback, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import FeedPage from "./FeedPage";
@@ -110,6 +109,45 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   }, [userId]);
 
   /* ------------------------------
+     REALTIME POSTS
+  ------------------------------ */
+
+  useEffect(() => {
+
+    const channel = supabase
+      .channel("realtime-posts")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "posts"
+        },
+        payload => {
+
+          const newPost = payload.new;
+
+          setPosts(prev => {
+
+            if (prev.find(p => p.id === newPost.id)) {
+              return prev;
+            }
+
+            return [newPost, ...prev];
+
+          });
+
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+
+  }, []);
+
+  /* ------------------------------
      SCROLL INFINITO
   ------------------------------ */
 
@@ -121,16 +159,19 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
 
-      if (scrollTop + clientHeight >= scrollHeight - 100) {
+      if (scrollTop + clientHeight >= scrollHeight - 120) {
         fetchPosts();
       }
 
     };
 
-    containerRef.current?.addEventListener("scroll", handleScroll);
+    const el = containerRef.current;
 
-    return () =>
-      containerRef.current?.removeEventListener("scroll", handleScroll);
+    el?.addEventListener("scroll", handleScroll);
+
+    return () => {
+      el?.removeEventListener("scroll", handleScroll);
+    };
 
   }, [fetchPosts]);
 
@@ -169,21 +210,22 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         {
           event: "INSERT",
           schema: "public",
-          table: "messages",
-          filter: `receiver_id=eq.${userId}`
+          table: "messages"
         },
-        () => {
+        payload => {
 
-          setUnreadMessages(prev => prev + 1);
+          const msg = payload.new;
+
+          if (msg.receiver_id === userId) {
+            setUnreadMessages(prev => prev + 1);
+          }
 
         }
       )
       .subscribe();
 
     return () => {
-
       supabase.removeChannel(channel);
-
     };
 
   }, [userId]);
@@ -222,8 +264,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     setShowNewPostModal(false);
     setNewPostContent("");
 
-    fetchPosts(true);
-
   };
 
   /* ------------------------------
@@ -241,8 +281,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       }`}
     >
 
-      {/* HEADER */}
-
       <header className="sticky top-0 z-20 w-full px-4 py-3 flex items-center justify-between border-b border-white/10 backdrop-blur-xl">
 
         <img
@@ -257,8 +295,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             onClick={() => setShowNewPostModal(true)}
             className="px-5 py-2 bg-gray-800 rounded-full"
           />
-
-          {/* BOTON MENSAJES */}
 
           <button
             onClick={() => {
@@ -277,8 +313,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
           </button>
 
-          {/* THEME BUTTON */}
-
           <button
             onClick={toggleTheme}
             className="px-4 py-2 bg-gray-700 rounded-full"
@@ -288,8 +322,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
         </div>
 
-        {/* PROFILE */}
-
         <div
           className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center cursor-pointer"
           onClick={() => setShowProfileModal(true)}
@@ -298,8 +330,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         </div>
 
       </header>
-
-      {/* FEED */}
 
       <main className="w-full px-2 py-6 flex justify-center">
 
@@ -312,8 +342,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         />
 
       </main>
-
-      {/* MODAL POST */}
 
       {showNewPostModal && (
 
@@ -356,8 +384,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       )}
 
-      {/* PROFILE MODAL */}
-
       {showProfileModal && (
 
         <ProfileModal
@@ -368,8 +394,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         />
 
       )}
-
-      {/* INBOX */}
 
       {showInbox && userId && (
 
