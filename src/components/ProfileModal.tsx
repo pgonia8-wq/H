@@ -10,7 +10,7 @@ interface ProfileModalProps {
   onClose: () => void;
   currentUserId: string | null;
   showUpgradeButton?: boolean;
-  onOpenChat?: (otherUserId: string) => void; // <<< FIX INSERTADO
+  onOpenChat?: (otherUserId: string) => void;
 }
 
 interface UserProfile {
@@ -48,6 +48,7 @@ const emptyProfile: UserProfile = {
 };
 
 const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId, onOpenChat }) => {
+
   const [profile, setProfile] = useState<UserProfile>(emptyProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,24 +59,20 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
   const { theme } = useContext(ThemeContext);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!id && loading) {
-    return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <p className="text-white">Cargando perfil...</p>
-      </div>
-    );
-  }
-
   useEffect(() => {
+
     if (!id) return setLoading(false);
 
     const fetchProfile = async () => {
+
       try {
+
         const { data, error } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", id)
           .maybeSingle();
+
         if (error) throw error;
 
         setProfile({
@@ -90,20 +87,31 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
         });
 
         setBioLength(data?.bio?.length || 0);
+
       } catch (err: any) {
+
         setToast({ message: err.message, type: "error" });
+
       } finally {
+
         setLoading(false);
+
       }
+
     };
 
     fetchProfile();
+
   }, [id]);
 
   const handleSave = async () => {
+
     if (!id) return;
+
     setSaving(true);
+
     try {
+
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -115,37 +123,73 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
           profile_visible: profile.profile_visible,
         })
         .eq("id", id);
+
       if (error) throw error;
+
       setToast({ message: "Perfil guardado", type: "success" });
+
     } catch (err: any) {
+
       setToast({ message: "Error guardando perfil", type: "error" });
+
     } finally {
+
       setSaving(false);
+
     }
+
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+
     const file = e.target.files?.[0];
+
     if (!file || !id) return;
+
     setUploadingAvatar(true);
+
     try {
-      const { data, error } = await supabase.storage
-        .from("avatars")
-        .upload(`${id}/${file.name}`, file);
-      if (error) throw error;
 
-      const { data: publicURLData } = supabase.storage
-        .from("avatars")
-        .getPublicUrl(data.path);
-      const publicUrl = publicURLData.publicUrl;
+      const fileExt = file.name.split(".").pop();
 
-      await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", id);
-      setProfile(prev => ({ ...prev, avatar_url: publicUrl }));
+      const fileName = `${id}.${fileExt}`;
+
+      const { error: uploadError } = await supabase
+        .storage
+        .from("avatars")
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase
+        .storage
+        .from("avatars")
+        .getPublicUrl(fileName);
+
+      const avatarUrl = data.publicUrl;
+
+      await supabase
+        .from("profiles")
+        .update({ avatar_url: avatarUrl })
+        .eq("id", id);
+
+      setProfile(prev => ({
+        ...prev,
+        avatar_url: avatarUrl
+      }));
+
+      setToast({ message: "Avatar actualizado", type: "success" });
+
     } catch (err: any) {
+
       setToast({ message: err.message, type: "error" });
+
     } finally {
+
       setUploadingAvatar(false);
+
     }
+
   };
 
   const toggleProfileVisibility = () => {
@@ -153,18 +197,24 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
   };
 
   const handlePremiumChat = async () => {
+
     if (!currentUserId) {
+
       setToast({ message: "No se encontró tu ID", type: "error" });
       return;
+
     }
 
     if (profile.tier === "premium" || profile.tier === "premium+") {
+
       window.location.href = "/chat/premium";
       return;
+
     }
 
     try {
-      if (!MiniKit.isInstalled()) throw new Error("MiniKit no detectado dentro de World App");
+
+      if (!MiniKit.isInstalled()) throw new Error("MiniKit no detectado");
 
       const payRes = await MiniKit.commandsAsync.pay({
         reference: "premium-chat-" + Date.now(),
@@ -174,7 +224,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
       });
 
       if (payRes?.finalPayload?.status !== "success") {
+
         throw new Error(payRes?.finalPayload?.description || "Pago cancelado");
+
       }
 
       const transactionId = payRes?.finalPayload?.transaction_id;
@@ -185,35 +237,51 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
         body: JSON.stringify({ userId: currentUserId, transactionId }),
       });
 
-      alert("¡Suscripción exitosa! Abriendo chat...");
+      alert("¡Suscripción exitosa!");
+
       window.location.href = "/chat/premium";
+
     } catch (err: any) {
-      setToast({ message: err.message || "Error en el pago", type: "error" });
+
+      setToast({ message: err.message || "Error en pago", type: "error" });
+
     }
+
   };
 
   return (
+
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-2 overflow-y-auto">
+
       <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10 space-y-4">
+
         {loading ? (
-          <p>Cargando perfil...</p>
+
+          <p className="text-white">Cargando perfil...</p>
+
         ) : (
+
           <>
+
             <h2 className="text-xl font-bold text-white">Tu Perfil</h2>
 
             <div className="flex items-center gap-3">
+
               <div className="relative">
+
                 <img
                   src={profile.avatar_url || "/default-avatar.png"}
                   alt="Avatar"
                   className="w-20 h-20 rounded-full object-cover"
                 />
+
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute bottom-0 right-0 bg-purple-600 p-1 rounded-full"
+                  className="absolute bottom-0 right-0 bg-purple-600 p-2 rounded-full text-xs"
                 >
-                  ✏️
+                  {uploadingAvatar ? "..." : "✏️"}
                 </button>
+
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -221,35 +289,36 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
                   className="hidden"
                   accept="image/*"
                 />
+
               </div>
 
               <div>
+
                 <p className="text-white font-bold">{profile.name || "Tu nombre"}</p>
+
                 <input
                   value={profile.username || `@${id?.slice(0, 10)}`}
                   disabled
                   className="bg-transparent text-gray-400 cursor-not-allowed outline-none"
                 />
+
               </div>
+
             </div>
 
-            {/* Botón DM con fix */}
             <button
               onClick={() => {
-                if (onOpenChat) {
-                  onOpenChat(profile.id); // si el padre pasó la función, úsala
-                } else if (profile.id) {
-                  window.location.href = `/inbox/${profile.id}`; // fallback directo
-                }
+                if (onOpenChat) onOpenChat(profile.id);
+                else if (profile.id) window.location.href = `/inbox/${profile.id}`;
               }}
-              className="w-full py-3 bg-purple-600 text-white rounded-full font-medium"
+              className="w-full py-3 bg-purple-600 text-white rounded-full"
             >
               Enviar Mensaje
             </button>
 
             <button
               onClick={handlePremiumChat}
-              className="w-full py-3 bg-pink-600 text-white rounded-full font-medium"
+              className="w-full py-3 bg-pink-600 text-white rounded-full"
             >
               Abrir Chat Exclusivo para Creadores de Tokens
             </button>
@@ -271,6 +340,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
               }}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white"
             />
+
             <p className="text-gray-500 text-sm text-right">{bioLength}/160</p>
 
             <input
@@ -279,12 +349,14 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
               onChange={(e) => setProfile({ ...profile, birthdate: e.target.value })}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white"
             />
+
             <input
               value={profile.city || ""}
               onChange={(e) => setProfile({ ...profile, city: e.target.value })}
               placeholder="Ciudad"
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white"
             />
+
             <input
               value={profile.country || ""}
               onChange={(e) => setProfile({ ...profile, country: e.target.value })}
@@ -293,6 +365,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
             />
 
             <div className="flex gap-3">
+
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -300,14 +373,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
               >
                 {saving ? "Guardando..." : "Guardar"}
               </button>
+
               <button
                 onClick={onClose}
                 className="flex-1 py-3 bg-red-600 text-white rounded-full"
               >
                 Cancelar
               </button>
+
             </div>
+
           </>
+
         )}
 
         {toast && (
@@ -315,9 +392,13 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
             {toast.message}
           </p>
         )}
+
       </div>
+
     </div>
+
   );
+
 };
 
 export default ProfileModal;
