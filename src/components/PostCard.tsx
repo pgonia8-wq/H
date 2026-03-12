@@ -5,7 +5,7 @@ import { useFollow } from "../lib/useFollow";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
 
 interface PostCardProps {
-  post: any;
+  post: any; // post ya combinado con profile info desde post_feed
   currentUserId: string | null;
 }
 
@@ -20,77 +20,48 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const [reposts, setReposts] = useState(post.reposts || 0);
   const [commentInput, setCommentInput] = useState("");
   const [showCommentInput, setShowCommentInput] = useState(false);
-  const [loadingAction, setLoadingAction] = useState<"like" | "comment" | "repost" | "tip" | "boost" | "follow" | null>(null);
+  const [loadingAction, setLoadingAction] = useState<
+    "like" | "comment" | "repost" | "tip" | "boost" | "follow" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Estados para comentarios
   const [showComments, setShowComments] = useState(false);
   const [commentsList, setCommentsList] = useState<any[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
-  const [showTipModal, setShowTipModal] = useState(false);
-  const [tipAmount, setTipAmount] = useState<number>(1);
-  const [showBoostModal, setShowBoostModal] = useState(false);
-  const [boostAmount, setBoostAmount] = useState<number>(5);
 
   const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
 
-  // Real-time para likes, comments, reposts
+  // Cargar comentarios cuando se abra la lista
   useEffect(() => {
-    if (!post.id) return;
+    if (showComments && post.id) {
+      const fetchComments = async () => {
+        setLoadingComments(true);
+        try {
+          const { data, error } = await supabase
+            .from("comments")
+            .select(`
+              *,
+              user_id
+            `)
+            .eq("post_id", post.id)
+            .order("timestamp", { ascending: false })
+            .limit(10);
 
-    const channel = supabase
-      .channel(`post-${post.id}`)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "posts", filter: `id=eq.${post.id}` },
-        (payload) => {
-          if (payload.new.likes !== likes) setLikes(payload.new.likes);
-          if (payload.new.comments !== comments) setComments(payload.new.comments);
-          if (payload.new.reposts !== reposts) setReposts(payload.new.reposts);
+          if (error) throw error;
+          setCommentsList(data || []);
+        } catch (err: any) {
+          console.error("Error cargando comentarios:", err);
+        } finally {
+          setLoadingComments(false);
         }
-      )
-      .subscribe();
+      };
 
-    return () => supabase.removeChannel(channel);
-  }, [post.id, likes, comments, reposts]);
-
-  // Cargar comentarios (manual, join con perfiles)
-  useEffect(() => {
-    if (!showComments || !post.id) return;
-
-    const fetchComments = async () => {
-      setLoadingComments(true);
-      try {
-        const { data: commentsData, error: commentsError } = await supabase
-          .from("comments")
-          .select("*")
-          .eq("post_id", post.id)
-          .order("timestamp", { ascending: false })
-          .limit(10);
-
-        if (commentsError) throw commentsError;
-
-        const userIds = Array.from(new Set(commentsData.map((c) => c.user_id)));
-        const { data: profilesData } = await supabase
-          .from("profiles")
-          .select("id, username, avatar_url")
-          .in("id", userIds);
-
-        const commentsWithProfiles = commentsData.map(c => ({
-          ...c,
-          profiles: profilesData?.find(p => p.id === c.user_id) || null
-        }));
-
-        setCommentsList(commentsWithProfiles);
-      } catch (err: any) {
-        console.error("Error cargando comentarios:", err);
-      } finally {
-        setLoadingComments(false);
-      }
-    };
-
-    fetchComments();
+      fetchComments();
+    }
   }, [showComments, post.id]);
 
+  // Manejo de like con tabla intermedia likes
   const handleLike = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
     setLoadingAction("like");
@@ -104,12 +75,17 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         .maybeSingle();
 
       if (existingLike) {
+        // Quitar like
         await supabase.from("likes").delete().eq("id", existingLike.id);
         await supabase.from("posts").update({ likes: likes - 1 }).eq("id", post.id);
         setLiked(false);
         setLikes(likes - 1);
       } else {
-        await supabase.from("likes").insert({ post_id: post.id, user_id: currentUserId });
+        // Dar like
+        await supabase.from("likes").insert({
+          post_id: post.id,
+          user_id: currentUserId,
+        });
         await supabase.from("posts").update({ likes: likes + 1 }).eq("id", post.id);
         setLiked(true);
         setLikes(likes + 1);
@@ -128,18 +104,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     setLoadingAction("comment");
 
     try {
-      await supabase.from("comments").insert({
-        post_id: post.id,
-        user_id: currentUserId,
-        content: commentInput.trim(),
-        timestamp: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from("comments")
+        .insert({
+          post_id: post.id,
+          user_id: currentUserId,
+          content: commentInput.trim(),
+          timestamp: new Date().toISOString(),
+        });
+
+      if (error) throw error;
 
       await supabase.from("posts").update({ comments: comments + 1 }).eq("id", post.id);
+
       setCommentInput("");
       setShowCommentInput(false);
       setComments(comments + 1);
-      setShowComments(true); // refrescar lista
     } catch (err: any) {
       setError("Error al comentar: " + err.message);
     } finally {
@@ -154,12 +134,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     setLoadingAction("repost");
 
     try {
-      await supabase.from("reposts").insert({
-        post_id: post.id,
-        user_id: currentUserId,
-        timestamp: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from("reposts")
+        .insert({
+          post_id: post.id,
+          user_id: currentUserId,
+          timestamp: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
       await supabase.from("posts").update({ reposts: reposts + 1 }).eq("id", post.id);
+
       setReposts(reposts + 1);
     } catch (err: any) {
       setError("Error al repostear: " + err.message);
@@ -168,82 +154,79 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
-  const handleTip = async () => {
-    setShowTipModal(true);
-  };
+  const [tipAmount, setTipAmount] = useState(1);
+  const [boostAmount, setBoostAmount] = useState(5);
 
   const confirmTip = async () => {
-    if (!currentUserId) return setError("Debes estar logueado");
-    setLoadingAction("tip");
+    if (!currentUserId) return alert("Debes estar logueado");
     try {
-      const payRes = await MiniKit.commandsAsync.pay({
+      const res = await MiniKit.commandsAsync.pay({
         reference: `tip-${post.id}-${Date.now()}`,
         to: RECEIVER,
-        tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(tipAmount, Tokens.WLD).toString() }],
+        tokens: [
+          { symbol: Tokens.WLD, token_amount: tokenToDecimals(tipAmount, Tokens.WLD).toString() },
+        ],
         description: "Tip a post",
       });
-      if (payRes?.finalPayload?.status !== "success") throw new Error("Pago fallido");
-      alert("¡Tip enviado!");
-    } catch (err: any) {
-      setError("Error en tip: " + err.message);
-    } finally {
-      setLoadingAction(null);
-      setShowTipModal(false);
+      if (res?.finalPayload?.status === "success") {
+        alert("¡Tip enviado!");
+      } else {
+        alert("Pago fallido");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error al procesar el pago");
     }
-  };
-
-  const handleBoost = async () => {
-    setShowBoostModal(true);
   };
 
   const confirmBoost = async () => {
-    if (!currentUserId) return setError("Debes estar logueado");
-    setLoadingAction("boost");
+    if (!currentUserId) return alert("Debes estar logueado");
     try {
-      const payRes = await MiniKit.commandsAsync.pay({
+      const res = await MiniKit.commandsAsync.pay({
         reference: `boost-${post.id}-${Date.now()}`,
         to: RECEIVER,
-        tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(boostAmount, Tokens.WLD).toString() }],
+        tokens: [
+          { symbol: Tokens.WLD, token_amount: tokenToDecimals(boostAmount, Tokens.WLD).toString() },
+        ],
         description: "Boost a post",
       });
-      if (payRes?.finalPayload?.status !== "success") throw new Error("Pago fallido");
-      alert("¡Boost enviado!");
-    } catch (err: any) {
-      setError("Error en boost: " + err.message);
-    } finally {
-      setLoadingAction(null);
-      setShowBoostModal(false);
+      if (res?.finalPayload?.status === "success") {
+        alert("¡Boost enviado!");
+      } else {
+        alert("Pago fallido");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error al procesar el pago");
     }
-  };
-
-  const handleChatTokens = () => {
-    window.location.href = "/chat/tokens";
   };
 
   return (
     <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700 mb-4 shadow-md`}>
-      {/* Header del post */}
+      {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-800 border-2 border-purple-600">
-          {post.profiles?.avatar_url ? (
-            <img src={post.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+          {post.avatar_url ? (
+            <img src={post.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white text-xl font-bold">
-              {post.profiles?.username?.[0]?.toUpperCase() || "?"}
+              {post.username?.[0]?.toUpperCase() || "?"}
             </div>
           )}
         </div>
 
         <div className="flex-1">
-          <p className="font-bold text-lg">{post.profiles?.username || `@anon-${post.user_id.slice(0,8)}`}</p>
-          <p className="text-sm text-gray-500">@{post.user_id.slice(0,8)}</p>
+          <p className="font-bold text-lg">{post.username || `@anon-${post.user_id.slice(0, 8)}`}</p>
+          <p className="text-sm text-gray-500">@{post.user_id.slice(0, 8)}</p>
         </div>
 
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
             className={`ml-auto px-4 py-1 rounded-full text-sm font-medium transition ${
-              isFollowing ? "bg-gray-700 text-gray-300 hover:bg-gray-600" : "bg-purple-600 text-white hover:bg-purple-700"
+              isFollowing
+                ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                : "bg-purple-600 text-white hover:bg-purple-700"
             }`}
           >
             {isFollowing ? "Siguiendo" : "Seguir"}
@@ -257,30 +240,62 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* Acciones */}
       <div className="flex justify-between items-center text-gray-400 text-sm mt-4">
         <div className="flex gap-8">
-          <button onClick={handleLike} disabled={loadingAction === "like"} className={`flex items-center gap-1 transition ${liked ? "text-red-500" : "hover:text-red-500"}`}>
+          <button
+            onClick={handleLike}
+            disabled={loadingAction === "like"}
+            className={`flex items-center gap-1 transition ${liked ? "text-red-500" : "hover:text-red-500"}`}
+          >
             {liked ? "❤️" : "♡"} {likes}
           </button>
-          <button onClick={() => setShowCommentInput(!showCommentInput)} className="flex items-center gap-1 hover:text-blue-500 transition">
+
+          <button
+            onClick={() => setShowCommentInput(!showCommentInput)}
+            className="flex items-center gap-1 hover:text-blue-500 transition"
+          >
             💬 {comments}
           </button>
-          <button onClick={handleRepost} disabled={loadingAction === "repost"} className="flex items-center gap-1 hover:text-green-500 transition">
+
+          <button
+            onClick={handleRepost}
+            disabled={loadingAction === "repost"}
+            className="flex items-center gap-1 hover:text-green-500 transition"
+          >
             🔁 {reposts}
           </button>
         </div>
 
         <div className="flex gap-3">
-          <button onClick={handleTip} className="px-4 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition">Tip 1 WLD</button>
-          <button onClick={handleBoost} className="px-4 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition">Boost 5 WLD</button>
-          <button onClick={handleChatTokens} className="px-4 py-1 bg-indigo-600 text-white rounded-full text-xs hover:bg-indigo-700 transition">Chat Tokens</button>
+          <button
+            onClick={confirmTip}
+            className="px-4 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition"
+          >
+            Tip {tipAmount} WLD
+          </button>
+
+          <button
+            onClick={confirmBoost}
+            className="px-4 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition"
+          >
+            Boost {boostAmount} WLD
+          </button>
         </div>
       </div>
 
       {/* Input comentario */}
       {showCommentInput && (
         <div className="mt-4 flex gap-2">
-          <input type="text" value={commentInput} onChange={(e) => setCommentInput(e.target.value)} placeholder="Escribe un comentario..."
-            className="flex-1 bg-gray-800 p-2 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-          <button onClick={handleComment} disabled={loadingAction === "comment" || !commentInput.trim()} className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50">
+          <input
+            type="text"
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            placeholder="Escribe un comentario..."
+            className="flex-1 bg-gray-800 p-2 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <button
+            onClick={handleComment}
+            disabled={loadingAction === "comment" || !commentInput.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+          >
             {loadingAction === "comment" ? "..." : "Enviar"}
           </button>
         </div>
@@ -289,9 +304,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* Lista de comentarios */}
       {comments > 0 && (
         <div className="mt-4">
-          <button onClick={() => setShowComments(!showComments)} className="text-blue-400 hover:text-blue-300 text-sm">
+          <button
+            onClick={() => setShowComments(!showComments)}
+            className="text-blue-400 hover:text-blue-300 text-sm"
+          >
             {showComments ? "Ocultar" : "Ver"} {comments} comentario{comments !== 1 ? "s" : ""}
           </button>
+
           {showComments && (
             <div className="mt-2 space-y-3 max-h-60 overflow-y-auto">
               {loadingComments ? (
@@ -299,11 +318,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
               ) : commentsList.length === 0 ? (
                 <p className="text-gray-500 text-sm">No hay comentarios aún</p>
               ) : (
-                commentsList.map(c => (
+                commentsList.map((c) => (
                   <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
-                    <p className="font-bold">{c.profiles?.username || `@anon-${c.user_id.slice(0,8)}`}</p>
+                    <p className="font-bold">{c.user_id.slice(0, 8)}</p>
                     <p className="text-gray-300">{c.content}</p>
-                    <p className="text-xs text-gray-500 mt-1">{new Date(c.timestamp).toLocaleString()}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(c.timestamp).toLocaleString()}
+                    </p>
                   </div>
                 ))
               )}
@@ -312,32 +333,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </div>
       )}
 
-      {/* Tip Modal */}
-      {showTipModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 p-6 rounded-xl w-80 space-y-4">
-            <p className="text-white">¿Enviar {tipAmount} WLD como tip?</p>
-            <div className="flex justify-between">
-              <button onClick={() => setShowTipModal(false)} className="px-4 py-2 bg-gray-700 text-white rounded">Cancelar</button>
-              <button onClick={confirmTip} className="px-4 py-2 bg-yellow-600 text-white rounded">Aceptar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Boost Modal */}
-      {showBoostModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-gray-900 p-6 rounded-xl w-80 space-y-4">
-            <p className="text-white">¿Enviar {boostAmount} WLD como boost?</p>
-            <div className="flex justify-between">
-              <button onClick={() => setShowBoostModal(false)} className="px-4 py-2 bg-gray-700 text-white rounded">Cancelar</button>
-              <button onClick={confirmBoost} className="px-4 py-2 bg-purple-600 text-white rounded">Aceptar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Error */}
       {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </div>
   );
