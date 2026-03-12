@@ -25,7 +25,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const [loadingComments, setLoadingComments] = useState(false);
   const [loadingAction, setLoadingAction] = useState<"like" | "comment" | "repost" | "tip" | "boost" | "follow" | "subscription" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tipAmount, setTipAmount] = useState(1); // Mínimo 1 WLD
+  const [tipAmount, setTipAmount] = useState(1); // Editable, mínimo 1 WLD
 
   const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
 
@@ -56,27 +56,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         setLoadingComments(true);
         try {
           const { data, error } = await supabase
-            .from("comments")
+            .from("comments_with_profiles")
             .select("*")
             .eq("post_id", post.id)
             .order("timestamp", { ascending: false })
             .limit(10);
 
           if (error) throw error;
-
-          // Traer info de profiles para cada comentario
-          const commentsWithProfiles = await Promise.all(
-            (data || []).map(async (c) => {
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("username, avatar_url")
-                .eq("id", c.user_id)
-                .maybeSingle();
-              return { ...c, profiles: profile || null };
-            })
-          );
-
-          setCommentsList(commentsWithProfiles);
+          setCommentsList(data || []);
         } catch (err: any) {
           console.error("Error cargando comentarios:", err);
           setError("No se pudieron cargar los comentarios");
@@ -171,10 +158,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
-  // --- NUEVA LÓGICA DE PAGOS ---
+  // --- CORRECCIÓN DE PAGOS ---
   const confirmTip = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
-    if (tipAmount < 1) return setError("Mínimo 1 WLD");
+    if (tipAmount < 1) return setError("El mínimo es 1 WLD");
 
     setLoadingAction("tip");
     try {
@@ -184,6 +171,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(tipAmount, Tokens.WLD).toString() }],
         description: "Tip a post",
       });
+
       if (res?.finalPayload?.status === "success") {
         alert("¡Tip enviado!");
       } else {
@@ -206,8 +194,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         reference: `boost-${post.id}-${Date.now()}`,
         to: RECEIVER,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(5, Tokens.WLD).toString() }],
-        description: "Boost 5 WLD",
+        description: "Boost a post",
       });
+
       if (res?.finalPayload?.status === "success") {
         alert("¡Boost enviado!");
       } else {
@@ -215,27 +204,28 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       }
     } catch (err) {
       console.error(err);
-      alert("Error al procesar el pago");
+      alert("Error al procesar el boost");
     } finally {
       setLoadingAction(null);
     }
   };
 
-  const confirmChatSubscription = async () => {
+  const confirmSubscription = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
 
     setLoadingAction("subscription");
     try {
       const res = await MiniKit.commandsAsync.pay({
-        reference: `chat-${post.id}-${Date.now()}`,
+        reference: `sub-chat-${post.id}-${Date.now()}`,
         to: RECEIVER,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(5, Tokens.WLD).toString() }],
         description: "Suscripción Chat Creadores de Tokens",
       });
+
       if (res?.finalPayload?.status === "success") {
         window.location.href = "/chat/tokens";
       } else {
-        alert("Pago fallido");
+        alert("Pago cancelado");
       }
     } catch (err) {
       console.error(err);
@@ -244,6 +234,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       setLoadingAction(null);
     }
   };
+  // --- FIN PAGOS ---
 
   const openUserProfile = () => {
     window.location.href = `/profile/${post.user_id}`;
@@ -327,7 +318,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           <div className="flex items-center gap-2">
             <input
               type="number"
-              min={1}
+              min="1"
               value={tipAmount}
               onChange={(e) => setTipAmount(Math.max(1, Number(e.target.value)))}
               className="w-16 p-1 bg-gray-800 text-white rounded text-sm"
@@ -391,16 +382,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
                 commentsList.map((c) => (
                   <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
                     <p className="font-bold">
-                      {c.profiles?.username || `@anon-${c.user_id.slice(0,8)}`}
+                      {c.username || `@anon-${c.user_id.slice(0,8)}`}
                     </p>
                     <p className="text-gray-300">{c.content}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {new Date(c.timestamp).toLocaleString("es-ES", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        day: "numeric",
-                        month: "short",
-                      })}
+                      {new Date(c.timestamp).toLocaleString()}
                     </p>
                   </div>
                 ))
@@ -413,7 +399,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* Chat Exclusivo Creadores de Tokens */}
       {currentUserId && (
         <button
-          onClick={confirmChatSubscription}
+          onClick={confirmSubscription}
           className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition"
         >
           Chat Exclusivo Creadores de Tokens (5 WLD)
