@@ -25,7 +25,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
 
-  // Real-time para likes y comments
+  // Real-time para likes, comments, reposts
   useEffect(() => {
     if (!post.id) return;
 
@@ -33,12 +33,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       .channel(`post-${post.id}`)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "posts",
-          filter: `id=eq.${post.id}`,
-        },
+        { event: "UPDATE", schema: "public", table: "posts", filter: `id=eq.${post.id}` },
         (payload) => {
           if (payload.new.likes !== likes) setLikes(payload.new.likes);
           if (payload.new.comments !== comments) setComments(payload.new.comments);
@@ -90,7 +85,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
       if (error) throw error;
 
-      // Actualiza contador
       await supabase
         .from("posts")
         .update({ comments: comments + 1 })
@@ -108,6 +102,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   const handleRepost = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
+    if (!confirm("¿Repostear este post?")) return;
+
     setLoadingAction("repost");
 
     try {
@@ -121,7 +117,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
       if (error) throw error;
 
-      // Actualiza contador
       await supabase
         .from("posts")
         .update({ reposts: reposts + 1 })
@@ -182,50 +177,52 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   };
 
   return (
-    <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700`}>
+    <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700 mb-4 shadow-md`}>
       {/* Header del post */}
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-800">
+        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-800 border-2 border-purple-600">
           {post.profiles?.avatar_url ? (
             <img src={post.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-white">?</div>
+            <div className="w-full h-full flex items-center justify-center text-white text-xl font-bold">
+              {post.profiles?.username?.[0]?.toUpperCase() || "?"}
+            </div>
           )}
         </div>
-        <div>
-          <p className="font-bold">
-            {post.profiles?.username || `Anon-${post.user_id.slice(0, 6)}`}
+
+        <div className="flex-1">
+          <p className="font-bold text-lg">
+            {post.profiles?.username || `Anon-${post.user_id.slice(0, 8)}`}
           </p>
-          <p className="text-sm text-gray-400">@{post.user_id.slice(0, 8)}</p>
+          <p className="text-sm text-gray-500">@{post.user_id.slice(0, 8)}</p>
         </div>
 
         {/* Botón Seguir */}
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
-            disabled={loadingAction === "follow"}
             className={`ml-auto px-4 py-1 rounded-full text-sm font-medium transition ${
               isFollowing
                 ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
                 : "bg-purple-600 text-white hover:bg-purple-700"
             }`}
           >
-            {loadingAction === "follow" ? "..." : isFollowing ? "Siguiendo" : "Seguir"}
+            {isFollowing ? "Siguiendo" : "Seguir"}
           </button>
         )}
       </div>
 
       {/* Contenido */}
-      <p className="text-white whitespace-pre-wrap mb-4">{post.content}</p>
+      <p className="text-white whitespace-pre-wrap mb-4 leading-relaxed">{post.content}</p>
 
       {/* Acciones */}
-      <div className="flex justify-between items-center text-gray-400 text-sm">
-        <div className="flex gap-6">
+      <div className="flex justify-between items-center text-gray-400 text-sm mt-4">
+        <div className="flex gap-8">
           {/* Like */}
           <button
             onClick={handleLike}
             disabled={loadingAction === "like"}
-            className="flex items-center gap-1 hover:text-red-500 transition"
+            className={`flex items-center gap-1 transition ${liked ? "text-red-500" : "hover:text-red-500"}`}
           >
             {liked ? "❤️" : "♡"} {likes}
           </button>
@@ -253,14 +250,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           <button
             onClick={handleTip}
             disabled={loadingAction === "tip"}
-            className="px-3 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition"
+            className="px-4 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition disabled:opacity-50"
           >
             Tip 1 WLD
           </button>
           <button
             onClick={handleBoost}
             disabled={loadingAction === "boost"}
-            className="px-3 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition"
+            className="px-4 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition disabled:opacity-50"
           >
             Boost 5 WLD
           </button>
@@ -269,7 +266,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
       {/* Input comentario */}
       {showCommentInput && (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-4 flex gap-2">
           <input
             type="text"
             value={commentInput}
@@ -288,7 +285,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       )}
 
       {/* Error */}
-      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+      {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </div>
   );
 };
