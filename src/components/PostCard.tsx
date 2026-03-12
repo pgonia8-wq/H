@@ -12,241 +12,285 @@ interface PostCardProps {
 const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
-
   const { theme } = useContext(ThemeContext);
-
-  const [avatar, setAvatar] = useState(post.profile?.avatar_url);
 
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(post.likes || 0);
-  const [reposts, setReposts] = useState(post.reposts || 0);
   const [comments, setComments] = useState(post.comments || 0);
-
-  const [followers, setFollowers] = useState(post.profile?.followers_count || 0);
-  const [following, setFollowing] = useState(post.profile?.following_count || 0);
-
-  const { isFollowing, toggleFollow, loading: followLoading } = useFollow(
-    currentUserId,
-    post.user_id
-  );
-
-  const [tipAmount, setTipAmount] = useState<number | "">("");
-  const [isBoosting, setIsBoosting] = useState(false);
+  const [reposts, setReposts] = useState(post.reposts || 0);
+  const [commentInput, setCommentInput] = useState("");
+  const [showCommentInput, setShowCommentInput] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"like" | "comment" | "repost" | "tip" | "boost" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const accentColor = "#7c3aed";
+  const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
 
-  const [score, setScore] = useState(0);
-  const [tags, setTags] = useState<string[]>(post.tags || []);
-
-  /* --------------------------------
-     LISTENER ACTUALIZACIÓN AVATAR
-  -------------------------------- */
-
+  // Real-time para likes y comments
   useEffect(() => {
+    if (!post.id) return;
 
-    const handleAvatarUpdate = (event: any) => {
+    const channel = supabase
+      .channel(`post-${post.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "posts",
+          filter: `id=eq.${post.id}`,
+        },
+        (payload) => {
+          if (payload.new.likes !== likes) setLikes(payload.new.likes);
+          if (payload.new.comments !== comments) setComments(payload.new.comments);
+          if (payload.new.reposts !== reposts) setReposts(payload.new.reposts);
+        }
+      )
+      .subscribe();
 
-      if (event.detail.userId === post.user_id) {
-        setAvatar(event.detail.avatarUrl);
-      }
+    return () => supabase.removeChannel(channel);
+  }, [post.id, likes, comments, reposts]);
 
-    };
-
-    window.addEventListener("avatarUpdated", handleAvatarUpdate);
-
-    return () => {
-      window.removeEventListener("avatarUpdated", handleAvatarUpdate);
-    };
-
-  }, [post.user_id]);
-
-  /* --------------------------------
-     SCORE FEED
-  -------------------------------- */
-
-  useEffect(() => {
-
-    const calculateScore = async () => {
-
-      const { data: tipsData } = await supabase
-        .from("tips")
-        .select("amount_total")
-        .eq("post_id", post.id);
-
-      const totalTips =
-        tipsData?.reduce((sum, tip) => sum + tip.amount_total, 0) || 0;
-
-      const boostActive =
-        post.boosted_until && new Date(post.boosted_until) > new Date() ? 1 : 0;
-
-      const hoursSincePost = post.timestamp
-        ? Math.max(
-            (Date.now() - new Date(post.timestamp).getTime()) /
-              (1000 * 60 * 60),
-            0
-          )
-        : 0;
-
-      const recencyDecay = 1 / Math.pow(hoursSincePost + 1, 1.2);
-
-      const tagScore = tags.length * 0.5;
-
-      const calculatedScore =
-        (likes || 0) * 1 +
-        (comments || 0) * 2 +
-        (reposts || 0) * 2 +
-        totalTips * 3 +
-        boostActive * 10 +
-        recencyDecay +
-        tagScore;
-
-      setScore(calculatedScore);
-
-    };
-
-    calculateScore();
-
-  }, [post.id, likes, comments, reposts, post.boosted_until, post.timestamp, tags]);
-
-  /* --------------------------------
-     FOLLOW STATS
-  -------------------------------- */
-
-  useEffect(() => {
-
-    if (!post.user_id) return;
-
-    const fetchStats = async () => {
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("followers_count, following_count")
-        .eq("id", post.user_id)
-        .single();
-
-      if (data) {
-        setFollowers(data.followers_count || 0);
-        setFollowing(data.following_count || 0);
-      }
-
-    };
-
-    fetchStats();
-
-  }, [post.user_id]);
-
-  /* --------------------------------
-     TIP
-  -------------------------------- */
-
-  const handleTip = async () => {
-
-    if (!currentUserId || !tipAmount || tipAmount < 1) {
-      setError("Tip mínimo 1 WLD");
-      return;
-    }
-
-    if (!confirm(`¿Confirmar tip de ${tipAmount} WLD?`)) return;
+  const handleLike = async () => {
+    if (!currentUserId) return setError("Debes estar logueado");
+    setLoadingAction("like");
 
     try {
+      const newLikes = liked ? likes - 1 : likes + 1;
+      const { error } = await supabase
+        .from("posts")
+        .update({ likes: newLikes })
+        .eq("id", post.id);
 
-      if (!MiniKit.isInstalled()) {
-        throw new Error("World App no detectada");
-      }
+      if (error) throw error;
 
-      const payRes = await MiniKit.commandsAsync.pay({
-        reference: "tip-" + post.id + "-" + Date.now(),
-        to: RECEIVER,
-        tokens: [
-          {
-            symbol: Tokens.WLD,
-            token_amount: tokenToDecimals(tipAmount, Tokens.WLD).toString()
-          }
-        ],
-        description: `Tip for ${post.profile?.username}`
-      });
-
-      if (payRes?.finalPayload?.status !== "success") {
-        throw new Error("Tip cancelado");
-      }
-
-      await supabase.from("tips").insert({
-        post_id: post.id,
-        sender_id: currentUserId,
-        receiver_id: post.user_id,
-        amount_total: tipAmount
-      });
-
-      alert(`Tip enviado: ${tipAmount} WLD`);
-
-      setTipAmount("");
-
+      setLiked(!liked);
+      setLikes(newLikes);
     } catch (err: any) {
-
-      setError(err.message);
-
+      setError("Error al dar like: " + err.message);
+    } finally {
+      setLoadingAction(null);
     }
-
   };
 
-  /* --------------------------------
-     UI
-  -------------------------------- */
+  const handleComment = async () => {
+    if (!currentUserId) return setError("Debes estar logueado");
+    if (!commentInput.trim()) return setError("Escribe un comentario");
+
+    setLoadingAction("comment");
+
+    try {
+      const { error } = await supabase
+        .from("comments")
+        .insert({
+          post_id: post.id,
+          user_id: currentUserId,
+          content: commentInput.trim(),
+          timestamp: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      // Actualiza contador
+      await supabase
+        .from("posts")
+        .update({ comments: comments + 1 })
+        .eq("id", post.id);
+
+      setCommentInput("");
+      setShowCommentInput(false);
+      setComments(comments + 1);
+    } catch (err: any) {
+      setError("Error al comentar: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRepost = async () => {
+    if (!currentUserId) return setError("Debes estar logueado");
+    setLoadingAction("repost");
+
+    try {
+      const { error } = await supabase
+        .from("reposts")
+        .insert({
+          post_id: post.id,
+          user_id: currentUserId,
+          timestamp: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      // Actualiza contador
+      await supabase
+        .from("posts")
+        .update({ reposts: reposts + 1 })
+        .eq("id", post.id);
+
+      setReposts(reposts + 1);
+    } catch (err: any) {
+      setError("Error al repostear: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleTip = async () => {
+    if (!currentUserId) return setError("Debes estar logueado");
+    if (!confirm("¿Enviar 1 WLD como tip?")) return;
+
+    setLoadingAction("tip");
+
+    try {
+      const payRes = await MiniKit.commandsAsync.pay({
+        amount: 1,
+        currency: "WLD",
+        recipient: RECEIVER,
+      });
+
+      if (payRes.status !== "success") throw new Error("Pago fallido");
+
+      alert("¡Tip enviado!");
+    } catch (err: any) {
+      setError("Error en tip: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleBoost = async () => {
+    if (!currentUserId) return setError("Debes estar logueado");
+    if (!confirm("¿Enviar 5 WLD como boost?")) return;
+
+    setLoadingAction("boost");
+
+    try {
+      const payRes = await MiniKit.commandsAsync.pay({
+        amount: 5,
+        currency: "WLD",
+        recipient: RECEIVER,
+      });
+
+      if (payRes.status !== "success") throw new Error("Pago fallido");
+
+      alert("¡Boost enviado!");
+    } catch (err: any) {
+      setError("Error en boost: " + err.message);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
 
   return (
-
-    <div className="bg-gray-900/60 backdrop-blur-sm rounded-2xl p-4 space-y-4 border border-white/10">
-
-      <div className="flex items-center gap-3">
-
-        <img
-          src={avatar || "/default-avatar.png"}
-          className="w-10 h-10 rounded-full object-cover"
-        />
-
-        <div className="flex-1">
-
-          <h3 className="font-bold text-white">
-            {post.profile?.username || "Anon"}
-          </h3>
-
-          <div className="text-gray-400 text-xs flex gap-3 mt-1">
-
-            <span>Followers: {followers}</span>
-
-            <span>Following: {following}</span>
-
-            <span>
-              🕒 {new Date(post.timestamp || "").toLocaleString()}
-            </span>
-
-          </div>
-
+    <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700`}>
+      {/* Header del post */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-800">
+          {post.profiles?.avatar_url ? (
+            <img src={post.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-white">?</div>
+          )}
+        </div>
+        <div>
+          <p className="font-bold">
+            {post.profiles?.username || `Anon-${post.user_id.slice(0, 6)}`}
+          </p>
+          <p className="text-sm text-gray-400">@{post.user_id.slice(0, 8)}</p>
         </div>
 
+        {/* Botón Seguir */}
+        {currentUserId && currentUserId !== post.user_id && (
+          <button
+            onClick={toggleFollow}
+            disabled={loadingAction === "follow"}
+            className={`ml-auto px-4 py-1 rounded-full text-sm font-medium transition ${
+              isFollowing
+                ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                : "bg-purple-600 text-white hover:bg-purple-700"
+            }`}
+          >
+            {loadingAction === "follow" ? "..." : isFollowing ? "Siguiendo" : "Seguir"}
+          </button>
+        )}
       </div>
 
-      <p className="text-white whitespace-pre-wrap">
-        {post.content}
-      </p>
+      {/* Contenido */}
+      <p className="text-white whitespace-pre-wrap mb-4">{post.content}</p>
 
-      <div className="flex gap-4 text-gray-400 text-sm">
+      {/* Acciones */}
+      <div className="flex justify-between items-center text-gray-400 text-sm">
+        <div className="flex gap-6">
+          {/* Like */}
+          <button
+            onClick={handleLike}
+            disabled={loadingAction === "like"}
+            className="flex items-center gap-1 hover:text-red-500 transition"
+          >
+            {liked ? "❤️" : "♡"} {likes}
+          </button>
 
-        <button onClick={() => setLiked(!liked)}>
-          {liked ? "❤️" : "♡"} {likes}
-        </button>
+          {/* Comentar */}
+          <button
+            onClick={() => setShowCommentInput(!showCommentInput)}
+            className="flex items-center gap-1 hover:text-blue-500 transition"
+          >
+            💬 {comments}
+          </button>
 
-        <span className="ml-auto font-bold text-white">
-          Score: {score.toFixed(2)}
-        </span>
+          {/* Repost */}
+          <button
+            onClick={handleRepost}
+            disabled={loadingAction === "repost"}
+            className="flex items-center gap-1 hover:text-green-500 transition"
+          >
+            🔁 {reposts}
+          </button>
+        </div>
 
+        {/* Tip y Boost */}
+        <div className="flex gap-3">
+          <button
+            onClick={handleTip}
+            disabled={loadingAction === "tip"}
+            className="px-3 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition"
+          >
+            Tip 1 WLD
+          </button>
+          <button
+            onClick={handleBoost}
+            disabled={loadingAction === "boost"}
+            className="px-3 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition"
+          >
+            Boost 5 WLD
+          </button>
+        </div>
       </div>
 
+      {/* Input comentario */}
+      {showCommentInput && (
+        <div className="mt-3 flex gap-2">
+          <input
+            type="text"
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            placeholder="Escribe un comentario..."
+            className="flex-1 bg-gray-800 p-2 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <button
+            onClick={handleComment}
+            disabled={loadingAction === "comment" || !commentInput.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded text-sm disabled:opacity-50"
+          >
+            {loadingAction === "comment" ? "..." : "Enviar"}
+          </button>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
     </div>
-
   );
-
 };
 
 export default PostCard;
