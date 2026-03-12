@@ -128,7 +128,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
 
       setToast({ message: "Perfil guardado", type: "success" });
 
-    } catch (err: any) {
+    } catch {
 
       setToast({ message: "Error guardando perfil", type: "error" });
 
@@ -140,6 +140,10 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
 
   };
 
+  /* ---------------------------------------------------
+     AVATAR UPLOAD OPTIMIZADO
+  --------------------------------------------------- */
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
 
     const file = e.target.files?.[0];
@@ -150,14 +154,62 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
 
     try {
 
-      const fileExt = file.name.split(".").pop();
+      const previewUrl = URL.createObjectURL(file);
 
-      const fileName = `${id}.${fileExt}`;
+      setProfile(prev => ({
+        ...prev,
+        avatar_url: previewUrl
+      }));
+
+      const img = document.createElement("img");
+      img.src = previewUrl;
+
+      await new Promise(resolve => {
+        img.onload = resolve;
+      });
+
+      const canvas = document.createElement("canvas");
+
+      const MAX = 512;
+
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+
+        if (width > MAX) {
+          height *= MAX / width;
+          width = MAX;
+        }
+
+      } else {
+
+        if (height > MAX) {
+          width *= MAX / height;
+          height = MAX;
+        }
+
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      const compressedBlob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.8)
+      );
+
+      if (!compressedBlob) throw new Error("Error comprimiendo imagen");
+
+      const fileName = `${id}.jpg`;
 
       const { error: uploadError } = await supabase
         .storage
         .from("avatars")
-        .upload(fileName, file, { upsert: true });
+        .upload(fileName, compressedBlob, { upsert: true });
 
       if (uploadError) throw uploadError;
 
@@ -178,6 +230,17 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
         avatar_url: avatarUrl
       }));
 
+      /* EVENTO GLOBAL PARA ACTUALIZAR FEED */
+
+      window.dispatchEvent(
+        new CustomEvent("avatarUpdated", {
+          detail: {
+            userId: id,
+            avatarUrl: avatarUrl
+          }
+        })
+      );
+
       setToast({ message: "Avatar actualizado", type: "success" });
 
     } catch (err: any) {
@@ -193,7 +256,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
   };
 
   const toggleProfileVisibility = () => {
-    setProfile(prev => ({ ...prev, profile_visible: !prev.profile_visible }));
+
+    setProfile(prev => ({
+      ...prev,
+      profile_visible: !prev.profile_visible
+    }));
+
   };
 
   const handlePremiumChat = async () => {
@@ -219,14 +287,17 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ id, onClose, currentUserId,
       const payRes = await MiniKit.commandsAsync.pay({
         reference: "premium-chat-" + Date.now(),
         to: RECEIVER,
-        tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(5, Tokens.WLD).toString() }],
+        tokens: [
+          {
+            symbol: Tokens.WLD,
+            token_amount: tokenToDecimals(5, Tokens.WLD).toString()
+          }
+        ],
         description: "Suscripción Chat Exclusivo Creadores Tokens",
       });
 
       if (payRes?.finalPayload?.status !== "success") {
-
         throw new Error(payRes?.finalPayload?.description || "Pago cancelado");
-
       }
 
       const transactionId = payRes?.finalPayload?.transaction_id;
