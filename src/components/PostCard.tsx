@@ -25,11 +25,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const [loadingComments, setLoadingComments] = useState(false);
   const [loadingAction, setLoadingAction] = useState<"like" | "comment" | "repost" | "tip" | "boost" | "follow" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tipAmount, setTipAmount] = useState(1); // Mínimo 1 WLD, editable
+  const [tipAmount, setTipAmount] = useState(1); // Editable, mínimo 1 WLD
 
   const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
 
-  // Real-time para likes, comments, reposts
+  // Real-time
   useEffect(() => {
     if (!post.id) return;
 
@@ -49,7 +49,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     return () => supabase.removeChannel(channel);
   }, [post.id, likes, comments, reposts]);
 
-  // Cargar comentarios al abrir
+  // Cargar comentarios
   useEffect(() => {
     if (showComments && post.id) {
       const fetchComments = async () => {
@@ -59,7 +59,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             .from("comments")
             .select(`
               *,
-              profiles!comments_user_id_fkey (
+              profiles (
                 id,
                 username,
                 avatar_url
@@ -73,7 +73,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           setCommentsList(data || []);
         } catch (err: any) {
           console.error("Error cargando comentarios:", err);
-          setError("No se pudieron cargar comentarios");
+          setError("No se pudieron cargar los comentarios");
         } finally {
           setLoadingComments(false);
         }
@@ -142,6 +142,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   const handleRepost = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
+    if (!confirm("¿Repostear este post?")) return;
 
     setLoadingAction("repost");
 
@@ -214,10 +215,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   };
 
   const openUserProfile = () => {
-    // Abre perfil del usuario del post
     window.location.href = `/profile/${post.user_id}`;
-    // O usa evento si tienes modal global
-    // window.dispatchEvent(new CustomEvent("openProfile", { detail: { userId: post.user_id } }));
   };
 
   return (
@@ -252,7 +250,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           </p>
         </div>
 
-        {/* Seguir */}
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
@@ -381,7 +378,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {currentUserId && (
         <button
           onClick={async () => {
-            if (!confirm("¿Pagar 5 WLD para acceder al Chat Exclusivo Creadores?")) return;
             setLoadingAction("subscription");
             try {
               const payRes = await MiniKit.commandsAsync.pay({
@@ -406,7 +402,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </button>
       )}
 
-      {/* Error */}
       {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </div>
   );
