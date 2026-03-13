@@ -23,6 +23,7 @@ interface Profile {
 }
 
 const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,11 +49,13 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
   ---------------------------------------- */
 
   const loadConversations = async () => {
+
     if (!currentUserId) return;
 
     setLoading(true);
 
     try {
+
       const { data, error } = await supabase
         .from("conversations_with_last_message")
         .select("*")
@@ -62,6 +65,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
       if (error) throw error;
 
       const convs = data || [];
+
       setConversations(convs);
 
       const otherIds = convs.map(c =>
@@ -72,17 +76,23 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
       await loadUnreadCounts(convs);
 
     } catch (err: any) {
+
       console.error("[INBOX] Error cargando conversaciones:", err.message);
+
     } finally {
+
       setLoading(false);
+
     }
+
   };
 
   /* ----------------------------------------
-     Contador de mensajes no leídos
+     Contador mensajes no leídos
   ---------------------------------------- */
 
   const loadUnreadCounts = async (convs: Conversation[]) => {
+
     if (!currentUserId) return;
 
     const counts: Record<string, number> = {};
@@ -100,19 +110,23 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
         .eq("read_flag", false);
 
       counts[conversationId] = count || 0;
+
     }
 
     setUnreadCounts(counts);
+
   };
 
   /* ----------------------------------------
-     Cargar matches (mutual follows)
+     Cargar matches
   ---------------------------------------- */
 
   const loadMatches = async () => {
+
     if (!currentUserId) return;
 
     try {
+
       const { data: following } = await supabase
         .from("follows")
         .select("following_id")
@@ -126,14 +140,19 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
       const followingIds = following?.map(f => f.following_id) || [];
       const followerIds = followers?.map(f => f.follower_id) || [];
 
-      const matches = followingIds.filter(id => followerIds.includes(id));
+      const matches = followingIds.filter(id =>
+        followerIds.includes(id)
+      );
 
       setMatchIds(matches);
       setNewMatches(matches);
 
     } catch (err: any) {
+
       console.error("[INBOX] Error cargando matches:", err.message);
+
     }
+
   };
 
   /* ----------------------------------------
@@ -147,6 +166,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
     if (toLoad.length === 0) return;
 
     try {
+
       const { data } = await supabase
         .from("profiles")
         .select("id,name,username,avatar_url")
@@ -154,18 +174,26 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
 
       if (data) {
 
-        const newCache = { ...profilesCache };
+        setProfilesCache(prev => {
 
-        data.forEach(p => {
-          newCache[p.id] = p;
+          const newCache = { ...prev };
+
+          data.forEach(p => {
+            newCache[p.id] = p;
+          });
+
+          return newCache;
+
         });
 
-        setProfilesCache(newCache);
       }
 
     } catch (err: any) {
+
       console.error("[INBOX] Error cargando perfiles:", err.message);
+
     }
+
   };
 
   /* ----------------------------------------
@@ -177,8 +205,10 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
     setSearchQuery(query);
 
     if (!currentUserId || !query.trim()) {
+
       setSearchResults([]);
       return;
+
     }
 
     try {
@@ -197,19 +227,36 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
 
       setSearchResults(filtered);
 
-      const newCache = { ...profilesCache };
+      setProfilesCache(prev => {
 
-      filtered.forEach(u => {
-        newCache[u.id] = u;
+        const newCache = { ...prev };
+
+        filtered.forEach(u => {
+          newCache[u.id] = u;
+        });
+
+        return newCache;
+
       });
-
-      setProfilesCache(newCache);
 
     } catch (err: any) {
 
       console.error("[INBOX] Error buscando usuarios:", err.message);
       setSearchResults([]);
+
     }
+
+  };
+
+  /* ----------------------------------------
+     Abrir Chat
+  ---------------------------------------- */
+
+  const openChat = (userId: string) => {
+
+    setChatUserId(userId);
+    setNewMatches(prev => prev.filter(id => id !== userId));
+
   };
 
   /* ----------------------------------------
@@ -230,6 +277,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
 
             <img
               src={p.avatar_url}
+              alt="avatar"
               className="w-full h-full object-cover"
             />
 
@@ -242,9 +290,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
         </div>
 
         <div className="text-white text-sm">
-
           {p?.username || id.slice(0, 10)}
-
         </div>
 
         {newMatches.includes(id) && (
@@ -256,7 +302,9 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
         )}
 
       </div>
+
     );
+
   };
 
   /* ----------------------------------------
@@ -264,8 +312,6 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
   ---------------------------------------- */
 
   if (chatUserId && currentUserId) {
-
-    setNewMatches(prev => prev.filter(id => id !== chatUserId));
 
     return (
 
@@ -276,6 +322,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
       />
 
     );
+
   }
 
   /* ----------------------------------------
@@ -285,12 +332,11 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
   if (!currentUserId) {
 
     return (
-
       <div className="p-4 text-gray-400 text-center">
         No hay usuario logueado
       </div>
-
     );
+
   }
 
   return (
@@ -334,7 +380,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
 
             <div
               key={u.id}
-              onClick={() => setChatUserId(u.id)}
+              onClick={() => openChat(u.id)}
               className="flex items-center p-2 cursor-pointer hover:bg-gray-700 rounded"
             >
 
@@ -382,7 +428,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
 
               <div
                 key={c.id}
-                onClick={() => setChatUserId(otherId)}
+                onClick={() => openChat(otherId)}
                 className="flex items-center justify-between p-2 bg-gray-800 rounded mb-1 cursor-pointer hover:bg-gray-700"
               >
 
@@ -417,6 +463,7 @@ const Inbox: React.FC<InboxProps> = ({ currentUserId, onClose }) => {
     </div>
 
   );
+
 };
 
 export default Inbox;
