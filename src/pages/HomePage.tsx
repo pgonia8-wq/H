@@ -29,7 +29,12 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTotal, setUnreadTotal] = useState(0);
+  const [newMessage, setNewMessage] = useState("");
+  const [newMessageAttachments, setNewMessageAttachments] = useState<string[]>([]);
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => { ... } // lógica de subir archivos
+  const sendMessage = async () => { ... } // lógica de crear mensaje en supabase + adjuntos
+  
   const { theme, toggleTheme } = useContext(ThemeContext);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -315,16 +320,31 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       {/* MODAL INBOX */}
       {showInbox && userId && (
-        <div className="fixed inset-0 bg-black flex flex-col overflow-hidden z-50">
-          <Inbox
-            currentUserId={userId}
-            onClose={() => {
-              setShowInbox(false);
-              loadUnread();
-            }}
-          />
+  <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
+    <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[80vh] flex flex-col border border-white/10 shadow-lg">
+      {/* HEADER */}
+      <div className="flex items-center justify-between p-4 border-b border-white/20">
+        <h2 className="text-white font-bold text-lg">Mensajes</h2>
+        <button onClick={() => setShowInbox(false)} className="text-gray-400 hover:text-white">✕</button>
+      </div>
+
+      {/* MENSAJES */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <Inbox currentUserId={userId} />
+      </div>
+
+      {/* NUEVO MENSAJE / ADJUNTOS */}
+      <div className="p-4 border-t border-white/20 flex flex-col gap-2">
+        <textarea ... />
+        <div className="flex items-center justify-between">
+          <input type="file" onChange={handleFileUpload} className="text-sm text-gray-300" />
+          <button onClick={sendMessage} className="px-4 py-2 bg-purple-600 rounded-full font-medium text-white">Enviar</button>
         </div>
-      )}
+        <p className="text-xs text-gray-400">Máximo 5 MB por archivo</p>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* PERFIL */}
       {showProfileModal && (
