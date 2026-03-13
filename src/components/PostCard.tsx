@@ -165,6 +165,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
+  // Tip dinámico (mínimo 1 WLD, usuario elige monto)
   const handleTip = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
     if (tipAmount < 1) return setError("Mínimo 1 WLD");
@@ -178,7 +179,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes?.finalPayload?.status === "success") {
+      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
         alert("¡Tip enviado!");
       } else {
         alert("Pago cancelado o fallido");
@@ -190,6 +191,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
+  // Boost fijo 5 WLD
   const handleBoost = async () => {
     if (!currentUserId) return setError("Debes estar logueado");
 
@@ -202,7 +204,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes?.finalPayload?.status === "success") {
+      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
         alert("¡Boost enviado!");
       } else {
         alert("Pago cancelado o fallido");
@@ -214,6 +216,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   };
 
+  // Chat Creadores (pago directo 5 WLD)
   const handleChatCreadores = async () => {
     setLoadingAction("subscription");
 
@@ -224,7 +227,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes?.finalPayload?.status === "success") {
+      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
         window.location.href = "/chat/tokens";
       } else {
         alert("Pago cancelado");
