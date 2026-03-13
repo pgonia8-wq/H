@@ -55,7 +55,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       const fetchComments = async () => {
         setLoadingComments(true);
         try {
-          // 1. Traer comentarios
           const { data: commentsData, error: commentsError } = await supabase
             .from("comments")
             .select("*")
@@ -70,7 +69,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             return;
           }
 
-          // 2. Traer usernames y avatars de profiles (por user_id)
           const userIds = [...new Set(commentsData.map(c => c.user_id))];
           const { data: profilesData, error: profilesError } = await supabase
             .from("profiles")
@@ -79,13 +77,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
           if (profilesError) throw profilesError;
 
-          // Mapear profiles a un objeto por id
           const profilesMap = (profilesData || []).reduce((acc, p) => {
             acc[p.id] = p;
             return acc;
           }, {} as Record<string, any>);
 
-          // Combinar
           const enriched = commentsData.map(c => ({
             ...c,
             profiles: profilesMap[c.user_id] || null,
@@ -200,15 +196,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
+      if (payRes?.finalPayload?.status === "success") {
         alert("¡Tip enviado!");
-      } else if (payRes && payRes.finalPayload && payRes.finalPayload.status === "error") {
-        alert("Error en pago: " + (payRes.finalPayload.error_code || "Desconocido"));
       } else {
-        alert("Pago cancelado o no completado");
+        alert("Pago cancelado o fallido");
       }
     } catch (err: any) {
-      console.error("[TIP] Error completo:", err);
       setError("Error en tip: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
     } finally {
       setLoadingAction(null);
@@ -228,15 +221,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
+      if (payRes?.finalPayload?.status === "success") {
         alert("¡Boost enviado!");
-      } else if (payRes && payRes.finalPayload && payRes.finalPayload.status === "error") {
-        alert("Error en pago: " + (payRes.finalPayload.error_code || "Desconocido"));
       } else {
-        alert("Pago cancelado o no completado");
+        alert("Pago cancelado o fallido");
       }
     } catch (err: any) {
-      console.error("[BOOST] Error completo:", err);
       setError("Error en boost: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
     } finally {
       setLoadingAction(null);
@@ -254,15 +244,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         recipient: RECEIVER,
       });
 
-      if (payRes && payRes.finalPayload && payRes.finalPayload.status === "success") {
+      if (payRes?.finalPayload?.status === "success") {
         window.location.href = "/chat/tokens";
-      } else if (payRes && payRes.finalPayload && payRes.finalPayload.status === "error") {
-        alert("Error en pago: " + (payRes.finalPayload.error_code || "Desconocido"));
       } else {
         alert("Pago cancelado");
       }
     } catch (err: any) {
-      console.error("[CHAT] Error completo:", err);
       setError("Error al procesar pago: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
     } finally {
       setLoadingAction(null);
