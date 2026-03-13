@@ -341,16 +341,48 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       </div>
 
       {/* NUEVO MENSAJE / ADJUNTOS */}
-      <div className="p-4 border-t border-white/20 flex flex-col gap-2">
-        <textarea ... />
-        <div className="flex items-center justify-between">
-          <input type="file" onChange={handleFileUpload} className="text-sm text-gray-300" />
-          <button onClick={sendMessage} className="px-4 py-2 bg-purple-600 rounded-full font-medium text-white">Enviar</button>
-        </div>
-        <p className="text-xs text-gray-400">Máximo 5 MB por archivo</p>
-      </div>
-    </div>
+<div className="p-4 border-t border-white/20 flex flex-col gap-2">
+  <textarea
+    value={newMessage}
+    onChange={(e) => {
+      const maxChars =
+        profile?.tier === "premium+"
+          ? 10000
+          : profile?.tier === "premium"
+          ? 3000
+          : 1000; // free
+      if (e.target.value.length <= maxChars) setNewMessage(e.target.value);
+    }}
+    className="w-full p-2 bg-gray-800 text-white rounded resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px]"
+    placeholder="Escribe tu mensaje..."
+  />
+
+  <div className="flex items-center justify-between mt-2">
+    {/* Input para adjuntos */}
+    <input
+      type="file"
+      onChange={handleFileUpload}
+      className="text-sm text-gray-300"
+      multiple
+    />
+
+    <span className="text-gray-400 text-sm">
+      {newMessage.length} /{" "}
+      {profile?.tier === "premium+"
+        ? 10000
+        : profile?.tier === "premium"
+        ? 3000
+        : 1000}
+    </span>
+
+    <button
+      onClick={sendMessage}
+      className="px-4 py-1 bg-purple-600 rounded-full text-white font-medium"
+    >
+      Enviar
+    </button>
   </div>
+</div>
 )}
 
       {/* PERFIL */}
