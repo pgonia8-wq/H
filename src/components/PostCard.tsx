@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { useFollow } from "../lib/useFollow";
@@ -13,7 +13,37 @@ const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { theme } = useContext(ThemeContext);
+const postRef = useRef<HTMLDivElement | null>(null);
+const viewRegistered = useRef(false);
 
+useEffect(() => {
+  if (!postRef.current || viewRegistered.current) return;
+
+  const observer = new IntersectionObserver(
+    async (entries) => {
+      const entry = entries[0];
+
+      if (entry.isIntersecting && !viewRegistered.current) {
+        viewRegistered.current = true;
+
+        try {
+          await supabase.rpc("increment_post_views", {
+            post_id_input: post.id,
+          });
+        } catch (err) {
+          console.error("Error registrando view", err);
+        }
+
+        observer.disconnect();
+      }
+    },
+    { threshold: 0.6 }
+  );
+
+  observer.observe(postRef.current);
+
+  return () => observer.disconnect();
+}, [post.id]);
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(post.likes || 0);
   const [comments, setComments] = useState(post.comments || 0);
@@ -301,7 +331,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   };
 
   return (
-    <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700 mb-4 shadow-md`}>
+    <div ref={postRef} className={`p-4 rounded-xl ... ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700 mb-4 shadow-md`}>
       {/* Header */}
       <div className="flex items-center gap-3 mb-3">
         <div
