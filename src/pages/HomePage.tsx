@@ -327,10 +327,14 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         )}
       </main>
 
-      {/* Inbox */}
       {showInbox && userId && (
-        <Inbox currentUserId={userId} onClose={() => setShowInbox(false)} />
-      )}
+  <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <Inbox
+      currentUserId={userId}
+      onClose={() => setShowInbox(false)}
+    />
+  </div>
+)}
 
       {/* Perfil */}
       {showProfileModal && (
