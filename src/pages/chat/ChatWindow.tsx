@@ -30,22 +30,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const conversationId =
     [currentUserId, otherUserId].sort().join("-");
 
-  /* --------------------------------
-     Scroll automático
-  -------------------------------- */
-
   const scrollBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  /* --------------------------------
-     Cargar mensajes iniciales
-  -------------------------------- */
+  /* ------------------------------
+     Cargar mensajes
+  ------------------------------ */
 
   useEffect(() => {
-
     loadMessages();
-
+    markAsRead();
   }, []);
 
   const loadMessages = async () => {
@@ -62,11 +57,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setTimeout(scrollBottom, 100);
 
     }
+
   };
 
-  /* --------------------------------
-     Realtime subscription
-  -------------------------------- */
+  /* ------------------------------
+     Realtime
+  ------------------------------ */
 
   useEffect(() => {
 
@@ -96,11 +92,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       supabase.removeChannel(channel);
     };
 
-  }, []);
+  }, [conversationId]);
 
-  /* --------------------------------
+  /* ------------------------------
+     Marcar como leído
+  ------------------------------ */
+
+  const markAsRead = async () => {
+
+    await supabase
+      .from("messages")
+      .update({ read_flag: true })
+      .eq("conversation_id", conversationId)
+      .eq("receiver_id", currentUserId)
+      .eq("read_flag", false);
+
+  };
+
+  /* ------------------------------
      Enviar mensaje
-  -------------------------------- */
+  ------------------------------ */
 
   const sendMessage = async () => {
 
@@ -119,32 +130,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   };
 
-  /* --------------------------------
-     Marcar como leído
-  -------------------------------- */
-
-  useEffect(() => {
-
-    supabase
-      .from("messages")
-      .update({ read_flag: true })
-      .eq("conversation_id", conversationId)
-      .eq("receiver_id", currentUserId)
-      .eq("read_flag", false);
-
-  }, []);
-
-  /* --------------------------------
+  /* ------------------------------
      UI
-  -------------------------------- */
+  ------------------------------ */
 
   return (
 
     <div className="flex flex-col h-full">
 
-      {/* Header */}
-
-      <div className="flex justify-between items-center mb-3">
+      <div className="flex justify-between mb-3">
 
         <button
           onClick={onBack}
@@ -157,11 +151,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           Chat
         </div>
 
-        <div></div>
+        <div />
 
       </div>
-
-      {/* Mensajes */}
 
       <div className="flex-1 overflow-y-auto space-y-2 mb-3">
 
@@ -194,15 +186,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       </div>
 
-      {/* Input */}
-
       <div className="flex gap-2">
 
         <input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="Escribe un mensaje..."
-          className="flex-1 p-2 rounded bg-gray-800 text-white focus:outline-none"
+          className="flex-1 p-2 rounded bg-gray-800 text-white"
         />
 
         <button
@@ -217,6 +207,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     </div>
 
   );
+
 };
 
 export default ChatWindow;
