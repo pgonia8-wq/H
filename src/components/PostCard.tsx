@@ -191,9 +191,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        amount: tipAmount,
-        currency: "WLD",
-        recipient: RECEIVER,
+        reference: `tip-\( {post.id}- \){Date.now()}`,
+        to: RECEIVER,
+        tokens: [{
+          symbol: Tokens.WLD,
+          token_amount: tokenToDecimals(tipAmount, Tokens.WLD).toString()
+        }],
+        description: "Tip al post"
       });
 
       if (payRes?.finalPayload?.status === "success") {
@@ -202,7 +206,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         alert("Pago cancelado o fallido");
       }
     } catch (err: any) {
-      setError("Error en tip: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
+      setError("Error en tip: " + (err.message || "No se pudo iniciar el pago"));
     } finally {
       setLoadingAction(null);
     }
@@ -216,9 +220,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        amount: 5,
-        currency: "WLD",
-        recipient: RECEIVER,
+        reference: `boost-\( {post.id}- \){Date.now()}`,
+        to: RECEIVER,
+        tokens: [{
+          symbol: Tokens.WLD,
+          token_amount: tokenToDecimals(5, Tokens.WLD).toString()
+        }],
+        description: "Boost al post"
       });
 
       if (payRes?.finalPayload?.status === "success") {
@@ -227,7 +235,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         alert("Pago cancelado o fallido");
       }
     } catch (err: any) {
-      setError("Error en boost: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
+      setError("Error en boost: " + (err.message || "No se pudo iniciar el pago"));
     } finally {
       setLoadingAction(null);
     }
@@ -239,9 +247,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        amount: 5,
-        currency: "WLD",
-        recipient: RECEIVER,
+        reference: `chat-${Date.now()}`,
+        to: RECEIVER,
+        tokens: [{
+          symbol: Tokens.WLD,
+          token_amount: tokenToDecimals(5, Tokens.WLD).toString()
+        }],
+        description: "Suscripción Chat Creadores"
       });
 
       if (payRes?.finalPayload?.status === "success") {
@@ -250,7 +262,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         alert("Pago cancelado");
       }
     } catch (err: any) {
-      setError("Error al procesar pago: " + (err.message || "No se pudo iniciar el pago. Verifica saldo o wallet"));
+      setError("Error al procesar pago: " + (err.message || "No se pudo iniciar el pago"));
     } finally {
       setLoadingAction(null);
     }
@@ -262,12 +274,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   return (
     <div className={`p-4 rounded-xl ${theme === "dark" ? "bg-gray-900" : "bg-gray-100"} border border-gray-700 mb-4 shadow-md`}>
-      {/* Header */}
+      {/* Header del post */}
       <div className="flex items-center gap-3 mb-3">
-        <div
-          className="w-12 h-12 rounded-full overflow-hidden bg-gray-800 border-2 border-purple-600 cursor-pointer"
-          onClick={openUserProfile}
-        >
+        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-800 border-2 border-purple-600">
           {post.profiles?.avatar_url ? (
             <img src={post.profiles.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
@@ -279,25 +288,20 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
         <div className="flex-1">
           <p className="font-bold text-lg">
-            {post.profiles?.username || `@anon-${post.user_id.slice(0, 8)}`}
+            {post.profiles?.username || `Anon-${post.user_id.slice(0, 8)}`}
           </p>
           <p className="text-sm text-gray-500">@{post.user_id.slice(0, 8)}</p>
-          <p className="text-xs text-gray-400">
-            {new Date(post.timestamp).toLocaleString("es-ES", {
-              hour: "2-digit",
-              minute: "2-digit",
-              day: "numeric",
-              month: "short",
-            })}
-          </p>
         </div>
 
+        {/* Botón Seguir */}
         {currentUserId && currentUserId !== post.user_id && (
           <button
             onClick={toggleFollow}
             className={`ml-auto px-4 py-1 rounded-full text-sm font-medium transition ${
-              isFollowing ? "bg-gray-700 text-gray-300" : "bg-purple-600 text-white"
-            } hover:opacity-90`}
+              isFollowing
+                ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                : "bg-purple-600 text-white hover:bg-purple-700"
+            }`}
           >
             {isFollowing ? "Siguiendo" : "Seguir"}
           </button>
@@ -310,30 +314,34 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* Acciones */}
       <div className="flex justify-between items-center text-gray-400 text-sm mt-4">
         <div className="flex gap-8">
+          {/* Like */}
           <button
             onClick={handleLike}
             disabled={loadingAction === "like"}
-            className={`flex items-center gap-1 ${liked ? "text-red-500" : "hover:text-red-500"}`}
+            className={`flex items-center gap-1 transition ${liked ? "text-red-500" : "hover:text-red-500"}`}
           >
             {liked ? "❤️" : "♡"} {likes}
           </button>
 
+          {/* Comentar */}
           <button
             onClick={() => setShowCommentInput(!showCommentInput)}
-            className="flex items-center gap-1 hover:text-blue-500"
+            className="flex items-center gap-1 hover:text-blue-500 transition"
           >
             💬 {comments}
           </button>
 
+          {/* Repost */}
           <button
             onClick={handleRepost}
             disabled={loadingAction === "repost"}
-            className="flex items-center gap-1 hover:text-green-500"
+            className="flex items-center gap-1 hover:text-green-500 transition"
           >
             🔁 {reposts}
           </button>
         </div>
 
+        {/* Tip y Boost */}
         <div className="flex gap-3">
           <div className="flex items-center gap-2">
             <input
@@ -350,18 +358,17 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             <button
               onClick={handleTip}
               disabled={loadingAction === "tip"}
-              className="px-4 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 disabled:opacity-50"
+              className="px-4 py-1 bg-yellow-600 text-white rounded-full text-xs hover:bg-yellow-700 transition disabled:opacity-50"
             >
-              {loadingAction === "tip" ? "..." : "Tip"}
+              Tip
             </button>
           </div>
-
           <button
             onClick={handleBoost}
             disabled={loadingAction === "boost"}
-            className="px-4 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 disabled:opacity-50"
+            className="px-4 py-1 bg-purple-600 text-white rounded-full text-xs hover:bg-purple-700 transition disabled:opacity-50"
           >
-            {loadingAction === "boost" ? "..." : "Boost 5 WLD"}
+            Boost 5 WLD
           </button>
         </div>
       </div>
@@ -386,7 +393,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </div>
       )}
 
-      {/* Lista de comentarios */}
+      {/* Ver comentarios */}
       {comments > 0 && (
         <div className="mt-4">
           <button
@@ -424,13 +431,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {currentUserId && (
         <button
           onClick={handleChatCreadores}
-          disabled={loadingAction === "subscription"}
-          className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition disabled:opacity-50"
+          className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition"
         >
-          {loadingAction === "subscription" ? "Procesando..." : "Chat Exclusivo Creadores de Tokens (5 WLD)"}
+          Chat Exclusivo Creadores de Tokens (5 WLD)
         </button>
       )}
 
+      {/* Error */}
       {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
     </div>
   );
