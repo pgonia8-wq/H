@@ -9,7 +9,6 @@ interface ChatWindowProps {
 
 interface Message {
   id: string;
-  conversation_id: string;
   sender_id: string;
   receiver_id: string;
   content: string;
@@ -24,6 +23,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [typing, setTyping] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -34,14 +34,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  /* ------------------------------
-     Cargar mensajes
-  ------------------------------ */
+  /* -------------------------- */
 
   useEffect(() => {
+
     loadMessages();
-    markAsRead();
+    markRead();
+
   }, []);
+
+  /* -------------------------- */
 
   const loadMessages = async () => {
 
@@ -49,7 +51,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       .from("messages")
       .select("*")
       .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true });
+      .order("created_at");
 
     if (data) {
 
@@ -60,14 +62,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   };
 
-  /* ------------------------------
-     Realtime
-  ------------------------------ */
+  /* --------------------------
+     REALTIME
+  -------------------------- */
 
   useEffect(() => {
 
     const channel = supabase
       .channel("chat-" + conversationId)
+
       .on(
         "postgres_changes",
         {
@@ -86,19 +89,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
         }
       )
+
+      .on("broadcast", { event: "typing" }, () => {
+
+        setTyping(true);
+
+        setTimeout(() => setTyping(false), 2000);
+
+      })
+
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
 
-  }, [conversationId]);
+  }, []);
 
-  /* ------------------------------
-     Marcar como leído
-  ------------------------------ */
+  /* -------------------------- */
 
-  const markAsRead = async () => {
+  const markRead = async () => {
 
     await supabase
       .from("messages")
@@ -109,9 +119,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   };
 
-  /* ------------------------------
-     Enviar mensaje
-  ------------------------------ */
+  /* -------------------------- */
 
   const sendMessage = async () => {
 
@@ -130,9 +138,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   };
 
-  /* ------------------------------
-     UI
-  ------------------------------ */
+  /* --------------------------
+     TYPING SIGNAL
+  -------------------------- */
+
+  const sendTyping = () => {
+
+    const channel = supabase.channel("chat-" + conversationId);
+
+    channel.send({
+      type: "broadcast",
+      event: "typing"
+    });
+
+  };
+
+  /* -------------------------- */
 
   return (
 
@@ -142,7 +163,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
         <button
           onClick={onBack}
-          className="text-gray-400 hover:text-white"
+          className="text-gray-400"
         >
           ← Volver
         </button>
@@ -182,6 +203,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
         ))}
 
+        {typing && (
+          <div className="text-gray-400 text-xs">
+            escribiendo...
+          </div>
+        )}
+
         <div ref={bottomRef} />
 
       </div>
@@ -190,7 +217,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
         <input
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            sendTyping();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") sendMessage();
+          }}
           placeholder="Escribe un mensaje..."
           className="flex-1 p-2 rounded bg-gray-800 text-white"
         />
