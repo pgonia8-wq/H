@@ -251,177 +251,183 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   /* UI */
   /* -------------------------------------------------- */
   return (
-    <div
-      ref={containerRef}
-      className={`min-h-screen overflow-y-auto ${
-        theme === "dark" ? "bg-black text-white" : "bg-white text-black"
-      }`}
-    >
+  <div
+    ref={containerRef}
+    className={`min-h-screen overflow-y-auto ${
+      theme === "dark" ? "bg-black text-white" : "bg-white text-black"
+    }`}
+  >
+    {/* HEADER */}
+    <header className="sticky top-0 z-20 w-full px-4 py-3 flex items-center justify-between border-b border-white/10 backdrop-blur-xl">
+      <img src="/logo.png" className="w-11 h-11 object-contain" alt="Logo" />
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-20 w-full px-4 py-3 flex items-center justify-between border-b border-white/10 backdrop-blur-xl">
-        <img src="/logo.png" className="w-11 h-11 object-contain" alt="Logo" />
+      <div className="flex gap-3">
+        {/* POST BUTTON */}
+        <ActionButton
+          label="Post"
+          onClick={() => setShowNewPostModal(true)}
+          className="px-5 py-2 bg-gray-800 rounded-full"
+        />
 
-        <div className="flex gap-3">
-          {/* POST BUTTON */}
-          <ActionButton
-            label="Post"
-            onClick={() => setShowNewPostModal(true)}
-            className="px-5 py-2 bg-gray-800 rounded-full"
-          />
-
-          {/* MESSAGES BUTTON */}
-          <div className="relative">
-            <button
-              onClick={() => {
-                setShowInbox(true);
-                setUnreadMessages(0);
-              }}
-              className="px-5 py-2 bg-indigo-700 rounded-full text-white"
-            >
-              Mensajes
-            </button>
-            {unreadTotal > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-600 text-xs px-1 rounded-full">
-                {unreadTotal}
-              </span>
-            )}
-          </div>
-
-          {/* THEME */}
+        {/* MESSAGES BUTTON */}
+        <div className="relative">
           <button
-            onClick={toggleTheme}
-            className="px-4 py-2 bg-gray-700 rounded-full"
+            onClick={() => {
+              setShowInbox(true);
+              setUnreadMessages(0);
+            }}
+            className="px-5 py-2 bg-indigo-700 rounded-full text-white"
           >
-            {theme === "dark" ? "☀️" : "🌙"}
+            Mensajes
           </button>
-        </div>
-
-        {/* PROFILE */}
-        <div
-          className="w-10 h-10 rounded-full overflow-hidden bg-gray-800 cursor-pointer"
-          onClick={() => setShowProfileModal(true)}
-        >
-          {profile?.avatar_url ? (
-            <img
-              src={profile.avatar_url}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">H</div>
+          {unreadTotal > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-600 text-xs px-1 rounded-full">
+              {unreadTotal}
+            </span>
           )}
         </div>
-      </header>
 
-      {/* FEED */}
-      <main className="w-full px-2 py-6 flex justify-center">
-        <FeedPage
-          posts={posts}
-          loading={loading}
-          error={error}
-          currentUserId={userId}
-          userTier={profile?.tier || "free"}
-          onUpgradeSuccess={() => fetchOrCreateProfile(userId || "")}
-        />
-      </main>
-
-      {/* MODAL INBOX */}
-      {/* MODAL INBOX */}
-{showInbox && userId && (
-  <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
-    <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[80vh] flex flex-col border border-white/10 shadow-lg">
-      {/* HEADER */}
-      <div className="flex items-center justify-between p-4 border-b border-white/20">
-        <h2 className="text-white font-bold text-lg">Mensajes</h2>
-        <button onClick={() => setShowInbox(false)} className="text-gray-400 hover:text-white">✕</button>
+        {/* THEME */}
+        <button
+          onClick={toggleTheme}
+          className="px-4 py-2 bg-gray-700 rounded-full"
+        >
+          {theme === "dark" ? "☀️" : "🌙"}
+        </button>
       </div>
 
-      {/* MENSAJES */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        <Inbox currentUserId={userId} />
-      </div>
-
-      {/* NUEVO MENSAJE / ADJUNTOS */}
-      <div className="p-4 border-t border-white/20 flex flex-col gap-2">
-        <textarea
-          value={newMessage}
-          onChange={(e) => {
-            const maxChars =
-              profile?.tier === "premium+"
-                ? 10000
-                : profile?.tier === "premium"
-                ? 3000
-                : 1000; // free
-            if (e.target.value.length <= maxChars) setNewMessage(e.target.value);
-          }}
-          className="w-full p-2 bg-gray-800 text-white rounded resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px]"
-          placeholder="Escribe tu mensaje..."
-        />
-        <div className="flex items-center justify-between mt-2">
-          {/* Input para adjuntos */}
-          <input
-            type="file"
-            onChange={handleFileUpload}
-            className="text-sm text-gray-300"
-            multiple
+      {/* PROFILE */}
+      <div
+        className="w-10 h-10 rounded-full overflow-hidden bg-gray-800 cursor-pointer"
+        onClick={() => setShowProfileModal(true)}
+      >
+        {profile?.avatar_url ? (
+          <img
+            src={profile.avatar_url}
+            className="w-full h-full object-cover"
           />
-          <span className="text-gray-400 text-sm">
-            {newMessage.length} / {profile?.tier === "premium+" ? 10000 : profile?.tier === "premium" ? 3000 : 1000}
-          </span>
-          <button
-            onClick={sendMessage}
-            className="px-4 py-1 bg-purple-600 rounded-full text-white font-medium"
-          >
-            Enviar
-          </button>
-        </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">H</div>
+        )}
       </div>
-    </div>
-  </div>
-)}
+    </header>
 
-{/* PERFIL */}
-{showProfileModal && (
-  <ProfileModal
-    id={userId}
-    currentUserId={userId}
-    onClose={() => setShowProfileModal(false)}
-    showUpgradeButton={profile?.tier === "free"}
-  />
-)}
-
-{/* MODAL NUEVO POST */}
-{showNewPostModal && (
-  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4">
-    <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
-      <h2 className="text-xl font-bold mb-4 text-white">Nuevo Post</h2>
-      <textarea
-        value={newPostContent}
-        onChange={(e) => {
-          if (e.target.value.length <= maxChars) setNewPostContent(e.target.value);
-        }}
-        className="w-full bg-black border border-gray-700 rounded-xl p-4 min-h-[140px] text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-        placeholder="¿Qué estás pensando?"
-        maxLength={maxChars}
+    {/* FEED */}
+    <main className="w-full px-2 py-6 flex justify-center">
+      <FeedPage
+        posts={posts}
+        loading={loading}
+        error={error}
+        currentUserId={userId}
+        userTier={profile?.tier || "free"}
+        onUpgradeSuccess={() => fetchOrCreateProfile(userId || "")}
       />
-      <div className="flex justify-between mt-4 text-sm text-gray-400">
-        <span>{newPostContent.length} / {maxChars}</span>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setShowNewPostModal(false)}
-            className="px-5 py-2 bg-gray-800 rounded-full"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleCreatePost}
-            className="px-6 py-2 bg-purple-600 rounded-full font-medium"
-          >
-            Publicar
-          </button>
+    </main>
+
+    {/* MODAL INBOX */}
+    {showInbox && userId && (
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
+        <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[80vh] flex flex-col border border-white/10 shadow-lg">
+          {/* HEADER */}
+          <div className="flex items-center justify-between p-4 border-b border-white/20">
+            <h2 className="text-white font-bold text-lg">Mensajes</h2>
+            <button
+              onClick={() => setShowInbox(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* MENSAJES */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <Inbox currentUserId={userId} />
+          </div>
+
+          {/* NUEVO MENSAJE / ADJUNTOS */}
+          <div className="p-4 border-t border-white/20 flex flex-col gap-2">
+            <textarea
+              value={newMessage}
+              onChange={(e) => {
+                const maxChars =
+                  profile?.tier === "premium+"
+                    ? 10000
+                    : profile?.tier === "premium"
+                    ? 3000
+                    : 1000; // free
+                if (e.target.value.length <= maxChars) setNewMessage(e.target.value);
+              }}
+              className="w-full p-2 bg-gray-800 text-white rounded resize-none focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[80px]"
+              placeholder="Escribe tu mensaje..."
+            />
+            <div className="flex items-center justify-between mt-2">
+              {/* Input para adjuntos */}
+              <input
+                type="file"
+                onChange={handleFileUpload}
+                className="text-sm text-gray-300"
+                multiple
+              />
+              <span className="text-gray-400 text-sm">
+                {newMessage.length} / {profile?.tier === "premium+" ? 10000 : profile?.tier === "premium" ? 3000 : 1000}
+              </span>
+              <button
+                onClick={sendMessage}
+                className="px-4 py-1 bg-purple-600 rounded-full text-white font-medium"
+              >
+                Enviar
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    )}
+
+    {/* PERFIL */}
+    {showProfileModal && (
+      <ProfileModal
+        id={userId}
+        currentUserId={userId}
+        onClose={() => setShowProfileModal(false)}
+        showUpgradeButton={profile?.tier === "free"}
+      />
+    )}
+
+    {/* MODAL NUEVO POST */}
+    {showNewPostModal && (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 px-4">
+        <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10">
+          <h2 className="text-xl font-bold mb-4 text-white">Nuevo Post</h2>
+          <textarea
+            value={newPostContent}
+            onChange={(e) => {
+              if (e.target.value.length <= maxChars) setNewPostContent(e.target.value);
+            }}
+            className="w-full bg-black border border-gray-700 rounded-xl p-4 min-h-[140px] text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+            placeholder="¿Qué estás pensando?"
+            maxLength={maxChars}
+          />
+          <div className="flex justify-between mt-4 text-sm text-gray-400">
+            <span>{newPostContent.length} / {maxChars}</span>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNewPostModal(false)}
+                className="px-5 py-2 bg-gray-800 rounded-full"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreatePost}
+                className="px-6 py-2 bg-purple-600 rounded-full font-medium"
+              >
+                Publicar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
-)}
-export default HomePage;
+);
+  HomePage default
+      
