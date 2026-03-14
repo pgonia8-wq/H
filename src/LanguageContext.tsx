@@ -12,7 +12,7 @@ interface LanguageContextProps {
   t: (key: string) => string;
 }
 
-// Traducciones completas: PostCard + ProfileModal
+// Traducciones completas: PostCard + ProfileModal + Inbox
 const translations: Record<Language, Translations> = {
   es: {
     // --- PostCard / Feed ---
@@ -75,6 +75,11 @@ const translations: Record<Language, Translations> = {
     suscripcion_exitosa: "Suscripción exitosa",
     suscribirse_chat_premium: "Suscribirse al chat premium ({amount} WLD)",
     chat_exclusivo_creadores_tokens: "Chat Exclusivo Creadores de Tokens",
+
+    // --- Inbox / Modal de Mensajes ---
+    mensajes: "Mensajes",
+    buscar_seguidores: "Buscar seguidores...",
+    cargando: "Cargando...",
   },
   en: {
     // --- PostCard / Feed ---
@@ -137,6 +142,11 @@ const translations: Record<Language, Translations> = {
     suscripcion_exitosa: "Subscription successful",
     suscribirse_chat_premium: "Subscribe to premium chat ({amount} WLD)",
     chat_exclusivo_creadores_tokens: "Exclusive Token Creators Chat",
+
+    // --- Inbox / Modal de Mensajes ---
+    mensajes: "Messages",
+    buscar_seguidores: "Search followers...",
+    cargando: "Loading...",
   },
 };
 
