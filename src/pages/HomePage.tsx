@@ -8,23 +8,8 @@ import Inbox from "./chat/Inbox";
 
 const PAGE_SIZE = 8;
 
-// Post de prueba permanente
-const DUMMY_POST = {
-  id: "dummy-1",
-  user_id: "0x0250990b30200a36ceb19a21342529d00118547a3cc54fdc17f6047480b0bf4a",
-  content: "¡Bienvenido a H-Humans! Comparte tus ideas, conecta con otros humanos verificados y explora el feed trending. 🌍✨",
-  timestamp: new Date().toISOString(),
-  likes: 42,
-  comments: 7,
-  reposts: 15,
-  profiles: {
-    username: "@pgonia",
-    avatar_url: null
-  }
-};
-
 const HomePage = ({ userId }: { userId: string | null }) => {
-  const [posts, setPosts] = useState<any[]>([DUMMY_POST]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -198,7 +183,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
     try {
       if (newPostImage) {
-        const fileExt = newPostImage.name.split(".").pop();
+        const fileExt = newPostImage.name.split(".").pop() || "png";
         const fileName = `\( {userId}- \){Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
@@ -354,15 +339,36 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       {/* MODAL INBOX */}
       {showInbox && userId && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
-          <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[80vh] flex flex-col border border-white/10 shadow-lg">
+          <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[90vh] flex flex-col border border-white/10 shadow-lg">
             <div className="flex items-center justify-between p-4 border-b border-white/20">
               <h2 className="text-white font-bold text-lg">Mensajes</h2>
               <button onClick={() => setShowInbox(false)} className="text-gray-400 hover:text-white">
                 ✕
               </button>
             </div>
+
+            {/* Área de mensajes (Inbox) */}
             <div className="flex-1 overflow-y-auto p-4">
               <Inbox currentUserId={userId} />
+            </div>
+
+            {/* Barra inferior para enviar mensajes */}
+            <div className="p-4 border-t border-white/20 bg-gray-900">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Escribe un mensaje..."
+                  className="flex-1 bg-gray-800 text-white p-3 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button className="p-3 bg-gray-700 rounded-full">
+                  <span role="img" aria-label="attach">📎</span>
+                </button>
+                <button className="p-3 bg-indigo-600 rounded-full">
+                  <span role="img" aria-label="send">➤</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
