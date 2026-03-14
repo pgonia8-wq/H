@@ -1,12 +1,15 @@
-import React from "react";
+import React, { useContext } from "react";
+import { LanguageContext } from "../LanguageContext";
 
 interface Props {
-  label: string;
+  labelKey: string; // Cambiamos label por labelKey
   onClick: () => void;
   className?: string;
 }
 
-const ActionButton: React.FC<Props> = ({ label, onClick, className = "" }) => {
+const ActionButton: React.FC<Props> = ({ labelKey, onClick, className = "" }) => {
+  const { t } = useContext(LanguageContext); // Accedemos al contexto directamente
+
   return (
     <button
       onClick={onClick}
@@ -19,7 +22,7 @@ const ActionButton: React.FC<Props> = ({ label, onClick, className = "" }) => {
         ${className}
       `}
     >
-      {label}
+      {t(labelKey)} {/* Traducimos usando la clave */}
     </button>
   );
 };
