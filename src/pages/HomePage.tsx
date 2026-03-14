@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useContext } from "rea
 import { supabase } from "../supabaseClient";
 import FeedPage from "./FeedPage";
 import { ThemeContext } from "../lib/ThemeContext";
+import { LanguageContext } from "../LanguageContext";
 import ProfileModal from "../components/ProfileModal";
 import ActionButton from "../components/ActionButton";
 import Inbox from "./chat/Inbox";
@@ -35,6 +36,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
 
   const { theme, toggleTheme } = useContext(ThemeContext);
+  const { language, setLanguage, t } = useContext(LanguageContext);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const maxChars =
@@ -174,7 +176,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) {
-      alert("Escribe algo antes de publicar");
+      alert(t("write_before_posting"));
       return;
     }
     if (!userId) return;
@@ -239,7 +241,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       const { error } = await supabase.from("messages").insert({
         sender_id: userId,
-        receiver_id: selectedChatUserId, // Debes tener a quién le envías
+        receiver_id: selectedChatUserId, 
         content: newMessage,
         attachments: attachmentsUrls,
         timestamp: new Date().toISOString(),
@@ -249,7 +251,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
       setNewMessage("");
       setNewMessageAttachments([]);
-      loadUnread(); // refresca contador
+      loadUnread();
     } catch (err: any) {
       console.error("Error enviando mensaje", err);
       alert(err.message);
@@ -269,7 +271,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
         <div className="flex gap-3">
           <ActionButton
-            label="Post"
+            label={t("post")}
             onClick={() => setShowNewPostModal(true)}
             className="px-5 py-2 bg-gray-800 rounded-full"
           />
@@ -297,6 +299,14 @@ const HomePage = ({ userId }: { userId: string | null }) => {
           >
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
+
+          {/* LANGUAGE SELECTOR */}
+          <button
+            onClick={() => setLanguage(language === "es" ? "en" : "es")}
+            className="px-4 py-2 bg-gray-600 text-white rounded-full"
+          >
+            {language.toUpperCase()}
+          </button>
         </div>
 
         <div
@@ -323,7 +333,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         />
       </main>
 
-      {/* MODAL PROFILE */}
+      {/* MODALS (PROFILE, NEW POST, INBOX, NOTIFICATIONS) */}
       {showProfileModal && (
         <ProfileModal
           currentUserId={userId}
@@ -331,18 +341,17 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         />
       )}
 
-      {/* MODAL NEW POST */}
       {showNewPostModal && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">Crear post</h2>
+            <h2 className="text-xl font-bold mb-4">{t("create_post")}</h2>
             <textarea
               value={newPostContent}
               onChange={(e) => setNewPostContent(e.target.value)}
               className={`w-full h-32 p-3 rounded-xl resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 ${
                 theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-black border border-gray-300"
               }`}
-              placeholder="¿Qué está pasando?"
+              placeholder={t("whats_happening")}
               maxLength={maxChars}
             />
             <input
@@ -362,25 +371,24 @@ const HomePage = ({ userId }: { userId: string | null }) => {
                 onClick={() => setShowNewPostModal(false)}
                 className="flex-1 py-3 bg-gray-700 text-white rounded-xl"
               >
-                Cancelar
+                {t("cancel")}
               </button>
               <button
                 onClick={handleCreatePost}
                 className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-medium"
               >
-                Publicar
+                {t("publish")}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL INBOX */}
       {showInbox && userId && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-4">
           <div className="bg-gray-900 rounded-2xl w-full max-w-md h-[90vh] flex flex-col border border-white/10 shadow-lg">
             <div className="flex items-center justify-between p-4 border-b border-white/20">
-              <h2 className="text-white font-bold text-lg">Mensajes</h2>
+              <h2 className="text-white font-bold text-lg">{t("messages")}</h2>
               <button onClick={() => setShowInbox(false)} className="text-gray-400 hover:text-white">
                 ✕
               </button>
@@ -396,7 +404,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
                   type="text"
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Escribe un mensaje..."
+                  placeholder={t("write_a_message")}
                   className={`flex-1 p-3 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-black border border-gray-300"
                   }`}
@@ -424,7 +432,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
               </div>
               {newMessageAttachments.length > 0 && (
                 <div className="mt-2 text-xs text-gray-400">
-                  Adjuntos: {newMessageAttachments.map(f => f.name).join(", ")}
+                  {t("attachments")}: {newMessageAttachments.map(f => f.name).join(", ")}
                 </div>
               )}
             </div>
@@ -432,19 +440,18 @@ const HomePage = ({ userId }: { userId: string | null }) => {
         </div>
       )}
 
-      {/* MODAL NOTIFICACIONES */}
       {showNotifications && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-900 rounded-xl w-[90%] max-w-md p-4">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Notificaciones</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t("notifications")}</h2>
               <button onClick={() => setShowNotifications(false)} className="text-gray-500 hover:text-gray-700">
                 ✕
               </button>
             </div>
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               <p className={`${theme === "dark" ? "text-gray-400" : "text-black"} text-sm`}>
-                Aún no tienes notificaciones.
+                {t("no_notifications")}
               </p>
             </div>
           </div>
