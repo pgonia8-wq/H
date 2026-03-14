@@ -438,12 +438,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
               ) : commentsList.length === 0 ? (
                 <p className="text-gray-500 text-sm">{t("no_hay_comentarios")}</p>
               ) : (
-                commentsList.map((c) => (
-                  <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
-                    <p className="font-bold">{c.profiles?.username || `@anon-${c.user_id.slice(0, 8)}`}</p>
-                    <p className="text-gray-300">{c.content}</p>
-                    <p className="text-xs text-gray-500 mt-1">{new Date <p className="text-xs text-gray-500 mt-1">{new Date(c.timestamp).toLocaleString()}</p>
-                  </div>
+                {commentsList.map((c) => (
+                 <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
+                  <p className="font-bold">{c.profiles?.username || `@anon-${c.user_id.slice(0, 8)}`}</p>
+                  <p className="text-gray-300">{c.content}</p>
+                   <p className="text-xs text-gray-500 mt-1">{new Date(c.timestamp).toLocaleString()}</p>
+                   </div>
                 ))
               )}
             </div>
