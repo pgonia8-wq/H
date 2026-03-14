@@ -6,12 +6,15 @@ import "./index.css";
 import { MiniKitProvider } from "@worldcoin/minikit-js/minikit-provider";
 import { ThemeProvider } from "./lib/ThemeContext";
 import { UserProvider } from "./context/UserContext";
+import { LanguageProvider } from "./LanguageContext"; // <-- importamos
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <MiniKitProvider appId="app_6a98c88249208506dcd4e04b529111fc">
     <UserProvider>
       <ThemeProvider>
-        <App />
+        <LanguageProvider> {/* <-- envolvemos App */}
+          <App />
+        </LanguageProvider>
       </ThemeProvider>
     </UserProvider>
   </MiniKitProvider>
