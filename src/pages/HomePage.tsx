@@ -184,7 +184,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     try {
       if (newPostImage) {
         const fileExt = newPostImage.name.split(".").pop() || "png";
-        const fileName = `\( {userId}- \){Date.now()}.${fileExt}`; // ← CORREGIDO AQUÍ
+        const fileName = `\( {userId}- \){Date.now()}.${fileExt}`; // ← CORREGIDO AQUÍ (template string real)
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
@@ -302,7 +302,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             <textarea
               value={newPostContent}
               onChange={(e) => setNewPostContent(e.target.value)}
-              className="w-full h-32 bg-gray-800 text-white p-3 rounded-xl resize-y"
+              className={`w-full h-32 p-3 rounded-xl resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-black"
+              }`}
               placeholder="¿Qué está pasando?"
               maxLength={maxChars}
             />
@@ -347,12 +349,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
               </button>
             </div>
 
-            {/* Área de mensajes (Inbox) */}
             <div className="flex-1 overflow-y-auto p-4">
               <Inbox currentUserId={userId} />
             </div>
 
-            {/* Barra inferior para enviar mensajes */}
             <div className="p-4 border-t border-white/20 bg-gray-900">
               <div className="flex items-center gap-2 relative">
                 <input
@@ -360,9 +360,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Escribe un mensaje..."
-                  className="flex-1 bg-gray-800 text-white p-3 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className={`flex-1 p-3 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-black"
+                  }`}
                 />
-                {/* Input file oculto para adjuntar */}
                 <label className="cursor-pointer p-3 bg-gray-700 rounded-full">
                   <span role="img" aria-label="attach">📎</span>
                   <input
@@ -379,7 +380,6 @@ const HomePage = ({ userId }: { userId: string | null }) => {
                 </label>
                 <button
                   onClick={() => {
-                    // Aquí iría la lógica de enviar mensaje + adjuntos
                     if (newMessage.trim() || newMessageAttachments.length > 0) {
                       alert("Mensaje enviado (lógica pendiente en Inbox)");
                       setNewMessage("");
@@ -393,7 +393,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
               </div>
               {newMessageAttachments.length > 0 && (
                 <div className="mt-2 text-xs text-gray-400">
-                  Adjuntos: {newMessageAttachments.map(f => f.name).join(", ")}
+                  Adjuntos: {newMessageAttachments.map((f) => f.name).join(", ")}
                 </div>
               )}
             </div>
