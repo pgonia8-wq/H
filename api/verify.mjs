@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const APP_ID = "app_6a98c88249208506dcd4e04b529111fc"; // Tu App ID real
+const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
 
 export default async function handler(req, res) {
   console.log("[BACKEND] Llamada a verify.mjs");
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
   try {
     console.log("[BACKEND] Payload recibido:", payload);
 
-    // 1. Validar proof con Worldcoin
+    // 1️⃣ Validar proof con Worldcoin
     const cloudProof = {
       merkle_root: payload.merkle_root,
       nullifier_hash: payload.nullifier_hash,
@@ -45,6 +45,7 @@ export default async function handler(req, res) {
 
     if (!verification.success) {
       console.log("[BACKEND] Proof inválido:", verification);
+
       return res.status(400).json({
         success: false,
         error: "Invalid proof",
@@ -54,7 +55,9 @@ export default async function handler(req, res) {
 
     const nullifierHash = payload.nullifier_hash;
 
-    // 2. Buscar perfil existente
+    console.log("[BACKEND] nullifierHash:", nullifierHash);
+
+    // 2️⃣ Buscar perfil existente
     const { data: existing, error: selectError } = await supabase
       .from("profiles")
       .select("*")
@@ -65,6 +68,7 @@ export default async function handler(req, res) {
 
     let profile = existing;
 
+    // 3️⃣ Crear perfil si no existe
     if (!profile) {
       console.log("[BACKEND] No existe profile, creando...");
 
@@ -73,7 +77,7 @@ export default async function handler(req, res) {
         .insert({
           id: nullifierHash,
           tier: "free",
-          username: `@anon-${nullifierHash.slice(0, 8)}`,
+          username: null, // 👈 YA NO SE CREA @anon
           avatar_url: "",
           created_at: new Date().toISOString(),
           profile_visible: true,
@@ -84,6 +88,7 @@ export default async function handler(req, res) {
       if (insertError) throw insertError;
 
       profile = inserted;
+
       console.log("[BACKEND] Perfil creado:", profile);
     } else {
       console.log("[BACKEND] Perfil existente encontrado:", profile);
@@ -96,11 +101,13 @@ export default async function handler(req, res) {
       nullifier_hash: nullifierHash,
       profile,
     });
+
   } catch (err) {
     console.error("[BACKEND] Error completo verify.mjs:", err);
+
     return res.status(500).json({
       success: false,
       error: err.message || "Error interno al procesar verificación",
     });
   }
-}
+  }
