@@ -7,7 +7,6 @@ const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
 const App = () => {
   const [wallet, setWallet] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
-  const [avatar, setAvatar] = useState<string | null>(null);
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [walletLoading, setWalletLoading] = useState(false);
@@ -15,13 +14,12 @@ const App = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [miniKitReady, setMiniKitReady] = useState(false);
 
-  // Carga datos locales al montar
+  // Carga datos de localStorage al montar
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
     if (storedId) {
       setUserId(storedId);
       setVerified(true);
-      console.log("[APP] User ID cargado:", storedId);
     }
 
     const storedWallet = localStorage.getItem("wallet");
@@ -29,9 +27,6 @@ const App = () => {
 
     const storedUsername = localStorage.getItem("username");
     if (storedUsername) setUsername(storedUsername);
-
-    const storedAvatar = localStorage.getItem("avatar");
-    if (storedAvatar) setAvatar(storedAvatar);
   }, []);
 
   // Inicializa MiniKit
@@ -47,20 +42,21 @@ const App = () => {
         }
       }
     } catch (err) {
-      console.error("[APP] MiniKit init error:", err);
+      console.error("[APP] Error al inicializar MiniKit:", err);
       setError("MiniKit no se pudo inicializar");
     }
   }, []);
 
-  // Cargar wallet si está verificado pero no cargada
+  // Carga wallet si está verificado pero wallet no cargada
   useEffect(() => {
     const loadWallet = async () => {
       if (!verified || wallet || walletLoading || !miniKitReady) return;
-      setWalletLoading(true);
 
+      setWalletLoading(true);
       try {
         const nonceRes = await fetch("/api/nonce");
         if (!nonceRes.ok) throw new Error("Error obteniendo nonce");
+
         const { nonce } = await nonceRes.json();
 
         const authResult = await Promise.race([
@@ -80,11 +76,9 @@ const App = () => {
           const w = authResult.finalPayload.address;
           setWallet(w);
           localStorage.setItem("wallet", w);
-        } else {
-          throw new Error("walletAuth falló");
         }
       } catch (err: any) {
-        console.error("[APP] Error walletAuth:", err);
+        console.error("[APP] Error en walletAuth:", err);
         setError(err.message || "Error al autenticar wallet");
       } finally {
         setWalletLoading(false);
@@ -96,14 +90,13 @@ const App = () => {
 
   // Verificación World ID
   const verifyUser = async () => {
-    if (verifying) return;
-    if (userId) return;
+    if (verifying || userId) return;
 
     setVerifying(true);
     setError(null);
 
     try {
-      if (!MiniKit.isInstalled()) throw new Error("MiniKit no está instalado.");
+      if (!MiniKit.isInstalled()) throw new Error("MiniKit no está instalado");
 
       const verifyRes = await Promise.race([
         MiniKit.commandsAsync.verify({
@@ -117,9 +110,10 @@ const App = () => {
       ]);
 
       const proof = verifyRes?.finalPayload;
-      if (!proof || proof.status !== "success") throw new Error("Verificación fallida");
+      if (!proof || proof.status !== "success") {
+        throw new Error(proof?.error || "Verificación fallida");
+      }
 
-      // Enviar proof al backend verify.mjs
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,57 +126,58 @@ const App = () => {
       }
 
       const backend = await res.json();
-      if (!backend.success) throw new Error(backend.error || "Backend rechazó la verificación");
+      if (!backend.success) throw new Error(backend.error || "Backend rechazó verificación");
 
       const id = proof.nullifier_hash;
-      localStorage.setItem("userId", id);
       setUserId(id);
+      localStorage.setItem("userId", id);
       setVerified(true);
-
-      // Ahora pedimos username y avatar del profile
-      const profileRes = await fetch("/api/get-profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: id }),
-      });
-
-      if (!profileRes.ok) throw new Error("No se pudo obtener profile");
-      const profileData = await profileRes.json();
-      if (profileData?.profile) {
-        setUsername(profileData.profile.username || null);
-        setAvatar(profileData.profile.avatar_url || null);
-        localStorage.setItem("username", profileData.profile.username || "");
-        localStorage.setItem("avatar", profileData.profile.avatar_url || "");
-      }
     } catch (err: any) {
-      console.error("[APP] verifyUser error:", err);
+      console.error("[APP] Error verifyUser:", err);
       setError(err.message || "Error al verificar con World ID");
     } finally {
       setVerifying(false);
     }
   };
 
+  // **Cargar username desde backend**
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!userId) return;
+
+      try {
+        const res = await fetch("/api/get-profile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        });
+
+        const data = await res.json();
+
+        if (data.success && data.profile?.username) {
+          setUsername(data.profile.username);
+          localStorage.setItem("username", data.profile.username);
+        }
+      } catch (err) {
+        console.error("[APP] Error cargando username desde backend:", err);
+      }
+    };
+
+    fetchProfile();
+  }, [userId]);
+
   return (
     <>
-      {walletLoading && (
+      {(walletLoading || verifying) && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="text-white text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4"></div>
-            <p>Cargando wallet...</p>
+            <p>{walletLoading ? "Cargando wallet..." : "Verificando identidad..."}</p>
           </div>
         </div>
       )}
 
-      {verifying && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500 mx-auto mb-4"></div>
-            <p>Verificando identidad con World ID...</p>
-          </div>
-        </div>
-      )}
-
-      {(!userId || !verified) && !walletLoading && !verifying ? (
+      {!userId || !verified ? (
         <div className="min-h-screen flex items-center justify-center bg-black text-white">
           <p className="text-center">Cargando sesión... verifica con World ID</p>
         </div>
@@ -193,7 +188,6 @@ const App = () => {
           verified={verified}
           wallet={wallet}
           username={username}
-          avatar={avatar}
           error={error}
           verifying={verifying}
           setUserId={setUserId}
