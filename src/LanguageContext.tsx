@@ -15,7 +15,13 @@ const translations: Record<Language, Record<string, string>> = {
     notifications: "Notificaciones",
     messages: "Mensajes",
     write_something: "¿Qué está pasando?",
-    // agrega todas las llaves que uses en tu app
+    create_post: "Crear post",
+    attach: "📎",
+    send: "➤",
+    message_sent: "✅ Mensaje enviado correctamente",
+    no_notifications: "Aún no tienes notificaciones",
+    write_message: "Escribe un mensaje...",
+    avatar_placeholder: "H",
   },
   en: {
     post: "Post",
@@ -23,6 +29,13 @@ const translations: Record<Language, Record<string, string>> = {
     notifications: "Notifications",
     messages: "Messages",
     write_something: "What's happening?",
+    create_post: "Create Post",
+    attach: "📎",
+    send: "➤",
+    message_sent: "✅ Message sent successfully",
+    no_notifications: "You have no notifications",
+    write_message: "Write a message...",
+    avatar_placeholder: "H",
   },
 };
 
@@ -31,7 +44,6 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const [language, setLanguage] = useState<Language>("es");
 
-  // Persistir idioma en sessionStorage
   useEffect(() => {
     const saved = sessionStorage.getItem("language") as Language | null;
     if (saved) setLanguage(saved);
