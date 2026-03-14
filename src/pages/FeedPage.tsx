@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import PostCard from "../components/PostCard";
 import { supabase } from "../supabaseClient";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
+import { LanguageContext } from "../LanguageContext"; // <-- agregado
 
 const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 
@@ -22,6 +23,8 @@ const FeedPage: React.FC<FeedPageProps> = ({
   userTier,
   onUpgradeSuccess
 }) => {
+
+  const { t } = useContext(LanguageContext); // <-- agregado
 
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
   const [selectedTier, setSelectedTier] = useState<"premium" | "premium+" | null>(null);
@@ -140,17 +143,17 @@ const FeedPage: React.FC<FeedPageProps> = ({
     setUpgradeError(null);
 
     if (!price) {
-      setUpgradeError("Calculando precio, intenta nuevamente.");
+      setUpgradeError(t ? t("calculando_precio") : "Calculando precio, intenta nuevamente.");
       return;
     }
 
     if (!currentUserId || !selectedTier) {
-      setUpgradeError("No se encontró tu ID o tier seleccionado");
+      setUpgradeError(t ? t("no_usuario_o_tier") : "No se encontró tu ID o tier seleccionado");
       return;
     }
 
     if (!MiniKit.isInstalled()) {
-      setUpgradeError("MiniKit no detectado dentro de World App");
+      setUpgradeError(t ? t("minikit_no_detectado") : "MiniKit no detectado dentro de World App");
       return;
     }
 
@@ -173,7 +176,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
       console.log("[UPGRADE] pay response:", payRes);
 
       if (payRes?.finalPayload?.status !== "success") {
-        throw new Error(payRes?.finalPayload?.description || "Pago cancelado");
+        throw new Error(payRes?.finalPayload?.description || (t ? t("pago_cancelado") : "Pago cancelado"));
       }
 
       const transactionId = payRes?.finalPayload?.transaction_id;
@@ -191,10 +194,10 @@ const FeedPage: React.FC<FeedPageProps> = ({
       const data = await res.json();
 
       if (!data.success) {
-        throw new Error(data.error || "Error al procesar upgrade");
+        throw new Error(data.error || (t ? t("error_upgrade") : "Error al procesar upgrade"));
       }
 
-      alert(`Upgrade ${selectedTier} exitoso`);
+      alert(t ? t("upgrade_exitoso") + ` ${selectedTier}` : `Upgrade ${selectedTier} exitoso`);
 
       onUpgradeSuccess?.();
 
@@ -204,7 +207,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
 
       console.error("[UPGRADE] error:", err);
 
-      setUpgradeError(err.message || "Error en el upgrade");
+      setUpgradeError(err.message || (t ? t("error_upgrade") : "Error en el upgrade"));
 
     } finally {
 
@@ -221,7 +224,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
           onClick={handleUpgrade}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-lg"
         >
-          Upgrade
+          {t ? t("upgrade") : "Upgrade"}
         </button>
       </div>
 
@@ -232,21 +235,21 @@ const FeedPage: React.FC<FeedPageProps> = ({
             onClick={() => selectTier("premium")}
             className="w-full py-4 rounded-xl bg-blue-600 text-white font-bold"
           >
-            Premium
+            {t ? t("premium") : "Premium"}
           </button>
 
           <button
             onClick={() => selectTier("premium+")}
             className="w-full py-4 rounded-xl bg-purple-600 text-white font-bold"
           >
-            Premium+
+            {t ? t("premium_plus") : "Premium+"}
           </button>
 
         </div>
       )}
 
       {loading ? (
-        <p className="text-center py-10">Cargando...</p>
+        <p className="text-center py-10">{t ? t("cargando") : "Cargando..."}</p>
       ) : error ? (
         <p className="text-red-500 text-center py-10">{error}</p>
       ) : (
@@ -267,11 +270,11 @@ const FeedPage: React.FC<FeedPageProps> = ({
           <div className="w-full max-w-md bg-gray-900 rounded-t-3xl p-6">
 
             <h2 className="text-xl font-bold text-white mb-4">
-              Beneficios de {selectedTier}
+              {t ? t("beneficios_de") : "Beneficios de"} {selectedTier}
             </h2>
 
             <p className="text-white text-center mb-4">
-              Precio: {price} WLD
+              {t ? t("precio") : "Precio"}: {price} WLD
             </p>
 
             <div className="flex gap-4">
@@ -280,7 +283,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
                 onClick={cancelUpgrade}
                 className="flex-1 py-3 bg-gray-700 text-white rounded-2xl"
               >
-                Cancelar
+                {t ? t("cancelar") : "Cancelar"}
               </button>
 
               <button
@@ -288,7 +291,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
                 disabled={loadingUpgrade}
                 className="flex-1 py-3 bg-yellow-500 text-black rounded-2xl font-bold"
               >
-                {loadingUpgrade ? "Procesando..." : "Aceptar"}
+                {loadingUpgrade ? (t ? t("procesando") : "Procesando...") : (t ? t("aceptar") : "Aceptar")}
               </button>
 
             </div>
