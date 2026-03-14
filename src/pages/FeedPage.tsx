@@ -24,7 +24,6 @@ const FeedPage: React.FC<FeedPageProps> = ({
   onUpgradeSuccess,
   t
 }) => {
-
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
   const [selectedTier, setSelectedTier] = useState<"premium" | "premium+" | null>(null);
   const [showSlideModal, setShowSlideModal] = useState(false);
@@ -34,9 +33,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
 
   // ---- Algoritmo de ranking avanzado ----
   const sortedPosts = [...posts].sort((a, b) => {
-
     const now = Date.now();
-
     const calculateScore = (post: any) => {
       const weightLikes = 1;
       const weightComments = 2;
@@ -44,9 +41,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
       const weightTips = 3;
       const weightBoost = 15;
 
-      const ageHours =
-        (now - new Date(post.timestamp).getTime()) / 3600000;
-
+      const ageHours = (now - new Date(post.timestamp).getTime()) / 3600000;
       const recencyDecay = Math.exp(-ageHours / 24);
 
       const likes = post.likes || 0;
@@ -63,27 +58,18 @@ const FeedPage: React.FC<FeedPageProps> = ({
       const engagementScore = engagement / (1 + ageHours);
 
       const boost =
-        post.boosted_until &&
-        new Date(post.boosted_until) > new Date()
+        post.boosted_until && new Date(post.boosted_until) > new Date()
           ? weightBoost
           : 0;
 
       const tagScore = post.tags ? post.tags.length * 0.5 : 0;
 
       const velocity =
-        (likes + comments * 2 + reposts * 2 + tips * 3) /
-        Math.max(ageHours, 1);
+        (likes + comments * 2 + reposts * 2 + tips * 3) / Math.max(ageHours, 1);
 
       const velocityScore = velocity * 0.5;
 
-      const score =
-        engagementScore +
-        recencyDecay +
-        boost +
-        tagScore +
-        velocityScore;
-
-      return score;
+      return engagementScore + recencyDecay + boost + tagScore + velocityScore;
     };
 
     return calculateScore(b) - calculateScore(a);
@@ -116,15 +102,11 @@ const FeedPage: React.FC<FeedPageProps> = ({
     fetchSlots();
   }, [selectedTier]);
 
-  const handleUpgrade = () => {
-    setShowUpgradeOptions(true);
-  };
-
+  const handleUpgrade = () => setShowUpgradeOptions(true);
   const selectTier = (tier: "premium" | "premium+") => {
     setSelectedTier(tier);
     setShowSlideModal(true);
   };
-
   const cancelUpgrade = () => {
     setShowSlideModal(false);
     setSelectedTier(null);
@@ -188,54 +170,43 @@ const FeedPage: React.FC<FeedPageProps> = ({
         throw new Error(data.error || t("upgrade_error"));
       }
 
-      alert(t("upgrade_success", { tier: selectedTier }));
+      alert(`Upgrade ${selectedTier}`); // <-- literal, no t()
 
       onUpgradeSuccess?.();
-
       cancelUpgrade();
-
     } catch (err: any) {
-
       console.error("[UPGRADE] error:", err);
-
       setUpgradeError(err.message || t("upgrade_error"));
-
     } finally {
-
       setLoadingUpgrade(false);
-
     }
   };
 
   return (
     <div className="flex flex-col p-4">
-
       <div className="mb-6">
         <button
           onClick={handleUpgrade}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-lg"
         >
-          {t("upgrade")}
+          Upgrade
         </button>
       </div>
 
       {showUpgradeOptions && (
         <div className="space-y-4 mb-6">
-
           <button
             onClick={() => selectTier("premium")}
             className="w-full py-4 rounded-xl bg-blue-600 text-white font-bold"
           >
-            {t("premium")}
+            Premium
           </button>
-
           <button
             onClick={() => selectTier("premium+")}
             className="w-full py-4 rounded-xl bg-purple-600 text-white font-bold"
           >
-            {t("premium_plus")}
+            Premium+
           </button>
-
         </div>
       )}
 
@@ -251,32 +222,24 @@ const FeedPage: React.FC<FeedPageProps> = ({
         </div>
       )}
 
-      {upgradeError && (
-        <p className="text-red-500 text-center py-4">{upgradeError}</p>
-      )}
+      {upgradeError && <p className="text-red-500 text-center py-4">{upgradeError}</p>}
 
       {showSlideModal && selectedTier && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-
           <div className="w-full max-w-md bg-gray-900 rounded-t-3xl p-6">
-
             <h2 className="text-xl font-bold text-white mb-4">
-              {t("benefits_of")} {selectedTier}
+              Beneficios de {selectedTier} {/* <-- literal, no t() */}
             </h2>
-
             <p className="text-white text-center mb-4">
               {t("price")}: {price} WLD
             </p>
-
             <div className="flex gap-4">
-
               <button
                 onClick={cancelUpgrade}
                 className="flex-1 py-3 bg-gray-700 text-white rounded-2xl"
               >
                 {t("cancel")}
               </button>
-
               <button
                 onClick={confirmUpgrade}
                 disabled={loadingUpgrade}
@@ -284,14 +247,10 @@ const FeedPage: React.FC<FeedPageProps> = ({
               >
                 {loadingUpgrade ? t("processing") : t("accept")}
               </button>
-
             </div>
-
           </div>
-
         </div>
       )}
-
     </div>
   );
 };
