@@ -56,6 +56,18 @@ const App = () => {
           localStorage.setItem("wallet", w);
           console.log("[APP] Wallet detectada:", w);
         }
+
+        // ================================
+        // [MINIKIT USERNAME DIRECTO]
+        // ================================
+        const directUsername = MiniKit.user?.username;
+
+        if (directUsername) {
+          console.log("[APP] Username detectado desde MiniKit.user:", directUsername);
+          setUsername(directUsername);
+          localStorage.setItem("username", directUsername);
+        }
+        // ================================
       }
     } catch (err) {
       console.error("[APP] Error MiniKit:", err);
