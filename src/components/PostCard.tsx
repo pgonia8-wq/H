@@ -13,7 +13,7 @@ interface PostCardProps {
 const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
-  const { theme } = useContext(ThemeContext);
+  const { theme, username: globalUsername } = useContext(ThemeContext);
   const { t } = useLanguage();
   const postRef = useRef<HTMLDivElement | null>(null);
   const viewRegistered = useRef(false);
@@ -122,7 +122,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     }
   }, [showComments, post.id, t]);
 
-  // Handlers
+     // Handlers
   const handleLike = async () => {
     if (!currentUserId) return setError(t("debes_estar_logueado"));
     setLoadingAction("like");
@@ -311,14 +311,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             <img src={post.profiles.avatar_url} alt={t("avatar")} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white text-xl font-bold">
-              {post.profiles?.username?.[0]?.toUpperCase() || "?"}
+              {globalUsername?.[0]?.toUpperCase() || "?"}
             </div>
           )}
         </div>
 
         <div className="flex-1">
-          <p className="font-bold text-lg">{post.profiles?.username || `@anon-${post.user_id.slice(0, 8)}`}</p>
-          <p className="text-sm text-gray-500">@{post.user_id.slice(0, 8)}</p>
+          <p className="font-bold text-lg">{globalUsername || post.profiles?.username}</p>
+          <p className="text-sm text-gray-500">@{globalUsername || post.profiles?.username}</p>
           <p className="text-xs text-gray-400">
             {new Date(post.timestamp).toLocaleString("es-ES", {
               hour: "2-digit",
@@ -421,29 +421,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         </div>
       )}
 
-      import React from "react";
-import { useTheme } from "../lib/ThemeContext"; // <-- importamos ThemeContext
-
-const PostCard = ({
-  comments,
-  commentsList,
-  loadingComments,
-  showComments,
-  setShowComments,
-  currentUserId,
-  handleChatCreadores,
-  error,
-  showRepostModal,
-  confirmRepost,
-  confirmQuote,
-  quoteInput,
-  setQuoteInput,
-  t,
-}: any) => {
-  const { username } = useTheme(); // <-- obtenemos username global
-
-  return (
-    <div className="bg-gray-900 p-4 rounded-xl shadow-md">
       {/* Comments list */}
       {comments > 0 && (
         <div className="mt-4">
@@ -463,11 +440,9 @@ const PostCard = ({
               ) : (
                 commentsList.map((c) => (
                   <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
-                    <p className="font-bold">{c.profiles?.username || username}</p>
+                    <p className="font-bold">{globalUsername || c.profiles?.username}</p>
                     <p className="text-gray-300">{c.content}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {new Date(c.timestamp).toLocaleString()}
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{new Date(c.timestamp).toLocaleString()}</p>
                   </div>
                 ))
               )}
