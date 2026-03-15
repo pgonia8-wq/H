@@ -11,6 +11,8 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [miniKitReady, setMiniKitReady] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
+  const [avatar, setAvatar] = useState<string | null>(null);
   const walletLoading = useRef(false);
 
   // Cargar ID de localStorage
@@ -23,7 +25,6 @@ const App = () => {
       console.log("[APP] ID cargado de localStorage:", storedId);
     } else {
       console.log("[APP] No hay ID en localStorage, forzando verificación...");
-      // Forzar verificación apenas se inicialice MiniKit
       if (miniKitReady) verifyUser();
     }
   }, [miniKitReady]);
@@ -46,6 +47,15 @@ const App = () => {
 
         setMiniKitReady(true);
         console.log("[APP] MiniKit listo");
+
+        // --- NUEVO: obtener username y avatar desde MiniKit.user ---
+        if (MiniKit.user) {
+          const u = MiniKit.user.username || null;
+          const a = MiniKit.user.avatar_url || null;
+          setUsername(u);
+          setAvatar(a);
+          console.log("[APP] MiniKit user:", u, a);
+        }
       } catch (err) {
         console.error("[APP] Error instalando MiniKit:", err);
         setError("Error instalando MiniKit");
@@ -91,6 +101,15 @@ const App = () => {
         } else {
           console.warn("[APP] WalletAuth success pero sin address");
         }
+
+        // --- NUEVO: obtener username y avatar también después de walletAuth ---
+        if (MiniKit.user) {
+          const u = MiniKit.user.username || null;
+          const a = MiniKit.user.avatar_url || null;
+          setUsername(u);
+          setAvatar(a);
+          console.log("[APP] MiniKit user post-walletAuth:", u, a);
+        }
       } catch (err: any) {
         console.error("[APP] Error walletAuth:", err);
         setError(err.message || "Error autenticando wallet");
@@ -135,7 +154,6 @@ const App = () => {
 
       if (!res.ok) {
         const text = await res.text();
-        // Manejo del caso "already verified"
         if (text.includes("already verified") && proof.nullifier_hash) {
           console.log("[APP] Usuario ya verificado, usando nullifier_hash existente");
           const id = proof.nullifier_hash;
@@ -174,6 +192,8 @@ const App = () => {
       verifyUser={verifyUser}
       verified={verified}
       wallet={wallet}
+      username={username}
+      avatar={avatar}
       error={error}
       verifying={verifying}
       setUserId={setUserId}
