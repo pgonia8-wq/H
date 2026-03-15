@@ -6,14 +6,16 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("[VERIFY] Missing Supabase env vars");
-  // NO usamos return fuera de función
-  // lanzamos error para detener la carga
-  throw new Error("Missing Supabase env vars");
+  return new Response(
+    JSON.stringify({ success: false, error: "Missing Supabase env vars" }),
+    { status: 500, headers: { "Content-Type": "application/json" } }
+  );
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-export default async function handler(request) {
+// ← TODO el código está DENTRO de esta función
+export default async (request) => {
   console.log("[VERIFY] Request recibida:", {
     method: request.method,
     timestamp: new Date().toISOString(),
@@ -27,15 +29,10 @@ export default async function handler(request) {
   }
 
   try {
-    // --- CORRECCIÓN: request.text no existe en Node Serverless ---
-    const bodyText = typeof request.body === "string"
-      ? request.body
-      : JSON.stringify(request.body || {});
-    console.log("[VERIFY] Body raw length:", bodyText.length);
-
+    // En Replit/Serverless el body viene como json directamente
     let body;
     try {
-      body = JSON.parse(bodyText);
+      body = await request.json();
       console.log("[VERIFY] Body parseado - keys:", Object.keys(body));
     } catch (parseErr) {
       console.error("[VERIFY] Parse error:", parseErr.message);
@@ -47,15 +44,16 @@ export default async function handler(request) {
 
     const { payload } = body;
 
-    if (!payload || !payload.finalPayload) {
+    // soporte para payload.finalPayload o payload directo
+    const finalPayload = payload.finalPayload || payload;
+
+    if (!finalPayload) {
       console.error("[VERIFY] Missing payload");
       return new Response(
         JSON.stringify({ success: false, error: "Missing payload" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-
-    const { finalPayload } = payload;
 
     if (finalPayload.status !== "success") {
       console.warn("[VERIFY] Verification failed:", finalPayload.status);
@@ -136,4 +134,4 @@ export default async function handler(request) {
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
-        }
+};
