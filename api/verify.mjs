@@ -5,8 +5,11 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("[VERIFY] Missing Supabase environment variables");
-  throw new Error("Missing Supabase environment variables");
+  console.error("[VERIFY] Missing Supabase env vars");
+  return new Response(JSON.stringify({ success: false, error: "Missing env vars" }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -18,53 +21,69 @@ export default async (request) => {
   });
 
   if (request.method !== "POST") {
-    return new Response(
-      JSON.stringify({ success: false, error: "Method not allowed" }),
-      { status: 405, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
-    const body = await request.json();
-    console.log("[VERIFY] Body recibido - keys:", Object.keys(body));
+    console.log("[VERIFY] Leyendo body...");
+    const bodyText = await request.text();
+    console.log("[VERIFY] Body raw length:", bodyText.length);
+
+    let body;
+    try {
+      body = JSON.parse(bodyText);
+      console.log("[VERIFY] Body parseado - keys:", Object.keys(body));
+    } catch (parseErr) {
+      console.error("[VERIFY] Parse error:", parseErr.message);
+      return new Response(JSON.stringify({ success: false, error: "Invalid JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
     const { payload } = body;
 
     if (!payload || !payload.finalPayload) {
-      console.error("[VERIFY] Missing payload or finalPayload");
-      return new Response(
-        JSON.stringify({ success: false, error: "Missing payload" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      console.error("[VERIFY] Missing payload");
+      return new Response(JSON.stringify({ success: false, error: "Missing payload" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const { finalPayload } = payload;
 
     if (finalPayload.status !== "success") {
       console.warn("[VERIFY] Verification failed:", finalPayload.status);
-      return new Response(
-        JSON.stringify({ success: false, error: "Verification failed" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ success: false, error: "Verification failed" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const nullifierHash = finalPayload.nullifier_hash;
     const userId = body.userId || nullifierHash;
 
-    console.log("[VERIFY] Buscando perfil existente...");
+    console.log("[VERIFY] Buscando perfil...");
     let { data: profile, error: fetchError } = await supabase
       .from("profiles")
       .select("*")
       .eq("nullifier_hash", nullifierHash)
       .single();
 
-    if (fetchError && fetchError.code !== "PGRST116") {
-      console.error("[VERIFY] Fetch error:", fetchError);
-      throw fetchError;
+    if (fetchError) {
+      if (fetchError.code === "PGRST116") { // No rows
+        console.log("[VERIFY] Perfil no encontrado - creando...");
+      } else {
+        console.error("[VERIFY] Fetch error:", fetchError.message);
+        throw fetchError;
+      }
     }
 
     if (!profile) {
-      console.log("[VERIFY] Creando nuevo perfil...");
       const { data: newProfile, error: insertError } = await supabase
         .from("profiles")
         .insert({
@@ -78,12 +97,11 @@ export default async (request) => {
         .single();
 
       if (insertError) {
-        console.error("[VERIFY] Insert error:", insertError);
+        console.error("[VERIFY] Insert error:", insertError.message);
         throw insertError;
       }
       profile = newProfile;
     } else {
-      console.log("[VERIFY] Actualizando perfil existente...");
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
@@ -93,11 +111,12 @@ export default async (request) => {
         .eq("id", profile.id);
 
       if (updateError) {
-        console.error("[VERIFY] Update error:", updateError);
+        console.error("[VERIFY] Update error:", updateError.message);
         throw updateError;
       }
     }
 
+    console.log("[VERIFY] Éxito - respondiendo 200");
     return new Response(
       JSON.stringify({
         success: true,
@@ -107,7 +126,7 @@ export default async (request) => {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("[VERIFY] ERROR:", err.message, err.stack);
+    console.error("[VERIFY] CRASH:", err.message, err.stack);
     return new Response(
       JSON.stringify({
         success: false,
