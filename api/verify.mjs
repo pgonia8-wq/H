@@ -7,6 +7,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("[VERIFY] Missing Supabase env vars");
   // NO usamos return fuera de función
+  // lanzamos error para detener la carga
   throw new Error("Missing Supabase env vars");
 }
 
@@ -26,40 +27,13 @@ export default async function handler(request) {
   }
 
   try {
-    // --- Compatibilidad Node Serverless ---
-    const bodyText =
-      typeof request.body === "string"
-        ? request.body
-        : JSON.stringify(request.body || {});
-    console.log("[VERIFY] Body raw length:", bodyText.length);
+    // --- CORRECCIÓN: obtenemos el body directamente ---
+    const body = typeof request.body === "object" ? request.body : JSON.parse(request.body || "{}");
+    console.log("[VERIFY] Body parseado - keys:", Object.keys(body));
 
-    let body;
-    try {
-      body = JSON.parse(bodyText);
-      console.log("[VERIFY] Body parseado - keys:", Object.keys(body));
-    } catch (parseErr) {
-      console.error("[VERIFY] Parse error:", parseErr.message);
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid JSON" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // --- CORRECCIÓN CLAVE: parsear payload si viene como string ---
-    let { payload } = body;
-    if (typeof payload === "string") {
-      try {
-        payload = JSON.parse(payload);
-      } catch (err) {
-        console.error("[VERIFY] Payload parse error:", err.message);
-        return new Response(
-          JSON.stringify({ success: false, error: "Invalid payload JSON" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    if (!payload || !payload.finalPayload) {
+    // Según docs Worldcoin, payload viene directo
+    const payload = body.payload;
+    if (!payload) {
       console.error("[VERIFY] Missing payload");
       return new Response(
         JSON.stringify({ success: false, error: "Missing payload" }),
@@ -67,17 +41,16 @@ export default async function handler(request) {
       );
     }
 
-    const { finalPayload } = payload;
-
-    if (finalPayload.status !== "success") {
-      console.warn("[VERIFY] Verification failed:", finalPayload.status);
+    // Verificamos status
+    if (payload.status !== "success") {
+      console.warn("[VERIFY] Verification failed:", payload.status);
       return new Response(
         JSON.stringify({ success: false, error: "Verification failed" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const nullifierHash = finalPayload.nullifier_hash;
+    const nullifierHash = payload.nullifier_hash;
     const userId = body.userId || nullifierHash;
 
     console.log("[VERIFY] Buscando perfil...");
@@ -148,4 +121,4 @@ export default async function handler(request) {
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
-                                   }
+       }
