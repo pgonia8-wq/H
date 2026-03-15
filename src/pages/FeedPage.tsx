@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from "react";
 import PostCard from "../components/PostCard";
 import { supabase } from "../supabaseClient";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
-import { LanguageContext } from "../LanguageContext"; // <-- agregado
+import { LanguageContext } from "../LanguageContext";
 
 const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 
@@ -24,7 +24,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
   onUpgradeSuccess
 }) => {
 
-  const { t } = useContext(LanguageContext); // <-- agregado
+  const { t } = useContext(LanguageContext);
 
   const [showUpgradeOptions, setShowUpgradeOptions] = useState(false);
   const [selectedTier, setSelectedTier] = useState<"premium" | "premium+" | null>(null);
@@ -49,10 +49,8 @@ const FeedPage: React.FC<FeedPageProps> = ({
       const ageHours =
         (now - new Date(post.timestamp).getTime()) / 3600000;
 
-      // Recency decay
       const recencyDecay = Math.exp(-ageHours / 24);
 
-      // Engagement base
       const likes = post.likes || 0;
       const comments = post.comments || 0;
       const reposts = post.reposts || 0;
@@ -64,20 +62,16 @@ const FeedPage: React.FC<FeedPageProps> = ({
         reposts * weightReposts +
         tips * weightTips;
 
-      // Normalización por edad
       const engagementScore = engagement / (1 + ageHours);
 
-      // Boost pagado
       const boost =
         post.boosted_until &&
         new Date(post.boosted_until) > new Date()
           ? weightBoost
           : 0;
 
-      // Score por tags
       const tagScore = post.tags ? post.tags.length * 0.5 : 0;
 
-      // Velocity (posts que se vuelven virales)
       const velocity =
         (likes + comments * 2 + reposts * 2 + tips * 3) /
         Math.max(ageHours, 1);
@@ -124,20 +118,9 @@ const FeedPage: React.FC<FeedPageProps> = ({
     fetchSlots();
   }, [selectedTier]);
 
-  const handleUpgrade = () => {
-    setShowUpgradeOptions(true);
-  };
-
-  const selectTier = (tier: "premium" | "premium+") => {
-    setSelectedTier(tier);
-    setShowSlideModal(true);
-  };
-
-  const cancelUpgrade = () => {
-    setShowSlideModal(false);
-    setSelectedTier(null);
-    setShowUpgradeOptions(false);
-  };
+  const handleUpgrade = () => setShowUpgradeOptions(true);
+  const selectTier = (tier: "premium" | "premium+") => { setSelectedTier(tier); setShowSlideModal(true); };
+  const cancelUpgrade = () => { setShowSlideModal(false); setSelectedTier(null); setShowUpgradeOptions(false); };
 
   const confirmUpgrade = async () => {
     setUpgradeError(null);
@@ -160,7 +143,6 @@ const FeedPage: React.FC<FeedPageProps> = ({
     setLoadingUpgrade(true);
 
     try {
-
       const payRes = await MiniKit.commandsAsync.pay({
         reference: "upgrade-" + Date.now(),
         to: RECEIVER,
@@ -204,129 +186,70 @@ const FeedPage: React.FC<FeedPageProps> = ({
       cancelUpgrade();
 
     } catch (err: any) {
-
       console.error("[UPGRADE] error:", err);
-
       setUpgradeError(err.message || (t ? t("error_upgrade") : "Error en el upgrade"));
-
     } finally {
-
       setLoadingUpgrade(false);
-
     }
-  };
 
-  import React from "react";
-import PostCard from "./PostCard";
-import { useTheme } from "../lib/ThemeContext"; // <-- importamos ThemeContext
-
-const FeedPage = ({
-  sortedPosts,
-  currentUserId,
-  loading,
-  error,
-  showUpgradeOptions,
-  handleUpgrade,
-  selectTier,
-  showSlideModal,
-  selectedTier,
-  price,
-  cancelUpgrade,
-  confirmUpgrade,
-  loadingUpgrade,
-  upgradeError,
-  t,
-}: any) => {
-  const { username } = useTheme(); // <-- obtenemos username global
-
-  return (
-    <div className="flex flex-col p-4">
-      <div className="mb-6">
-        <button
-          onClick={handleUpgrade}
-          className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-lg"
-        >
-          {t ? t("upgrade") : "Upgrade"}
-        </button>
-      </div>
-
-      {showUpgradeOptions && (
-        <div className="space-y-4 mb-6">
+    return (
+      <div className="flex flex-col p-4">
+        <div className="mb-6">
           <button
-            onClick={() => selectTier("premium")}
-            className="w-full py-4 rounded-xl bg-blue-600 text-white font-bold"
+            onClick={handleUpgrade}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold shadow-lg"
           >
-            {t ? t("premium") : "Premium"}
-          </button>
-
-          <button
-            onClick={() => selectTier("premium+")}
-            className="w-full py-4 rounded-xl bg-purple-600 text-white font-bold"
-          >
-            {t ? t("premium_plus") : "Premium+"}
+            {t ? t("upgrade") : "Upgrade"}
           </button>
         </div>
-      )}
 
-      {loading ? (
-        <p className="text-center py-10">{t ? t("cargando") : "Cargando..."}</p>
-      ) : error ? (
-        <p className="text-red-500 text-center py-10">{error}</p>
-      ) : (
-        <div className="space-y-5">
-          {sortedPosts?.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              currentUserId={currentUserId}
-              username={username} // <-- pasamos username global a cada PostCard
-            />
-          ))}
-        </div>
-      )}
+        {showUpgradeOptions && (
+          <div className="space-y-4 mb-6">
+            <button onClick={() => selectTier("premium")} className="w-full py-4 rounded-xl bg-blue-600 text-white font-bold">
+              {t ? t("premium") : "Premium"}
+            </button>
+            <button onClick={() => selectTier("premium+")} className="w-full py-4 rounded-xl bg-purple-600 text-white font-bold">
+              {t ? t("premium_plus") : "Premium+"}
+            </button>
+          </div>
+        )}
 
-      {upgradeError && (
-        <p className="text-red-500 text-center py-4">{upgradeError}</p>
-      )}
+        {loading ? (
+          <p className="text-center py-10">{t ? t("cargando") : "Cargando..."}</p>
+        ) : error ? (
+          <p className="text-red-500 text-center py-10">{error}</p>
+        ) : (
+          <div className="space-y-5">
+            {sortedPosts?.map((post) => (
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+            ))}
+          </div>
+        )}
 
-      {showSlideModal && selectedTier && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
-          <div className="w-full max-w-md bg-gray-900 rounded-t-3xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4">
-              {t ? t("beneficios_de") : "Beneficios de"} {selectedTier}
-            </h2>
+        {upgradeError && <p className="text-red-500 text-center py-4">{upgradeError}</p>}
 
-            <p className="text-white text-center mb-4">
-              {t ? t("precio") : "Precio"}: {price} WLD
-            </p>
-
-            <div className="flex gap-4">
-              <button
-                onClick={cancelUpgrade}
-                className="flex-1 py-3 bg-gray-700 text-white rounded-2xl"
-              >
-                {t ? t("cancelar") : "Cancelar"}
-              </button>
-
-              <button
-                onClick={confirmUpgrade}
-                disabled={loadingUpgrade}
-                className="flex-1 py-3 bg-yellow-500 text-black rounded-2xl font-bold"
-              >
-                {loadingUpgrade
-                  ? t
-                    ? t("procesando")
-                    : "Procesando..."
-                  : t
-                  ? t("aceptar")
-                  : "Aceptar"}
-              </button>
+        {showSlideModal && selectedTier && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50">
+            <div className="w-full max-w-md bg-gray-900 rounded-t-3xl p-6">
+              <h2 className="text-xl font-bold text-white mb-4">
+                {t ? t("beneficios_de") : "Beneficios de"} {selectedTier}
+              </h2>
+              <p className="text-white text-center mb-4">
+                {t ? t("precio") : "Precio"}: {price} WLD
+              </p>
+              <div className="flex gap-4">
+                <button onClick={cancelUpgrade} className="flex-1 py-3 bg-gray-700 text-white rounded-2xl">
+                  {t ? t("cancelar") : "Cancelar"}
+                </button>
+                <button onClick={confirmUpgrade} disabled={loadingUpgrade} className="flex-1 py-3 bg-yellow-500 text-black rounded-2xl font-bold">
+                  {loadingUpgrade ? (t ? t("procesando") : "Procesando...") : (t ? t("aceptar") : "Aceptar")}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
 };
 
 export default FeedPage;
