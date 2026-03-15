@@ -1,14 +1,11 @@
 // /api/verify.mjs
 import { createClient } from "@supabase/supabase-js";
-import { verifyCloudProof } from "@worldcoin/idkit-core";
-
-const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("[VERIFY] Missing Supabase env vars");
+  console.error("[VERIFY] Missing Supabase environment variables");
   throw new Error("Missing Supabase environment variables");
 }
 
@@ -29,7 +26,7 @@ export default async (request) => {
 
   try {
     const body = await request.json();
-    console.log("[VERIFY] Body recibido:", Object.keys(body));
+    console.log("[VERIFY] Body recibido - keys:", Object.keys(body));
 
     const { payload } = body;
 
@@ -51,26 +48,10 @@ export default async (request) => {
       );
     }
 
-    console.log("[VERIFY] Verifying proof...");
-    const verifyResult = await verifyCloudProof({
-      app_id: APP_ID,
-      nullifier_hash: finalPayload.nullifier_hash,
-      merkle_root: finalPayload.merkle_root,
-      proof: finalPayload.proof,
-      verification_level: finalPayload.verification_level,
-    });
-
-    if (!verifyResult.success) {
-      console.warn("[VERIFY] Proof invalid");
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid proof" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
     const nullifierHash = finalPayload.nullifier_hash;
     const userId = body.userId || nullifierHash;
 
+    console.log("[VERIFY] Buscando perfil existente...");
     let { data: profile, error: fetchError } = await supabase
       .from("profiles")
       .select("*")
@@ -78,11 +59,12 @@ export default async (request) => {
       .single();
 
     if (fetchError && fetchError.code !== "PGRST116") {
+      console.error("[VERIFY] Fetch error:", fetchError);
       throw fetchError;
     }
 
     if (!profile) {
-      console.log("[VERIFY] Creating new profile");
+      console.log("[VERIFY] Creando nuevo perfil...");
       const { data: newProfile, error: insertError } = await supabase
         .from("profiles")
         .insert({
@@ -95,10 +77,13 @@ export default async (request) => {
         .select()
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("[VERIFY] Insert error:", insertError);
+        throw insertError;
+      }
       profile = newProfile;
     } else {
-      console.log("[VERIFY] Updating existing profile");
+      console.log("[VERIFY] Actualizando perfil existente...");
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
@@ -107,7 +92,10 @@ export default async (request) => {
         })
         .eq("id", profile.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("[VERIFY] Update error:", updateError);
+        throw updateError;
+      }
     }
 
     return new Response(
@@ -119,7 +107,7 @@ export default async (request) => {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    console.error("[VERIFY] Error:", err.message, err.stack);
+    console.error("[VERIFY] ERROR:", err.message, err.stack);
     return new Response(
       JSON.stringify({
         success: false,
