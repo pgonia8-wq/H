@@ -1,21 +1,20 @@
 // /api/verify.mjs
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("[VERIFY] Missing Supabase env vars");
-  return new Response(
-    JSON.stringify({ success: false, error: "Missing Supabase env vars" }),
-    { status: 500, headers: { "Content-Type": "application/json" } }
-  );
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-// ← TODO el código está DENTRO de esta función (no hay return fuera)
 export default async (request) => {
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("[VERIFY] Missing Supabase env vars");
+    return new Response(
+      JSON.stringify({ success: false, error: "Missing Supabase env vars" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
   console.log("[VERIFY] Request recibida:", {
     method: request.method,
     timestamp: new Date().toISOString(),
