@@ -34,6 +34,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [newMessage, setNewMessage] = useState("");
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null); // <--- necesario para mensajes
 
   const { theme, toggleTheme } = useContext(ThemeContext);
   const { language, setLanguage, t } = useContext(LanguageContext);
@@ -46,14 +47,13 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       ? 4000
       : 280;
 
-  // -- Fetch Posts, Profile, Realtime Posts, Scroll Handling --
+  // -------------------------
+  // Fetch posts con scroll y realtime
+  // -------------------------
   const fetchPosts = useCallback(async (reset = false) => {
     if (!hasMore && !reset) return;
     try {
       setLoading(true);
-      const from = reset ? 0 : page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
-
       const { data, error } = await supabase.rpc("get_trending_posts");
       if (error) throw error;
 
@@ -69,7 +69,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     } finally {
       setLoading(false);
     }
-  }, [page, hasMore]);
+  }, [hasMore]);
 
   const fetchOrCreateProfile = useCallback(async (uid: string) => {
     if (!uid) return;
@@ -141,6 +141,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     return () => el?.removeEventListener("scroll", handleScroll);
   }, [fetchPosts]);
 
+  // -------------------------
+  // Mensajes no leídos
+  // -------------------------
   const loadUnread = async () => {
     if (!userId) return;
     const { data } = await supabase
@@ -174,6 +177,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     return () => supabase.removeChannel(channel);
   }, [userId]);
 
+  // -------------------------
+  // Crear Post
+  // -------------------------
   const handleCreatePost = async () => {
     if (!newPostContent.trim()) {
       alert(t("write_before_posting"));
@@ -186,7 +192,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     try {
       if (newPostImage) {
         const fileExt = newPostImage.name.split(".").pop() || "png";
-        const fileName = `\( {userId}- \){Date.now()}.${fileExt}`;
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
@@ -221,6 +227,9 @@ const HomePage = ({ userId }: { userId: string | null }) => {
     }
   };
 
+  // -------------------------
+  // Enviar mensaje
+  // -------------------------
   const handleSendMessage = async () => {
     if (!newMessage.trim() && newMessageAttachments.length === 0) return;
 
@@ -228,8 +237,7 @@ const HomePage = ({ userId }: { userId: string | null }) => {
       let attachmentsUrls: string[] = [];
 
       for (const file of newMessageAttachments) {
-        const ext = file.name.split(".").pop();
-        const key = `\( {userId}- \){Date.now()}-${file.name}`;
+        const key = `${userId}-${Date.now()}-${file.name}`;
         const { error: uploadError } = await supabase.storage
           .from("message-attachments")
           .upload(key, file);
@@ -237,6 +245,11 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 
         const { data } = supabase.storage.from("message-attachments").getPublicUrl(key);
         attachmentsUrls.push(data.publicUrl);
+      }
+
+      if (!selectedChatUserId) {
+        alert("Selecciona un chat antes de enviar mensaje");
+        return;
       }
 
       const { error } = await supabase.from("messages").insert({
@@ -398,7 +411,10 @@ const HomePage = ({ userId }: { userId: string | null }) => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
-              <Inbox currentUserId={userId} />
+              <Inbox
+                currentUserId={userId}
+                setSelectedChatUserId={setSelectedChatUserId} // <-- necesario para seleccionar chat
+              />
             </div>
 
             <div className="p-4 border-t border-white/20 bg-gray-900">
@@ -466,3 +482,4 @@ const HomePage = ({ userId }: { userId: string | null }) => {
 };
 
 export default HomePage;
+  
