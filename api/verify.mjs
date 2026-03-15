@@ -1,56 +1,72 @@
 import { createClient } from "@supabase/supabase-js";
 import { verifyCloudProof } from "@worldcoin/idkit-core";
 
+const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error("Missing Supabase environment variables");
+}
+
 const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY
 );
 
-const APP_ID = "app_6a98c88249208506dcd4e04b529111fc"; // Tu App ID real
-
-export default async function handler(req, res) {
+export default async function handler(req) {
   console.log("[BACKEND] Verificando World ID...");
 
   if (req.method !== "POST") {
-    console.log("[BACKEND] Método no permitido:", req.method);
-    return res.status(405).json({ success: false, error: "Method not allowed" });
-  }
-
-  const body = req.body || {};
-  const { payload } = body;
-
-  if (!payload) {
-    console.log("[BACKEND] No se recibió payload");
-    return res.status(400).json({ success: false, error: "No payload received" });
+    return new Response(
+      JSON.stringify({ success: false, error: "Method not allowed" }),
+      { status: 405 }
+    );
   }
 
   try {
-    // 1. Validar el proof con Worldcoin
+    const body = await req.json();
+    const payload = body?.payload;
+    const usernameFromClient = body?.username || null;
+
+    if (!payload) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No payload received" }),
+        { status: 400 }
+      );
+    }
+
+    console.log("[BACKEND] Payload recibido:", payload);
+
     const cloudProof = {
       merkle_root: payload.merkle_root,
       nullifier_hash: payload.nullifier_hash,
-      proof: payload.proof,
-      credential_type: payload.credential_type,
+      proof: payload.proof
     };
 
     const verification = await verifyCloudProof(
       cloudProof,
       APP_ID,
-      "verify-user" // debe coincidir exactamente con la action que usas en frontend
+      "verify-user"
     );
 
     if (!verification.success) {
       console.log("[BACKEND] Proof inválido:", verification);
-      return res.status(400).json({
-        success: false,
-        error: "Invalid proof",
-        details: verification.code || verification.detail,
-      });
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Invalid proof",
+          details: verification.code || verification.detail
+        }),
+        { status: 400 }
+      );
     }
 
     const nullifierHash = payload.nullifier_hash;
 
-    // 2. Intentar obtener perfil existente
+    // buscar perfil existente
     const { data: existing, error: selectError } = await supabase
       .from("profiles")
       .select("*")
@@ -61,19 +77,23 @@ export default async function handler(req, res) {
 
     let profile = existing;
 
-    // 3. Si no existe → crear
+    // crear perfil si no existe
     if (!profile) {
-      console.log("[BACKEND] No existe profile, creando...");
+      console.log("[BACKEND] Creando profile nuevo");
+
+      const username =
+        usernameFromClient ||
+        `anon-${nullifierHash.slice(0, 8)}`;
 
       const { data: inserted, error: insertError } = await supabase
         .from("profiles")
         .insert({
           id: nullifierHash,
           tier: "free",
-          username: `@anon-${nullifierHash.slice(0, 8)}`, // fallback inicial
+          username: username,
           avatar_url: "",
           created_at: new Date().toISOString(),
-          profile_visible: true,
+          profile_visible: true
         })
         .select()
         .single();
@@ -81,22 +101,30 @@ export default async function handler(req, res) {
       if (insertError) throw insertError;
 
       profile = inserted;
-      console.log("[BACKEND] Perfil creado:", profile.id);
+
+      console.log("[BACKEND] Profile creado:", profile.id);
     } else {
-      console.log("[BACKEND] Perfil existente encontrado:", profile.id);
+      console.log("[BACKEND] Profile existente:", profile.id);
     }
 
-    // 4. Devolver perfil completo al frontend
-    return res.status(200).json({
-      success: true,
-      nullifier_hash: nullifierHash,
-      profile,
-    });
-  } catch (err: any) {
-    console.error("[BACKEND] Error completo:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message || "Error interno al procesar verificación",
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        nullifier_hash: nullifierHash,
+        profile
+      }),
+      { status: 200 }
+    );
+
+  } catch (err) {
+    console.error("[BACKEND] ERROR:", err);
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: err.message || "Internal server error"
+      }),
+      { status: 500 }
+    );
   }
 }
