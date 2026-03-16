@@ -5,6 +5,23 @@ import { useFollow } from "../lib/useFollow";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
 import { useLanguage } from "../LanguageContext";
 
+// Helper para mostrar la hora relativa
+const getRelativeTime = (timestamp: string | null) => {
+  if (!timestamp) return "Desconocida";
+
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+
+  if (diffSec < 60) return "hace 1 minuto";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `hace ${diffMin} ${diffMin === 1 ? "minuto" : "minutos"}`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `hace ${diffH} ${diffH === 1 ? "hora" : "horas"}`;
+  const diffD = Math.floor(diffH / 24);
+  return `hace ${diffD} ${diffD === 1 ? "día" : "días"}`;
+};
 interface PostCardProps {
   post: any;
   currentUserId: string | null;
@@ -329,14 +346,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           <p className="text-sm text-gray-500">
             @{globalUsername || post.profiles?.username}
           </p>
-          <p className="text-xs text-gray-400">
-            {new Date(post.timestamp).toLocaleString("es-ES", {
-              hour: "2-digit",
-              minute: "2-digit",
-              day: "numeric",
-              month: "short",
-            })}
-          </p>
+          <p className={`text-xs ${theme === "dark" ? "text-gray-400" : "text-gray-900"}`}>
+            {getRelativeTime(post.timestamp)}
+         </p>
         </div>
 
         {currentUserId && currentUserId !== post.user_id && (
@@ -354,9 +366,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       </div>
 
       {/* Content */}
-      <p className="text-white whitespace-pre-wrap mb-4 leading-relaxed">
+      <p className={`whitespace-pre-wrap mb-4 leading-relaxed ${theme === "dark" ? "text-white" : "text-gray-900"}`}>
         {post.content}
-      </p>
+        </p>
 
       {/* Actions */}
       <div className="flex justify-between items-center text-gray-400 text-sm mt-4">
