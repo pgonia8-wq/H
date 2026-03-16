@@ -263,7 +263,7 @@ const handleLike = async () => {
 };
 
 
-  const handleRepost = () => setShowRepostModal(true);
+  
 const handleRepost = async () => {
   if (!currentUserId) return setError(t("debes_estar_logueado"));
   setLoadingAction("repost");
