@@ -161,30 +161,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   }, [showComments, post.id, t]);
 
   // Handlers
-  const handleLike = async () => {
-    if (!currentUserId) return setError(t("debes_estar_logueado"));
-  const [liked, setLiked] = useState(false);
-
-// Inicializar si el usuario ya dio like
-useEffect(() => {
-  const checkIfLiked = async () => {
-    if (!currentUserId) return;
-    try {
-      const { data, error } = await supabase
-        .from("likes")
-        .select("id")
-        .eq("post_id", post.id)
-        .eq("user_id", currentUserId)
-        .maybeSingle();
-      if (error) throw error;
-      setLiked(!!data);
-    } catch (err) {
-      console.error("Error verificando like:", err);
-    }
-  };
-  checkIfLiked();
-}, [post.id, currentUserId]);
-
+  
 const handleLike = async () => {
   if (!currentUserId) return setError(t("debes_estar_logueado"));
   setLoadingAction("like");
@@ -213,7 +190,6 @@ const handleLike = async () => {
     setLoadingAction(null);
   }
 };
-  };
 
   const handleComment = async () => {
   if (!currentUserId) return setError(t("debes_estar_logueado"));
