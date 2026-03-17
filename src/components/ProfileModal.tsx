@@ -139,9 +139,14 @@ if (uploadError) throw uploadError;
     if (updateError) throw updateError;
 
     setProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+                 // LLAMAR AL CALLBACK PARA PROPAGAR EL AVATAR EN TODA LA APP
+      if (onProfileUpdated) {
+      onProfileUpdated({ id: currentUserId, avatar_url: publicUrl });
+  }
+    
     setPreviewAvatar(null);
     setSelectedFile(null);
-
+       
     setToast({ message: t("avatar_subido_exito"), type: "success" });
   } catch (err: any) {
     console.error("[ProfileModal] Error subiendo avatar:", err);
