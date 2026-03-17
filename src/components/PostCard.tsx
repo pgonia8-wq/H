@@ -252,6 +252,26 @@ const handleRepost = async () => {
     });
     if (error) throw error;
 
+const confirmRepost = async () => {
+  if (!currentUserId) return setError(t("debes_estar_logueado"));
+  setLoadingAction("repost");
+  setShowRepostModal(false);
+  try {
+    const { error } = await supabase.from("posts").insert({
+      user_id: currentUserId,
+      content: post.content, // opcional: o vacío si quieres solo repost
+      reposted_post_id: post.id,
+      timestamp: new Date().toISOString(),
+    });
+    if (error) throw error;
+    alert(t("repostear"));
+  } catch (err: any) {
+    setError(t("error_al_repostear") + ": " + (err.message || ""));
+  } finally {
+    setLoadingAction(null);
+  }
+};
+    
     // Actualizar contador de reposts en posts
     await supabase
       .from("posts")
