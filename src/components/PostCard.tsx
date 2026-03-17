@@ -237,57 +237,48 @@ const handleLike = async () => {
     setLoadingAction(null);
   }
 };
-
-
   
 const handleRepost = async () => {
-  if (!currentUserId) return setError(t("debes_estar_logueado"));
-  setLoadingAction("repost");
-  try {
-    // Insertar repost en Supabase
-    const { error } = await supabase.from("reposts").insert({
-      post_id: post.id,
-      user_id: currentUserId,
-      timestamp: new Date().toISOString(),
-    });
-    if (error) throw error;
+const handleRepost = () => {
+  if (!currentUserId) {
+    setError(t("debes_estar_logueado"));
+    return;
+  }
+  setShowRepostModal(true);
+};
 
-const confirmRepost = async () => {
+  const confirmRepost = async () => {
   if (!currentUserId) return setError(t("debes_estar_logueado"));
+
   setLoadingAction("repost");
   setShowRepostModal(false);
+
   try {
+    // Crear nuevo post tipo repost
     const { error } = await supabase.from("posts").insert({
       user_id: currentUserId,
-      content: post.content, // opcional: o vacío si quieres solo repost
+      content: post.content, // o "" si quieres repost vacío
       reposted_post_id: post.id,
       timestamp: new Date().toISOString(),
     });
+
     if (error) throw error;
-    alert(t("repostear"));
+
+    // Incrementar contador de reposts
+    await supabase
+      .from("posts")
+      .update({ reposts: reposts + 1 })
+      .eq("id", post.id);
+
+    // Actualizar estado local (IMPORTANTE usar prev)
+    setReposts((prev) => prev + 1);
+
   } catch (err: any) {
     setError(t("error_al_repostear") + ": " + (err.message || ""));
   } finally {
     setLoadingAction(null);
   }
 };
-    
-    // Actualizar contador de reposts en posts
-    await supabase
-      .from("posts")
-      .update({ reposts: reposts + 1 })
-      .eq("id", post.id);
-
-    // Actualizar estado local
-    setReposts(reposts + 1);
-    alert(t("repostear"));
-  } catch (err: any) {
-    setError(t("error_al_repostear") + ": " + err.message);
-  } finally {
-    setLoadingAction(null);
-  }
-};
-
 
   const confirmQuote = async () => {
     if (!currentUserId) return setError(t("debes_estar_logueado"));
