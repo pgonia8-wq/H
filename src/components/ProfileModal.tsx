@@ -363,10 +363,10 @@ if (uploadError) throw uploadError;
         onClick={handleUploadAvatar}
         disabled={uploadingAvatar}
         className={`px-4 py-2 rounded-lg font-medium ${
-          uploadingAvatar
-            ? "bg-gray-600 cursor-not-allowed"
-            : "bg-green-600 hover:bg-green-700 text-white"
-        }
+        uploadingAvatar
+    ? "bg-gray-600 cursor-not-allowed"
+    : "bg-green-600 hover:bg-green-700 text-white"
+}`}
       >
         {uploadingAvatar ? t("subiendo") : t("guardar_avatar")}
       </button>
@@ -388,10 +388,11 @@ if (uploadError) throw uploadError;
                   {t("nombre_usuario")}
                 </label>
                 <input
-                  type="text"
-                  value={globalUsername || profile.username}
-                  disabled
-                  className="w-full bg-gray-800 p-3 rounded text-white cursor-not-allowed"
+                 type="text"
+                value={globalUsername || profile.username}
+                 disabled
+                 className="w-full bg-gray-800 p-3 rounded text-white cursor-not-allowed"
+                  />
                 <div>
               
 
