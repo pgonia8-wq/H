@@ -54,42 +54,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { theme, username: globalUsername } = useContext(ThemeContext);
   const { t } = useLanguage();
-  const postRef = useRef<HTMLDivElement | null>(null);
-  const viewRegistered = useRef(false);
-
   
-  useEffect(() => {
-    if (!post.id || !currentUserId) return;
-
-    const fetchPostData = async () => {
-      try {
-        const { data: postData, error: postError } = await supabase
-          .from("posts")
-          .select("likes, comments, reposts")
-          .eq("id", post.id)
-          .single();
-        if (postError) throw postError;
-
-        setLikes(postData.likes || 0);
-        setComments(postData.comments || 0);
-        setReposts(postData.reposts || 0);
-
-        const { data: likeData } = await supabase
-          .from("likes")
-          .select("id")
-          .eq("post_id", post.id)
-          .eq("user_id", currentUserId)
-          .maybeSingle();
-
-        setLiked(!!likeData);
-      } catch (err) {
-        console.error("Error cargando datos del post:", err);
-      }
-    };
-
-    fetchPostData();
-  }, [post.id, currentUserId]);
-
   useEffect(() => {
     if (!post.id) return;
 
