@@ -391,7 +391,7 @@ if (uploadError) throw uploadError;
     </div>
   )}
 
-  {/* Mensajes de ayuda / debug (puedes eliminarlos después de confirmar que funciona) */}
+  {/* Mensajes de ayuda / debug (puedes borrarlos después) */}
   {!currentUserId && (
     <p className="text-red-400 text-xs mt-2 text-center">
       No se detectó usuario logueado (currentUserId está vacío)
@@ -403,9 +403,7 @@ if (uploadError) throw uploadError;
       isOwnProfile = false aunque hay currentUserId
     </p>
   )}
-
-  </div>
-
+</div>
   {/* Botones cancelar / guardar avatar (aparecen solo si hay preview) */}
   {previewAvatar && isOwnProfile && (
     <div className="flex gap-3 mt-2">
