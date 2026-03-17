@@ -51,9 +51,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const [tipAmount, setTipAmount] = useState<number | "">(1);
   const [showRepostModal, setShowRepostModal] = useState(false);
   const [quoteInput, setQuoteInput] = useState("");
-const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
-  const { theme, username: globalUsername } = useContext(ThemeContext);
-  const { t } = useLanguage();
 
   const { isFollowing, toggleFollow } = useFollow(currentUserId, post.user_id);
    // Estado para el perfil del autor del post
