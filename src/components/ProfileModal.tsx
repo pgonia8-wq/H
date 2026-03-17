@@ -337,18 +337,20 @@ if (uploadError) throw uploadError;
       className="w-full h-full rounded-full object-cover border-4 border-purple-500 shadow-lg"
     />
 
-    {/* Botón editar avatar */}
+    {/* Lápiz para editar avatar */}
     {isOwnProfile && (
-      <label className="absolute bottom-0 right-0 bg-purple-600 text-white p-2 rounded-full cursor-pointer hover:bg-purple-700 shadow-md z-30 transition">
-        <span className="text-xl">📷</span>
-        <input
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleAvatarChange}
-          disabled={uploadingAvatar}
-        />
-      </label>
+      <div className="absolute -bottom-2 -right-2 z-30">
+        <label className="bg-purple-600 text-white p-2 rounded-full cursor-pointer hover:bg-purple-700 shadow-md transition">
+          <span className="text-xl">✏️</span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+            disabled={uploadingAvatar}
+          />
+        </label>
+      </div>
     )}
   </div>
 
