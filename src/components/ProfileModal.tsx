@@ -286,283 +286,271 @@ if (uploadError) throw uploadError;
   };
 
   return (
+  <div
+    className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 px-2 overflow-y-auto pt-10"
+    onClick={onClose}
+  >
     <div
-      className="fixed inset-0 bg-black/80 flex items-start justify-center z-50 px-2 overflow-y-auto pt-10"
-      onClick={onClose}
+      className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10 space-y-4 relative"
+      onClick={e => e.stopPropagation()}
     >
-      <div
-        className="bg-gray-900 rounded-2xl p-6 w-full max-w-lg border border-white/10 space-y-4 relative"
-        onClick={e => e.stopPropagation()}
+      {/* Botón cerrar X */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
+        aria-label={t("cerrar_modal")}
       >
-        {/* Botón cerrar X */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl"
-          aria-label={t("cerrar_modal")}
-        >
-          ×
-        </button>
+        ×
+      </button>
 
-        {loading ? (
-          <p className="text-white text-center py-8">{t("cargando_perfil")}</p>
-        ) : (
-          <>
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-white">{t("tu_perfil")}</h2>
-              <span className={`px-3 py-1 text-xs rounded-full ${
+      {loading ? (
+        <p className="text-white text-center py-8">{t("cargando_perfil")}</p>
+      ) : (
+        <>
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-white">{t("tu_perfil")}</h2>
+            <span
+              className={`px-3 py-1 text-xs rounded-full ${
                 profile.tier === "premium+" ? "bg-yellow-500 text-black"
                 : profile.tier === "premium" ? "bg-purple-600 text-white"
                 : "bg-gray-600 text-white"
-              }`}>
-                {profile.tier.toUpperCase()}
-              </span>
+              }`}
+            >
+              {profile.tier.toUpperCase()}
+            </span>
+          </div>
+
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-800 border-4 border-purple-600">
+              {uploadingAvatar && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
+                </div>
+              )}
+
+              <img
+                src={previewAvatar || profile.avatar_url || "/default-avatar.png"}
+                alt="Avatar"
+                className="w-32 h-32 rounded-full object-cover border-4 border-purple-500 shadow-lg transition-transform group-hover:scale-105"
+              />
+
+              {isOwnProfile && (
+                <label className="absolute bottom-2 right-2 bg-purple-600 text-white p-3 rounded-full cursor-pointer hover:bg-purple-700 shadow-md opacity-90 hover:opacity-100 transition">
+                  <span className="text-xl">📷</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarChange}
+                    disabled={uploadingAvatar}
+                  />
+                </label>
+              )}
+
+              {previewAvatar && isOwnProfile && (
+                <div className="flex gap-3 mt-2">
+                  <button
+                    onClick={() => {
+                      setPreviewAvatar(null);
+                      setSelectedFile(null);
+                    }}
+                    className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                  >
+                    {t("cancelar")}
+                  </button>
+
+                  <button
+                    onClick={handleUploadAvatar}
+                    disabled={uploadingAvatar}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      uploadingAvatar
+                        ? "bg-gray-600 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-700 text-white"
+                    }`}
+                  >
+                    {uploadingAvatar ? t("subiendo") : t("guardar_avatar")}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Campos editables */}
+          <div className="space-y-4">
+            {/* Nombre de usuario */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                {t("nombre_usuario")}
+              </label>
+              <input
+                type="text"
+                value={globalUsername || profile.username}
+                disabled
+                className="w-full bg-gray-800 p-3 rounded text-white cursor-not-allowed"
+              />
             </div>
 
-            {/* Avatar */}
-            <div className="flex flex-col items-center gap-3">
-              <div className="relative w-24 h-24 rounded-full overflow-hidden bg-gray-800 border-4 border-purple-600">
-                {uploadingAvatar && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
-                  </div>
-                )}
+            {/* Nombre */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                {t("nombre")}
+              </label>
+              <input
+                type="text"
+                value={profile.name}
+                onChange={e =>
+                  setProfile(prev => ({ ...prev, name: e.target.value }))
+                }
+                className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                placeholder={t("tu_nombre")}
+              />
+            </div>
 
-                <div className="relative group flex flex-col items-center gap-4">
-  <img
-    src={previewAvatar || profile.avatar_url || "/default-avatar.png"}
-    alt="Avatar"
-    className="w-32 h-32 rounded-full object-cover border-4 border-purple-500 shadow-lg transition-transform group-hover:scale-105"
-  />
+            {/* Biografía */}
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">
+                {t("biografia", { count: bioLength })}
+              </label>
+              <textarea
+                value={profile.bio}
+                onChange={e => {
+                  if (e.target.value.length <= 160) {
+                    setProfile(prev => ({ ...prev, bio: e.target.value }));
+                    setBioLength(e.target.value.length);
+                  }
+                }}
+                className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none h-24"
+                placeholder={t("cuentanos_sobre_ti")}
+              />
+            </div>
 
-  {isOwnProfile && (
-    <label className="absolute bottom-2 right-2 bg-purple-600 text-white p-3 rounded-full cursor-pointer hover:bg-purple-700 shadow-md opacity-90 hover:opacity-100 transition">
-      <span className="text-xl">📷</span>
-      <input
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleAvatarChange}
-        disabled={uploadingAvatar}
-      />
-    </label>
-  )}
-
-  {previewAvatar && isOwnProfile && (
-    <div className="flex gap-3 mt-2">
-      <button
-        onClick={() => {
-          setPreviewAvatar(null);
-          setSelectedFile(null);
-        }}
-        className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
-      >
-        {t("cancelar")}
-      </button>
-
-      <button
-  onClick={handleUploadAvatar}
-  disabled={uploadingAvatar}
-  className={`px-4 py-2 rounded-lg font-medium ${
-    uploadingAvatar
-      ? "bg-gray-600 cursor-not-allowed"
-      : "bg-green-600 hover:bg-green-700 text-white"
-  }`}
->
-  {uploadingAvatar ? t("subiendo") : t("guardar_avatar")}
-</button>
-    </div>
-  )}
-</div>
-                ) : (
-                  {!isOwnProfile ? (
-                  <div className="w-full h-full flex items-center justify-center text-3xl text-white">
-                  {(globalUsername || profile.username)?.[1]?.toUpperCase() || "A"}
-                  </div>
-                   ) : null}
-  
-
-              
-            {/* Campos editables */}
-            <div className="space-y-4">
+            {/* Fecha, ciudad, país */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  {t("nombre_usuario")}
+                  {t("fecha_nacimiento")}
                 </label>
                 <input
-                 type="text"
-                value={globalUsername || profile.username}
-                 disabled
-                 className="w-full bg-gray-800 p-3 rounded text-white cursor-not-allowed"
-                  />
-                <div>
-              
+                  type="date"
+                  value={profile.birthdate}
+                  onChange={e =>
+                    setProfile(prev => ({ ...prev, birthdate: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
 
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  {t("nombre")}
+                  {t("ciudad")}
                 </label>
                 <input
                   type="text"
-                  value={profile.name}
+                  value={profile.city}
                   onChange={e =>
-                    setProfile(prev => ({ ...prev, name: e.target.value }))
+                    setProfile(prev => ({ ...prev, city: e.target.value }))
                   }
                   className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder={t("tu_nombre")}
+                  placeholder={t("tu_ciudad")}
                 />
               </div>
 
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  {t("biografia", { count: bioLength })}
-                </label>
-                <textarea
-                  value={profile.bio}
-                  onChange={e => {
-                    if (e.target.value.length <= 160) {
-                      setProfile(prev => ({ ...prev, bio: e.target.value }));
-                      setBioLength(e.target.value.length);
-                    }
-                  }}
-                  className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none h-24"
-                  placeholder={t("cuentanos_sobre_ti")}
-                />
-              </div>
-
-              {/* Fecha, ciudad, país */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    {t("fecha_nacimiento")}
-                  </label>
-                  <input
-                    type="date"
-                    value={profile.birthdate}
-                    onChange={e =>
-                      setProfile(prev => ({
-                        ...prev,
-                        birthdate: e.target.value,
-                      }))
-                    }
-                    className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    {t("ciudad")}
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.city}
-                    onChange={e =>
-                      setProfile(prev => ({
-                        ...prev,
-                        city: e.target.value,
-                      }))
-                    }
-                    className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder={t("tu_ciudad")}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm text-gray-400 mb-1">
-                    {t("pais")}
-                  </label>
-                  <input
-                    type="text"
-                    value={profile.country}
-                    onChange={e =>
-                      setProfile(prev => ({
-                        ...prev,
-                        country: e.target.value,
-                      }))
-                    }
-                    className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder={t("tu_pais")}
-                  />
-                </div>
-              </div>
-
-              {/* Perfil visible */}
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-gray-400">
-                  {t("perfil_visible")}
+                  {t("pais")}
                 </label>
                 <input
-                  type="checkbox"
-                  checked={profile.profile_visible}
-                  onChange={toggleProfileVisibility}
-                  className="w-5 h-5 accent-purple-600"
+                  type="text"
+                  value={profile.country}
+                  onChange={e =>
+                    setProfile(prev => ({ ...prev, country: e.target.value }))
+                  }
+                  className="w-full bg-gray-800 p-3 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder={t("tu_pais")}
                 />
               </div>
+            </div>
 
-              {/* Botones Guardar / Cancelar */}
-              <div className="flex gap-3">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex-1 py-3 bg-green-600 text-white rounded-full disabled:opacity-50"
-                >
-                  {saving ? t("guardando") : t("guardar")}
-                </button>
+            {/* Perfil visible */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-400">
+                {t("perfil_visible")}
+              </label>
+              <input
+                type="checkbox"
+                checked={profile.profile_visible}
+                onChange={toggleProfileVisibility}
+                className="w-5 h-5 accent-purple-600"
+              />
+            </div>
 
-                <button
-                  onClick={onClose}
-                  className="flex-1 py-3 bg-red-600 text-white rounded-full"
-                >
-                  {t("cancelar")}
-                </button>
-              </div>
-
-              {/* Botón Cerrar adicional */}
-              {!saving && (
-                <button
-                  onClick={onClose}
-                  className="mt-4 w-full py-3 bg-gray-700 text-white rounded-full hover:bg-gray-600 transition"
-                >
-                  {t("cerrar")}
-                </button>
-              )}
-
-              {/* Upgrade Premium Chat */}
-              {showUpgradeButton && (
-                <button
-                  onClick={handlePremiumChat}
-                  className="w-full py-3 bg-purple-600 text-white rounded-full mt-4 hover:bg-purple-700 transition"
-                >
-                  {t("suscribirse_chat_premium", { amount: 5 })}
-                </button>
-              )}
-
-              {/* Chat Exclusivo Creadores de Tokens */}
+            {/* Botones Guardar / Cancelar */}
+            <div className="flex gap-3">
               <button
-                onClick={() => (window.location.href = "/chat/tokens")}
-                className="w-full py-3 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 transition"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 py-3 bg-green-600 text-white rounded-full disabled:opacity-50"
               >
-                {t("chat_exclusivo_creadores_tokens")}
+                {saving ? t("guardando") : t("guardar")}
+              </button>
+
+              <button
+                onClick={onClose}
+                className="flex-1 py-3 bg-red-600 text-white rounded-full"
+              >
+                {t("cancelar")}
               </button>
             </div>
-          
-      
 
+            {/* Botón Cerrar adicional */}
+            {!saving && (
+              <button
+                onClick={onClose}
+                className="mt-4 w-full py-3 bg-gray-700 text-white rounded-full hover:bg-gray-600 transition"
+              >
+                {t("cerrar")}
+              </button>
+            )}
+
+            {/* Upgrade Premium Chat */}
+            {showUpgradeButton && (
+              <button
+                onClick={handlePremiumChat}
+                className="w-full py-3 bg-purple-600 text-white rounded-full mt-4 hover:bg-purple-700 transition"
+              >
+                {t("suscribirse_chat_premium", { amount: 5 })}
+              </button>
+            )}
+
+            {/* Chat Exclusivo Creadores de Tokens */}
+            <button
+              onClick={() => (window.location.href = "/chat/tokens")}
+              className="w-full py-3 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 transition"
+            >
+              {t("chat_exclusivo_creadores_tokens")}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Toast */}
       {toast && (
-<p
-  className={`text-center py-2 rounded mt-4 ${
-    toast.type === "success"
-      ? "bg-green-900 text-green-300"
-      : "bg-red-900 text-red-300"
-  }`}
->
-  {toast.message}
-</p>
-)}
-      </div>
+        <p
+          className={`text-center py-2 rounded mt-4 ${
+            toast.type === "success"
+              ? "bg-green-900 text-green-300"
+              : "bg-red-900 text-red-300"
+          }`}
+        >
+          {toast.message}
+        </p>
+      )}
     </div>
-  );
-};
+  </div>
+);
 
 export default ProfileModal;
 
   
+
