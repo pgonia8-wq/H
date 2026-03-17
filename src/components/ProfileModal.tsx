@@ -322,11 +322,13 @@ if (uploadError) throw uploadError;
 
           {/* Avatar */}
 <div className="flex flex-col items-center gap-3 relative">
-  <div className="relative w-32 h-32 rounded-full overflow-hidden bg-gray-800 border-4 border-purple-600">
-    {/* Spinner mientras sube el avatar */}
+
+  <div className="relative w-32 h-32 rounded-full overflow-visible bg-gray-800 border-4 border-purple-600">
+
+    {/* Spinner mientras sube */}
     {uploadingAvatar && (
-      <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500"></div>
+      <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-4 border-purple-500 border-r-transparent"></div>
       </div>
     )}
 
@@ -337,25 +339,71 @@ if (uploadError) throw uploadError;
       className="w-full h-full rounded-full object-cover border-4 border-purple-500 shadow-lg"
     />
 
-    {/* Lápiz para editar avatar */}
-  {isOwnProfile ? (
-  <div className="absolute -bottom-5 -right-5 z-[100] bg-red-600 text-white p-5 rounded-full text-4xl shadow-2xl ring-4 ring-red-300">
-    🛠️ DEBUG
-    {/* Tu lápiz original sigue aquí, pero ahora con más visibilidad */}
-    <label 
-      className="absolute inset-0 flex items-center justify-center bg-purple-600/80 hover:bg-purple-700 rounded-full cursor-pointer"
-    >
-      <span className="text-5xl">✏️</span>
-      <input
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleAvatarChange}
-        disabled={uploadingAvatar}
-      />
-    </label>
+    {/* Botón lápiz - aparece cuando hay usuario logueado */}
+    {isOwnProfile && (
+      <div className="absolute -bottom-3 -right-3 z-40">
+        <label
+          className="bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-full cursor-pointer shadow-xl transition-all hover:scale-110 active:scale-95"
+          title="Cambiar foto de perfil"
+        >
+          <span className="text-2xl">✏️</span>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+            disabled={uploadingAvatar}
+          />
+        </label>
+      </div>
+    )}
   </div>
-) : null}
+
+  {/* Botones de acción cuando hay una imagen seleccionada */}
+  {previewAvatar && isOwnProfile && (
+    <div className="flex gap-4 mt-3">
+      <button
+        type="button"
+        onClick={() => {
+          setPreviewAvatar(null);
+          setSelectedFile(null);
+        }}
+        className="px-6 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
+        disabled={uploadingAvatar}
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        onClick={handleUploadAvatar}
+        disabled={uploadingAvatar}
+        className={`
+          px-6 py-2.5 rounded-lg text-sm font-medium transition
+          ${uploadingAvatar 
+            ? "bg-gray-600 cursor-not-allowed text-gray-300" 
+            : "bg-green-600 hover:bg-green-700 text-white"
+          }
+        `}
+      >
+        {uploadingAvatar ? "Subiendo…" : "Guardar foto"}
+      </button>
+    </div>
+  )}
+
+  {/* Mensajes de ayuda / debug (puedes eliminarlos después de confirmar que funciona) */}
+  {!currentUserId && (
+    <p className="text-red-400 text-xs mt-2 text-center">
+      No se detectó usuario logueado (currentUserId está vacío)
+    </p>
+  )}
+
+  {currentUserId && !isOwnProfile && (
+    <p className="text-yellow-400 text-xs mt-2 text-center">
+      isOwnProfile = false aunque hay currentUserId
+    </p>
+  )}
+</div>
   </div>
 
   {/* Botones cancelar / guardar avatar (aparecen solo si hay preview) */}
