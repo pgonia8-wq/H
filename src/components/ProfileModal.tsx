@@ -378,7 +378,7 @@ if (uploadError) throw uploadError;
                     {(globalUsername || profile.username)?.[1]?.toUpperCase() || "A"}
                   </div>
                 )}
-              </div>
+  
 
               
             {/* Campos editables */}
@@ -542,7 +542,7 @@ if (uploadError) throw uploadError;
                 {t("chat_exclusivo_creadores_tokens")}
               </button>
             </div>
-          </>
+          
         )}
 
         {toast && (
