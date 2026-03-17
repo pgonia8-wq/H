@@ -403,7 +403,7 @@ if (uploadError) throw uploadError;
       isOwnProfile = false aunque hay currentUserId
     </p>
   )}
-</div>
+
   </div>
 
   {/* Botones cancelar / guardar avatar (aparecen solo si hay preview) */}
