@@ -366,7 +366,7 @@ if (uploadError) throw uploadError;
           uploadingAvatar
             ? "bg-gray-600 cursor-not-allowed"
             : "bg-green-600 hover:bg-green-700 text-white"
-        }`}
+        }
       >
         {uploadingAvatar ? t("subiendo") : t("guardar_avatar")}
       </button>
@@ -392,7 +392,7 @@ if (uploadError) throw uploadError;
                   value={globalUsername || profile.username}
                   disabled
                   className="w-full bg-gray-800 p-3 rounded text-white cursor-not-allowed"
-                
+                <div>
               
 
               <div>
