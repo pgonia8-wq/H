@@ -157,52 +157,80 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !id) return;
-    setUploadingAvatar(true);
+const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !id) return;
+  setUploadingAvatar(true);
 
-    try {
-      const previewUrl = await new Promise<string>((resolve) => {
-  const reader = new FileReader();
-  reader.onloadend = () => resolve(reader.result as string);
-  reader.readAsDataURL(file);
+  try {
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file || !id) return;
+  setUploadingAvatar(true);
+
+  try {
+    // 1. Previsualización inmediata
+    const previewUrl = URL.createObjectURL(file);
+    setProfile(prev => ({ ...prev, avatar_url: previewUrl }));
+
+    // 2. Crear imagen para canvas
+    const img = document.createElement("img");
+    img.src = previewUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
     });
-      const img = document.createElement("img");
-      img.src = previewUrl;
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-          });
 
-      const canvas = document.createElement("canvas");
-      const MAX = 512;
-      let { width, height } = img;
-      if (width > height) {
-        if (width > MAX) { height *= MAX / width; width = MAX; }
-      } else {
-        if (height > MAX) { width *= MAX / height; height = MAX; }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      ctx?.drawImage(img, 0, 0, width, height);
+    // 3. Redimensionar con canvas
+    const canvas = document.createElement("canvas");
+    const MAX = 512;
+    let { width, height } = img;
+    if (width > height) {
+      if (width > MAX) { height *= MAX / width; width = MAX; }
+    } else {
+      if (height > MAX) { width *= MAX / height; height = MAX; }
+    }
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx?.drawImage(img, 0, 0, width, height);
 
-      const compressedBlob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-       else reject(new Error("Error comprimiendo"));
-        }, "image/jpeg", 0.8);
-        });
-      if (!compressedBlob) throw new Error("Error comprimiendo");
+    // 4. Convertir a Blob comprimido
+    const compressedBlob: Blob = await new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error("Error comprimiendo imagen"));
+      }, "image/jpeg", 0.8);
+    });
 
-      const fileName = `${id}-${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(fileName, compressedBlob, { upsert: true });
+    // 5. Subir a Supabase
+    const fileName = `${id}-${Date.now()}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(fileName, compressedBlob, { upsert: true });
+    if (uploadError) throw uploadError;
 
-      if (uploadError) throw uploadError;
+    // 6. Obtener URL pública
+    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+    const avatarUrl = data.publicUrl;
 
+    // 7. Actualizar perfil en Supabase y estado local
+    await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", id);
+    setProfile(prev => ({ ...prev, avatar_url: avatarUrl }));
+
+    // 8. Notificar cambios globales
+    window.dispatchEvent(
+      new CustomEvent("avatarUpdated", { detail: { userId: id, avatarUrl } })
+    );
+
+    setToast({ message: t("avatar_actualizado"), type: "success" });
+  } catch (err: any) {
+    setToast({ message: err.message, type: "error" });
+  } finally {
+    setUploadingAvatar(false);
+  }
+};
+  
       const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
       const avatarUrl = data.publicUrl;
 
