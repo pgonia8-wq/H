@@ -545,7 +545,7 @@ if (uploadError) throw uploadError;
               </button>
             </div>
           
-        )}
+      
 
       {toast && (
 <p
