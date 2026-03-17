@@ -157,12 +157,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
-const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file || !id) return;
-  setUploadingAvatar(true);
 
-  try {
     const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   if (!file || !id) return;
