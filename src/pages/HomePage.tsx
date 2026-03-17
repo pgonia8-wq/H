@@ -286,6 +286,24 @@ const HomePage: React.FC<HomePageProps> = ({
     }
   };
 
+             
+// Handler cuando se actualiza el perfil (avatar) //
+
+const handleProfileUpdated = (updatedProfile: { id: string; avatar_url?: string }) => {
+  if (updatedProfile.avatar_url) {
+    // Actualiza avatar en HomePage
+    setProfile((prev: any) => ({ ...prev, avatar_url: updatedProfile.avatar_url }));
+    
+    // Actualiza avatar en posts
+    setPosts(prev =>
+      prev.map(post =>
+        post.user_id === updatedProfile.id
+          ? { ...post, avatar_url: updatedProfile.avatar_url }
+          : post
+      )
+    );
+  }
+};
   // -------------------------
   // Render
   // -------------------------
@@ -368,7 +386,8 @@ const HomePage: React.FC<HomePageProps> = ({
         <ProfileModal
           currentUserId={userId}
           onClose={() => setShowProfileModal(false)}
-        />
+           onProfileUpdated={handleProfileUpdated}
+          />
       )}
 
       {showNewPostModal && (
