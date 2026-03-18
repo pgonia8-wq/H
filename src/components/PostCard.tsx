@@ -509,24 +509,7 @@ const handleChatCreadores = async () => {
     setLoadingAction(null);
   }
 };
-         {showGlobalChat && (
-  <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-    <button
-      onClick={() => setShowGlobalChat(false)}
-      className="absolute top-4 right-4 z-10 bg-gray-900/80 text-white px-5 py-3 rounded-full backdrop-blur-md border border-gray-700 shadow-lg text-sm font-medium"
-    >
-      ← Volver al feed
-    </button>
-
-    <div className="flex-1 pt-20">
-      <GlobalChatRoom 
-        currentUserId={currentUserId} 
-        roomId="premium_global_chat" // o el valor que uses
-      />
-    
-  </div>
-  </div>
-)}
+         
 
   
   const openUserProfile = () => {
