@@ -523,7 +523,8 @@ const handleChatCreadores = async () => {
         currentUserId={currentUserId} 
         roomId="premium_global_chat" // o el valor que uses
       />
-    </div>
+    
+  </div>
   </div>
 )}
 
@@ -741,7 +742,7 @@ const handleChatCreadores = async () => {
         </div>
       )}
 
-      {/* Botón de chat */}
+{/* Botón de chat */}
 {currentUserId && (
   <button
     onClick={handleChatCreadores}
@@ -810,7 +811,7 @@ const handleChatCreadores = async () => {
 )}
 
 {/* ──────────────────────────────────────────────── */}
-{/*           Chat overlay – ahora cubre TODA la pantalla       */}
+{/* Chat overlay – ahora cubre TODA la pantalla */}
 {showGlobalChat && (
   <div className="fixed inset-0 z-[99999] bg-black/95 flex flex-col">
     <button
@@ -827,8 +828,6 @@ const handleChatCreadores = async () => {
       />
     </div>
   </div>
-)} 
-</>
+)}
 );
-  
-   export defaul Postcard;
+      export default Postcard;
