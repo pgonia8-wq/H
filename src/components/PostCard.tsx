@@ -34,7 +34,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { t } = useLanguage();
   const postRef = useRef<HTMLDivElement | null>(null);
   const viewRegistered = useRef(false);
-  
+ 
+  const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(post.likes || 0);
   const [comments, setComments] = useState(post.comments || 0);
@@ -428,19 +429,36 @@ const handleBoost = async () => {
 
 // --- HANDLE CHAT CREADORES ---
 const handleChatCreadores = async () => {
-
-  if (!currentUserId) return setError(t("debes_estar_logueado"));
-
-  if (checkingAccess) return; // evita conflictos mientras se consulta
-
-  // ✅ YA TIENE SUSCRIPCIÓN → entra directo
-  if (hasChatAccess) {
-    window.location.href = "/chat/global"; // <-- redirige a GlobalChatRoom
+  if (!currentUserId) {
+    setError(t("debes_estar_logueado"));
     return;
   }
 
-  // 💰 NO HA PAGADO → COBRAR
+  if (checkingAccess) {
+    console.log("Aún verificando acceso, espera un momento...");
+    return;
+  }
+
+  console.log("handleChatCreadores ejecutado", {
+    hasChatAccess,
+    checkingAccess,
+    currentUserId
+  });
+
+  // ── YA TIENE ACCESO ──
+  if (hasChatAccess) {
+    console.log("Usuario ya tiene acceso → mostrando chat overlay");
+    setShowGlobalChat(true);
+    return;
+  }
+
+  // ── NO TIENE ACCESO → PROCESO DE PAGO ──
+  setLoadingAction("subscription");
+  setError(null);
+
   try {
+    console.log("Iniciando pago para chat exclusivo...");
+
     const payRes = await MiniKit.commandsAsync.pay({
       reference: `chat-${Date.now()}`.slice(0, 36),
       to: RECEIVER,
@@ -453,31 +471,62 @@ const handleChatCreadores = async () => {
       description: t("chat_exclusivo"),
     });
 
+    console.log("Resultado del pago:", payRes);
+
     if (payRes?.finalPayload?.status === "success") {
+      console.log("Pago exitoso → guardando suscripción en DB");
+
       const { error: dbError } = await supabase
         .from("subscriptions")
         .upsert({
           user_id: currentUserId,
-          product: "chat_classic", // ajusta según el producto que corresponda
+          product: "chat_classic", // o "chat_gold" si es el caso
         });
 
       if (dbError) {
-        console.error("Error guardando suscripción:", dbError);
-        setError("Pago recibido, pero hubo un error. Contacta soporte.");
+        console.error("Error al guardar suscripción:", dbError);
+        setError("Pago recibido, pero hubo un error al guardar. Contacta soporte.");
         return;
       }
 
-      window.location.href = "/chat/global"; // <-- redirige a GlobalChatRoom tras pagar
+      console.log("Suscripción guardada exitosamente");
+
+      // Actualizamos estados
+      setHasChatAccess(true);
+      setShowGlobalChat(true);           // ← MOSTRAMOS EL CHAT
+      setLoadingAction(null);
     } else {
+      console.log("Pago no completado o cancelado");
       setError(t("pago_cancelado"));
+      setLoadingAction(null);
     }
   } catch (err: any) {
+    console.error("Error completo en handleChatCreadores:", err);
     setError(
       t("error_procesar_pago") + ": " + (err.message || t("pago_cancelado"))
     );
+    setLoadingAction(null);
   }
 };
+         {showGlobalChat && (
+  <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
+    <button
+      onClick={() => setShowGlobalChat(false)}
+      className="absolute top-4 right-4 z-10 bg-gray-900/80 text-white px-5 py-3 rounded-full backdrop-blur-md border border-gray-700 shadow-lg text-sm font-medium"
+    >
+      ← Volver al feed
+    </button>
 
+    <div className="flex-1 pt-20">
+      <GlobalChatRoom 
+        currentUserId={currentUserId} 
+        roomId="premium_global_chat" // o el valor que uses
+      />
+    </div>
+  </div>
+)}
+
+  
   const openUserProfile = () => {
     window.location.href = `/profile/${post.user_id}`;
   };
