@@ -214,33 +214,69 @@ if (uploadError) throw uploadError;
   };
 
   const handleSave = async () => {
-    if (!id) return;
-    setSaving(true);
+  if (!id) {
+    setToast({ message: "No hay ID", type: "error" });
+    return;
+  }
 
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          name: profile.name,
-          bio: profile.bio,
-          birthdate: profile.birthdate,
-          city: profile.city,
-          country: profile.country,
-          profile_visible: profile.profile_visible,
-        })
-        .eq("id", id);
+  setSaving(true);
 
-      if (error) throw error;
+  try {
+    // Log 1: Qué se va a enviar (para debug)
+    console.log("[GUARDAR] Datos ENVIADOS:", {
+      id,
+      name: profile.name,
+      bio: profile.bio || "(vacío)",
+      birthdate: profile.birthdate || "(vacío)",
+      city: profile.city || "(vacío)",
+      country: profile.country || "(vacío)",
+      profile_visible: profile.profile_visible,
+    });
 
-      await refreshProfile();
-      setToast({ message: t("perfil_guardado"), type: "success" });
-      setEditMode(false);
-    } catch (err: any) {
-      setToast({ message: t("error_guardar") + ": " + err.message, type: "error" });
-    } finally {
-      setSaving(false);
+    const { data: updated, error } = await supabase
+      .from("profiles")
+      .update({
+        name: profile.name,
+        bio: profile.bio,
+        birthdate: profile.birthdate,
+        city: profile.city,
+        country: profile.country,
+        profile_visible: profile.profile_visible,
+      })
+      .eq("id", id)
+      .select("*")           // Esto es clave para confirmar si realmente guardó
+      .single();
+
+    if (error) {
+      console.error("[ERROR Supabase update]:", error.message, error.details, error.hint);
+      throw error;
     }
-  };
+
+    if (!updated) {
+      console.warn("[WARNING] Update OK pero NO devolvió fila → no se actualizó nada");
+      setToast({ message: "No se actualizó (fila no encontrada o RLS bloquea)", type: "error" });
+      return;
+    }
+
+    // Log 2: Qué realmente guardó Supabase
+    console.log("[ÉXITO] Supabase devolvió:", updated);
+
+    // Actualiza el estado local con lo guardado de verdad
+    setProfile(updated);
+
+    // Si tienes refreshProfile, llámalo
+    await refreshProfile();
+
+    setToast({ message: t("perfil_guardado"), type: "success" });
+    setEditMode(false);
+
+  } catch (err: any) {
+    console.error("[Catch Guardar]:", err);
+    setToast({ message: "Error al guardar: " + (err.message || "desconocido"), type: "error" });
+  } finally {
+    setSaving(false);
+  }
+};
 
   const toggleProfileVisibility = () => {
     setProfile(prev => ({ ...prev, profile_visible: !prev.profile_visible }));
