@@ -215,8 +215,7 @@ if (uploadError) throw uploadError;
 
   const handleSave = async () => {
   // Usamos profile.username como principal (el que se muestra en el modal y es único)
-  const userIdentifier = profile.username;
-
+  
   // Si por algún motivo está vacío (raro), fallback a otros valores que tengas
   // pero en tu caso profile.username debería estar siempre presente
   if (!userIdentifier) {
