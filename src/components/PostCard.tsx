@@ -741,32 +741,33 @@ const handleChatCreadores = async () => {
         </div>
       )}
 
-      {/* Chat */}
+      {/* Botón de chat */}
       {currentUserId && (
         <button
           onClick={handleChatCreadores}
-          className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition"
+          disabled={loadingAction === "subscription" || checkingAccess}
+          className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition disabled:opacity-50"
         >
-          {t("chat_exclusivo")}
+          {loadingAction === "subscription" ? "Procesando..." : t("chat_exclusivo")}
         </button>
       )}
 
-      {/* Error */}
-{error && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-    <div className="bg-gray-900 p-6 rounded-xl max-w-sm w-full text-center">
-      <p className="text-white mb-4">{error}</p>
-      <button
-        onClick={() => setError(null)}
-        className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-      >
-        OK
-      </button>
-    </div>
-  </div>
-)}
+      {/* Error modal */}
+      {error && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+          <div className="bg-gray-900 p-6 rounded-xl max-w-sm w-full text-center">
+            <p className="text-white mb-4">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* Modal Repost */}
+      {/* Modal de repost */}
       {showRepostModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
           <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm mx-4">
@@ -808,9 +809,27 @@ const handleChatCreadores = async () => {
         </div>
       )}
     </div>
-  );
-};
 
+    
+    {showGlobalChat && (
+      <div className="fixed inset-0 z-[99999] bg-black/95 flex flex-col">
+        <button
+          onClick={() => setShowGlobalChat(false)}
+          className="absolute top-5 right-5 z-20 bg-gray-900/90 text-white px-6 py-3 rounded-full backdrop-blur-md border border-gray-700 shadow-2xl text-base font-medium hover:bg-gray-800 transition"
+        >
+          ← Volver al feed
+        </button>
+
+        <div className="flex-1 pt-16 overflow-hidden">
+          <GlobalChatRoom 
+            currentUserId={currentUserId!} 
+            roomId="premium_global_chat"
+          />
+        </div>
+      </div>
+    )}
+  </>
+);
 export default PostCard;
 
         
