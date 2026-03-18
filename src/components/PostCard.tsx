@@ -826,8 +826,9 @@ const handleChatCreadores = async () => {
         currentUserId={currentUserId!} 
         roomId="premium_global_chat"
       />
-    </div>
-  </div>
-)}
+        </div>
+      </div>
+    )}
+  </>
 );
       export default Postcard;
