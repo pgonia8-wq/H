@@ -831,4 +831,4 @@ const handleChatCreadores = async () => {
 </>
 );
   
-   export defaul Postcard 
+   export defaul Postcard;
