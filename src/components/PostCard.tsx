@@ -53,10 +53,11 @@ const [hasChatAccess, setHasChatAccess] = useState(false);
 const [checkingAccess, setCheckingAccess] = useState(true);
 
 // Check chat access
+// --- USEEFFECTS ---
 useEffect(() => {
   const checkChatAccess = async () => {
     if (!currentUserId) {
-      setCheckingAccess(false);
+      setCheckingAccess(false); // usa el state que ya declaraste arriba
       return;
     }
 
@@ -67,15 +68,13 @@ useEffect(() => {
       .in("chat_type", ["classic", "gold"])
       .maybeSingle();
 
-    if (data) setHasChatAccess(true);
-
+    if (data) setHasChatAccess(true); // usa el state existente
     setCheckingAccess(false);
   };
 
   checkChatAccess();
 }, [currentUserId]);
 
-// Fetch original post
 useEffect(() => {
   const fetchOriginalPost = async () => {
     if (!post || !post.reposted_post_id) return;
@@ -86,13 +85,15 @@ useEffect(() => {
       .eq("id", post.reposted_post_id)
       .single();
 
-    if (error) console.error("Error fetching original post:", error);
-    else setOriginalPost(data);
+    if (error) {
+      console.error("Error fetching original post:", error);
+    } else {
+      setOriginalPost(data); // usa el state existente
+    }
   };
 
   fetchOriginalPost();
 }, [post && post.reposted_post_id]);
-  
   const [error, setError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState<number | "">(1);
   const [showRepostModal, setShowRepostModal] = useState(false);
