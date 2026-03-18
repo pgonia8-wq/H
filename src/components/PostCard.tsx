@@ -697,90 +697,28 @@ const handleChatCreadores = async () => {
             {comments}
           </button>
 
-          {showComments && (
-            <div className="mt-2 space-y-3 max-h-60 overflow-y-auto">
-              {loadingComments ? (
-                <p className="text-gray-500 text-sm">
-                  {t("cargando_comentarios")}
-                </p>
-              ) : commentsList.length === 0 ? (
-                <p className="text-gray-500 text-sm">
-                  {t("no_hay_comentarios")}
-                </p>
-              ) : (
-                 commentsList.map((c) => (
-                <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
-                  <p className="font-bold">
-                    {globalUsername || c.profiles?.username}
-                  </p>
-                  <p className="text-gray-300">{c.content}</p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {new Date(c.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              ))
-            </div> {/* cierre de max-h-60 overflow-y-auto */}
-          )}
-        </div> {/* cierre del div de comentarios */}
-      )}
+        {showComments
+  ? t("ocultar_comentarios")
+  : t("ver_comentarios")}{" "}
+  {comments}
+</button>
 
-      {/* Botón de chat */}
-      {currentUserId && (
-        <button
-          onClick={handleChatCreadores}
-          disabled={loadingAction === "subscription" || checkingAccess}
-          className="w-full py-2 bg-indigo-600 text-white rounded-full mt-4 hover:bg-indigo-700 text-sm font-medium transition disabled:opacity-50"
-        >
-          {loadingAction === "subscription" ? "Procesando..." : t("chat_exclusivo")}
-        </button>
-      )}
-
-      {/* Error modal */}
-      {error && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-          <div className="bg-gray-900 p-6 rounded-xl max-w-sm w-full text-center">
-            <p className="text-white mb-4">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de repost */}
-      {showRepostModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm mx-4">
-            <h3 className="text-white text-xl font-bold mb-4 text-center">
-              {t("repost")}
-            </h3>
-
-            <div className="flex flex-col gap-4">
-              <button
-                onClick={confirmRepost}
-                className="py-3 bg-purple-600 text-white rounded-xl font-medium hover:bg-purple-700 transition"
-              >
-                {t("repost")}
-              </button>
-
-              <button
-                onClick={confirmQuote}
-                className="py-3 bg-gray-700 text-white rounded-xl font-medium hover:bg-gray-600 transition"
-              >
-                {t("citar_post")}
 {showComments && (
   <div className="mt-2 space-y-3 max-h-60 overflow-y-auto">
     {loadingComments ? (
-      <p className="text-gray-500 text-sm">{t("cargando_comentarios")}</p>
+      <p className="text-gray-500 text-sm">
+        {t("cargando_comentarios")}
+      </p>
     ) : commentsList.length === 0 ? (
-      <p className="text-gray-500 text-sm">{t("no_hay_comentarios")}</p>
+      <p className="text-gray-500 text-sm">
+        {t("no_hay_comentarios")}
+      </p>
     ) : (
       commentsList.map((c) => (
         <div key={c.id} className="bg-gray-800 p-3 rounded text-sm">
-          <p className="font-bold">{globalUsername || c.profiles?.username}</p>
+          <p className="font-bold">
+            {globalUsername || c.profiles?.username}
+          </p>
           <p className="text-gray-300">{c.content}</p>
           <p className="text-xs text-gray-500 mt-1">
             {new Date(c.timestamp).toLocaleString()}
@@ -821,7 +759,9 @@ const handleChatCreadores = async () => {
 {showRepostModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
     <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm mx-4">
-      <h3 className="text-white text-xl font-bold mb-4 text-center">{t("repost")}</h3>
+      <h3 className="text-white text-xl font-bold mb-4 text-center">
+        {t("repost")}
+      </h3>
 
       <div className="flex flex-col gap-4">
         <button
@@ -875,3 +815,5 @@ const handleChatCreadores = async () => {
 );
 
 export default PostCard;
+
+      
