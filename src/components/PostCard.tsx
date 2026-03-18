@@ -57,18 +57,25 @@ const [checkingAccess, setCheckingAccess] = useState(true);
 useEffect(() => {
   const checkChatAccess = async () => {
     if (!currentUserId) {
-      setCheckingAccess(false); // usa el state que ya declaraste arriba
+      setCheckingAccess(false);
       return;
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("subscriptions")
-      .select("chat_type")
+      .select("product") // 👈 columna correcta
       .eq("user_id", currentUserId)
-      .in("chat_type", ["classic", "gold"])
+      .in("product", ["chat_classic", "chat_gold"]) // 👈 valores reales
       .maybeSingle();
 
-    if (data) setHasChatAccess(true); // usa el state existente
+    if (error) {
+      console.error("Error consultando suscripción:", error);
+    }
+
+    if (data) {
+      setHasChatAccess(true);
+    }
+
     setCheckingAccess(false);
   };
 
