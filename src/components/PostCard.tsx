@@ -797,14 +797,15 @@ const handleChatCreadores = async () => {
         </div>
       )}
 
-      {showGlobalChat && (
-  <GlobalChatRoom
-    isOpen={showGlobalChat}
-    onClose={() => setShowGlobalChat(false)}
-    currentUser={chatCurrentUser}
-    supabase={supabase}
-     )}
-    </div>               
+{showGlobalChat && (
+        <GlobalChatRoom
+          isOpen={showGlobalChat}
+          onClose={() => setShowGlobalChat(false)}
+          currentUser={chatCurrentUser}
+          supabase={supabase}
+        />
+      )}
+    </div> 
   );
 };
 
