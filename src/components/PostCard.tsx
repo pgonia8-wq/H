@@ -54,7 +54,12 @@ const [originalPost, setOriginalPost] = useState<any | null>(null);
 const [hasChatAccess, setHasChatAccess] = useState(false);
 const [checkingAccess, setCheckingAccess] = useState(true);
 const userRole = hasChatAccess ? "gold" : "free";
-// Check chat access
+const handleSend = (e?: any) => {
+  if (e) e.preventDefault();
+  console.log("Mensaje temporal (chat aún no conectado)");
+};
+  
+  // Check chat access
 // --- USEEFFECTS ---
 useEffect(() => {
   const checkChatAccess = async () => {
