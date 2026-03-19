@@ -696,7 +696,90 @@ const switchRoom = useCallback((roomId: string) => {
   // No enviamos nada por WS → ya lo manejamos con Supabase después
 }, [currentUser.id, currentUser.username]);
 
+const handleSend = async (content: string, file?: File) => {
+  // Evitar enviar mensajes vacíos
+  if (!content.trim() && !file) return;
 
+  let fileUrl: string | undefined;
+  let fileName: string | undefined;
+  let fileType: string | undefined;
+
+  // 1. Subir archivo si hay uno
+  if (file) {
+    const timestamp = Date.now();
+    const filePath = `chat/\( {selectedRoomId}/ \){currentUser.id}/\( {timestamp}- \){file.name}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat_attachments')               // ← asegúrate que este bucket exista
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error("Error al subir archivo:", uploadError.message);
+      // Aquí podrías mostrar un toast o alerta al usuario
+      return;
+    }
+
+    // Obtener URL pública
+    const { data: urlData } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    fileUrl = urlData.publicUrl;
+    fileName = file.name;
+    fileType = file.type;
+  }
+
+  // 2. Crear el objeto del mensaje
+  const newMessage = {
+    room_id: selectedRoomId,
+    user_id: currentUser.id,
+    username: currentUser.username,
+    avatar_url: currentUser.avatarUrl || null,
+    content: content.trim() || null,
+    file_url: fileUrl,
+    file_name: fileName,
+    file_type: fileType,
+    created_at: new Date().toISOString(),
+  };
+
+  // 3. Insertar en Supabase (con actualización optimista)
+  setMessages((prev) => ({
+    ...prev,
+    [selectedRoomId]: [
+      ...(prev[selectedRoomId] || []),
+      { ...newMessage, id: `temp-${Date.now()}` }  // id temporal para UI
+    ]
+  }));
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert(newMessage)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error al guardar mensaje:", error.message);
+    // Opcional: revertir optimista o mostrar error
+    setMessages((prev) => ({
+      ...prev,
+      [selectedRoomId]: (prev[selectedRoomId] || []).filter(
+        (m) => m.id !== `temp-${Date.now()}`
+      )
+    }));
+    return;
+  }
+
+  // Reemplazar el mensaje temporal con el real (con id de Supabase)
+  setMessages((prev) => ({
+    ...prev,
+    [selectedRoomId]: (prev[selectedRoomId] || []).map((m) =>
+      m.id.startsWith('temp-') ? data : m
+    )
+  }));
+};
 
   // â”€â”€ Crear sala â”€â”€
   const handleCreateRoom = (data: Omit<ChatRoom, "id">) => {
