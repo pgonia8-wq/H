@@ -221,6 +221,7 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
               className="w-9 h-9 flex items-center justify-center text-3xl text-white/80 hover:text-white transition"
             >
@@ -267,7 +268,7 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
 
         {/* Gold Subscription Screen */}
         {!goldSubscribed && showGoldChat && (
-          <div className="p-8 bg-gradient-to-b from-gray-900 to-yellow-950/30 flex flex-col items-center justify-center text-center">
+          <div className="absolute inset-0 z-10 p-8 bg-gradient-to-b from-gray-900 to-yellow-950/30 flex flex-col items-center justify-center text-center">
             <div className="text-6xl mb-6">🔒</div>
             <h3 className="text-2xl font-bold text-yellow-400 mb-2">Gold Chat</h3>
             <p className="text-gray-300 mb-8 max-w-[260px]">
