@@ -800,7 +800,18 @@ const handleChatCreadores = async () => {
           </button>
 
           <div className="flex-1 pt-16 overflow-hidden">
-            <GlobalChatRoom currentUserId={currentUserId!} roomId="premium_global_chat" />
+            <GlobalChatRoom
+  isOpen={true}
+  onClose={() => setShowGlobalChat(false)}
+  currentUser={{
+    id: currentUserId!,
+    username: globalUsername || "user",
+    role: userRole,
+    isOnline: true,
+  }}
+/>
+  }}
+/>
           </div>
         </div>
       )}
