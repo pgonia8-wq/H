@@ -807,8 +807,9 @@ const handleChatCreadores = async () => {
     id: currentUserId!,
     username: globalUsername || "user",
     role: userRole,
-    isOneline: true,
-       />  
+    isOnline: true,
+  }}
+/>
     </div>
         </div>
       )}
