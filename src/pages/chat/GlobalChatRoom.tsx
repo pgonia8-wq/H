@@ -5,19 +5,24 @@ interface GlobalChatRoomProps {
   currentUserId: string;
   roomId?: string;
   onClose: () => void;
-  currentUserAvatar?: string; // Opcional para mostrar avatar en header
-  currentUserName?: string;   // Opcional para mostrar username completo
+}
+
+interface ChatMessage {
+  id: string;
+  sender_id: string;
+  username?: string;
+  avatar_url?: string;
+  content: string;
+  created_at?: string;
 }
 
 const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
   currentUserId,
   roomId = "premium_global_chat",
   onClose,
-  currentUserAvatar,
-  currentUserName,
 }) => {
-  const [messages, setMessages] = useState<any[]>([]);
-  const [goldMessages, setGoldMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [goldMessages, setGoldMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [typing, setTyping] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -74,7 +79,12 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
     channel
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "global_chat_messages", filter: `room_id=eq.${roomId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "global_chat_messages",
+          filter: `room_id=eq.${roomId}`,
+        },
         (payload) => setMessages((prev) => [...prev, payload.new])
       )
       .on("broadcast", { event: "typing" }, (payload) => {
@@ -108,7 +118,11 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
 
   const sendTyping = async () => {
     const channel = supabase.channel(`global-chat-${roomId}`);
-    await channel.send({ type: "broadcast", event: "typing", payload: { user: currentUserId } });
+    await channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { user: currentUserId },
+    });
   };
 
   const sendMessage = async () => {
@@ -126,71 +140,65 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
     setShowGoldChat(true);
   };
 
-  return (
+  // --- Función auxiliar para render avatar + username ---
+  const renderMessage = (m: ChatMessage) => (
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      style={{ animation: "fadeIn 0.3s ease-out" }}
+      key={m.id || Math.random()}
+      className={`flex gap-2 items-end ${
+        m.sender_id === currentUserId ? "justify-end" : "justify-start"
+      } transition-all duration-300 animate-fade-in`}
     >
-      <div className="relative w-full max-w-md flex flex-col bg-gray-900 rounded-2xl shadow-2xl transform transition-transform duration-300 scale-95 animate-scale-up">
+      {m.sender_id !== currentUserId && (
+        <img
+          src={m.avatar_url || "/default-avatar.png"}
+          alt="avatar"
+          className="w-8 h-8 rounded-full object-cover"
+        />
+      )}
+      <div
+        className={`max-w-[70%] px-4 py-2 rounded-2xl ${
+          m.sender_id === currentUserId
+            ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white"
+            : "bg-gray-700 text-gray-200"
+        } shadow-inner-glow transition-all duration-300`}
+      >
+        {m.sender_id !== currentUserId && (
+          <span className="block text-xs font-semibold">{m.username || m.sender_id?.slice(0, 10)}</span>
+        )}
+        <span>{m.content}</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-md p-4 animate-fade-in">
+      <div className="w-full max-w-md flex flex-col bg-gray-900 rounded-3xl shadow-premium transform transition-transform duration-300 scale-95 animate-scale-up">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-4 flex justify-between items-center rounded-t-2xl">
-          <div className="flex items-center gap-2">
-            {currentUserAvatar && (
-              <img
-                src={currentUserAvatar}
-                alt="Avatar"
-                className="w-8 h-8 rounded-full object-cover"
-              />
-            )}
-            <div>
-              <h2 className="text-lg font-bold text-white">{showGoldChat ? "Gold Chat" : "Global Chat"}</h2>
-              <p className="text-sm text-gray-200 opacity-80">{usersConnected} personas conectadas</p>
-            </div>
+        <div className="bg-gradient-to-r from-purple-700 to-indigo-700 p-4 flex justify-between items-center rounded-t-3xl">
+          <div className="flex flex-col">
+            <h2 className="text-lg font-bold text-white">{showGoldChat ? "Gold Chat" : "Global Chat"}</h2>
+            <p className="text-sm text-gray-200 opacity-80">{usersConnected} personas conectadas</p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white font-bold text-2xl hover:text-gray-200 transition"
-          >
+          <button onClick={onClose} className="text-white font-bold text-2xl hover:text-gray-300 transition">
             ×
           </button>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800 max-h-[60vh] scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-700">
-          {loading && <p className="text-center text-gray-400 animate-fade-in">Cargando mensajes...</p>}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-800 max-h-[60vh] scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
+          {loading && <p className="text-center text-gray-400">Cargando mensajes...</p>}
           {loadError && <div className="p-2 bg-red-800 text-red-200 rounded">{loadError}</div>}
 
-          {!loading && !loadError && (showGoldChat ? goldMessages : messages).length === 0 && (
-            <div className="text-center text-gray-400 py-10">
-              <p>No hay mensajes aún</p>
-              <p className="text-sm mt-1">Sé el primero en escribir</p>
-            </div>
-          )}
-
-          {(showGoldChat ? goldMessages : messages).map((m) => (
-            <div
-              key={m.id || Math.random()}
-              className={`flex items-end gap-2 ${m.sender_id === currentUserId ? "justify-end" : "justify-start"}`}
-            >
-              {/* Avatar */}
-              <img
-                src={m.avatar_url || "/default-avatar.png"}
-                alt="avatar"
-                className="w-6 h-6 rounded-full object-cover"
-              />
-              {/* Message bubble */}
-              <div
-                className={`max-w-[70%] px-4 py-2 rounded-xl transition-all duration-200 ${
-                  m.sender_id === currentUserId
-                    ? "bg-purple-600 text-white animate-scale-up"
-                    : "bg-gray-700 text-gray-200 animate-scale-up"
-                }`}
-              >
-                <span className="text-xs opacity-70 block">{m.username || m.sender_id}</span>
-                {m.content}
+          {!loading &&
+            !loadError &&
+            (showGoldChat ? goldMessages : messages).length === 0 && (
+              <div className="text-center text-gray-400 py-10">
+                <p>No hay mensajes aún</p>
+                <p className="text-sm mt-1">Sé el primero en escribir</p>
               </div>
-            </div>
-          ))}
+            )}
+
+          {(showGoldChat ? goldMessages : messages).map(renderMessage)}
 
           {typing && <div className="text-xs text-gray-400 italic">Alguien está escribiendo...</div>}
           <div ref={bottomRef} />
@@ -211,10 +219,10 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
 
         {/* Input */}
         {(!showGoldChat || goldSubscribed) && (
-          <div className="flex gap-2 p-4 border-t border-gray-700 bg-gray-900 sticky bottom-0 shadow-lg">
+          <div className="flex gap-2 p-4 border-t border-gray-700 bg-gray-900 sticky bottom-0 shadow-inner-glow">
             <input
               type="text"
-              className="flex-1 bg-gray-800 px-4 py-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-purple-500 hover:ring-purple-400 transition-all"
+              className="flex-1 bg-gray-800 px-4 py-3 rounded-xl text-white outline-none focus:ring-2 focus:ring-purple-500 transition placeholder-gray-500"
               placeholder="Escribe un mensaje..."
               value={newMessage}
               onChange={(e) => {
@@ -225,7 +233,7 @@ const GlobalChatRoom: React.FC<GlobalChatRoomProps> = ({
             <button
               onClick={sendMessage}
               disabled={!newMessage.trim()}
-              className="bg-purple-600 px-6 py-3 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="bg-purple-600 px-6 py-3 rounded-xl font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               Enviar
             </button>
