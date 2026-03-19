@@ -73,7 +73,9 @@ export interface GlobalChatRoomProps {
   /** URL WebSocket. Default: auto-detectada */
   wsUrl?: string;
   onSendMessage?: (message: ChatMessage) => void;
+  supabase: any;                
 }
+
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DATOS DE EJEMPLO
@@ -642,6 +644,7 @@ export default function GlobalChatRoom({
   currentUser,
   defaultRoom = "classic",
   apiBaseUrl = "",
+  supabase,
   wsUrl,
   onSendMessage,
 }: GlobalChatRoomProps) {
@@ -667,7 +670,7 @@ export default function GlobalChatRoom({
 
   // â”€â”€ Refs â”€â”€
   const bottomRef = useRef<HTMLDivElement>(null);
-  const wsRef     = useRef<WebSocket | null>(null);
+ // const wsRef     = useRef<WebSocket | null>(null);
 
   // â”€â”€ Derivados â”€â”€
   const isGold      = roomType === "gold";
@@ -676,117 +679,22 @@ export default function GlobalChatRoom({
   const activeMessages = messages[selectedRoomId] ?? [];
   const filteredRooms  = rooms.filter((r) => r.type === roomType);
 
-  // â”€â”€ WebSocket â”€â”€
-  useEffect(() => {
-    if (!isOpen) return;
 
-    const url = wsUrl ?? (() => {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      return `${proto}//${window.location.host}/ws`;
-    })();
+      // ── WebSocket ── desactivado (usamos Supabase realtime en su lugar)
+// const wsRef = useRef<WebSocket | null>(null);
 
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(url);
-      wsRef.current = ws;
+// ── Auto-scroll ──
+useEffect(() => {
+  bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [activeMessages.length, typingUsers.length]);
 
-      ws.onopen = () => ws.send(JSON.stringify({
-        type: "join",
-        payload: { userId: currentUser.id, username: currentUser.username, avatarUrl: currentUser.avatarUrl, roomId: selectedRoomId },
-      }));
-
-      ws.onmessage = (ev) => {
-        try {
-          const data: { type: string; payload: unknown } = JSON.parse(ev.data);
-          if (data.type === "message") {
-            const m = data.payload as ChatMessage;
-            setMessages((p) => ({ ...p, [m.roomId]: [...(p[m.roomId] ?? []), m] }));
-          }
-          if (data.type === "typing") {
-            const t = data.payload as { userId: string; username: string; isTyping: boolean };
-            if (t.userId === currentUser.id) return;
-            setTypingUsers((p) =>
-              t.isTyping
-                ? p.find((u) => u.userId === t.userId) ? p : [...p, { userId: t.userId, username: t.username }]
-                : p.filter((u) => u.userId !== t.userId)
-            );
-          }
-          if (data.type === "presence") setConnected(data.payload as ConnectedUser[]);
-        } catch { /* ignorar */ }
-      };
-
-      ws.onclose = () => { wsRef.current = null; };
-    } catch { /* WebSocket no disponible */ }
-
-    return () => { ws?.close(); };
-  }, [isOpen, currentUser.id, currentUser.username, currentUser.avatarUrl, selectedRoomId, wsUrl]);
-
-  // â”€â”€ Auto-scroll â”€â”€
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages.length, typingUsers.length]);
-
-  // â”€â”€ Cambiar sala â”€â”€
-  const switchRoom = useCallback((roomId: string) => {
-    setSelectedRoomId(roomId);
-    setShowRooms(false);
-    setTypingUsers([]);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "join", payload: { userId: currentUser.id, username: currentUser.username, roomId } }));
-    }
-  }, [currentUser.id, currentUser.username]);
-
-  // â”€â”€ Cambiar tipo de sala â”€â”€
-  const handleSwitchType = (type: RoomType) => {
-    if (type === "gold" && !canUseGold) { setShowGoldModal(true); return; }
-    setRoomType(type);
-    const first = rooms.find((r) => r.type === type);
-    if (first) switchRoom(first.id);
-  };
-
-  // â”€â”€ Enviar mensaje â”€â”€
-  const handleSend = useCallback(async (content: string, file?: File) => {
-    let fileUrl: string | undefined;
-    let fileName: string | undefined;
-    let fileType: string | undefined;
-
-    if (file) {
-      // Subida a API si estÃ¡ disponible, si no, ObjectURL local
-      try {
-        const form = new FormData();
-        form.append("file", file);
-        const res = await fetch(`${apiBaseUrl}/api/upload`, { method: "POST", body: form });
-        if (res.ok) {
-          const d = await res.json();
-          fileUrl = d.url; fileName = d.fileName; fileType = d.fileType;
-        }
-      } catch { /* sin conexiÃ³n â€” usar ObjectURL */ }
-
-      if (!fileUrl) {
-        fileUrl  = URL.createObjectURL(file);
-        fileName = file.name;
-        fileType = file.type;
-      }
-    }
-
-    const msg: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      roomId: selectedRoomId,
-      userId: currentUser.id,
-      username: currentUser.username,
-      avatarUrl: currentUser.avatarUrl,
-      content: content || undefined,
-      fileUrl, fileName, fileType,
-      createdAt: new Date().toISOString(),
-    };
-
-    // ActualizaciÃ³n optimista
-    setMessages((p) => ({ ...p, [selectedRoomId]: [...(p[selectedRoomId] ?? []), msg] }));
-
-    // WebSocket
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "message", payload: msg }));
-    }
+// ── Cambiar sala ──
+const switchRoom = useCallback((roomId: string) => {
+  setSelectedRoomId(roomId);
+  setShowRooms(false);
+  setTypingUsers([]);
+  // No enviamos nada por WS → ya lo manejamos con Supabase después
+}, [currentUser.id, currentUser.username]);
 
     // REST fallback
     try {
