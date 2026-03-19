@@ -806,13 +806,10 @@ const handleChatCreadores = async () => {
 
           <div className="flex-1 pt-16 overflow-hidden">
             <GlobalChatRoom
-  isOpen={true}
-  onClose={() => setShowGlobalChat(false)}
-  currentUser={{
-    id: currentUserId!,
-    username: globalUsername || "user",
-    role: userRole,
-    isOnline: true,
+    isOpen={showGlobalChat}
+    onClose={() => setShowGlobalChat(false)}
+    currentUser={chatCurrentUser}
+    supabase={supabase}
   }}
 />
     </div>
