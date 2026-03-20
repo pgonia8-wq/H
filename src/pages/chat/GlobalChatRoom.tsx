@@ -988,10 +988,13 @@ export default function GlobalChatRoom({
 
               {/* BotÃ³n upgrade Gold */}
               {!isSubscribed && (
-                <button onClick={() =>  handleGoldSubscription(true)} data-testid="button-upgrade-gold"
-                  className="flex items-center gap-1 rounded-lg bg-gradient-to-r from-yellow-500 to-amber-500 px-2 py-1 text-[10px] font-bold text-white cursor-pointer shadow shadow-yellow-500/30">
-                  <Crown className="h-3 w-3" /> Gold
-                </button>
+                <Button
+  onClick={handleGoldSubscription}
+  disabled={loadingAction === "subscription"}
+  variant="gold"
+>
+  {currentUser?.has_chat_gold ? "Acceder a funciones Platinum" : "Suscribirse a Platinum"}
+</Button>
               )}
 
               {/* Cerrar */}
