@@ -1015,7 +1015,7 @@ export default function GlobalChatRoom({
     ? "Acceder a Gold / Platinum ✨" 
     : "Suscribirse a Platinum"}
 </button>
-)}
+
 
 {/* Cerrar */}
 <button
