@@ -694,19 +694,52 @@ export default function GlobalChatRoom({
     let cancelled = false;
 
     const loadMessages = async () => {
-      const { data, error } = await supabase
-        .from("global_chat_messages")
-        .select("*")
-        .eq("room_id", selectedRoomId)
-        .order("created_at", { ascending: true })
-        .limit(50);
+  setLoading(true);
+  setLoadError(null);
 
-      if (cancelled) return;
-      if (error) { console.error("[GlobalChat] Error cargando mensajes:", error.message); return; }
+  try {
+    console.log("Cargando mensajes para room:", roomId);
+    
+    const { data, error } = await supabase
+      .from("global_chat_messages")
+      .select(`
+        id,
+        room_id,
+        sender_id,
+        content,
+        created_at,
+        profiles!sender_id (username, avatar_url)
+      `)
+      .eq("room_id", roomId)
+      .order("created_at", { ascending: true })
+      .limit(50);
 
-      const mapped = (data ?? []).map((row) => rowToMessage(row as Record<string, unknown>));
-      setMessages((prev) => ({ ...prev, [selectedRoomId]: mapped }));
-    };
+    if (error) {
+      console.error("Error Supabase al cargar mensajes:", error.message);
+      setLoadError(error.message);
+      setMessages([]);
+    } else {
+      const formatted = data?.map(row => ({
+        id: row.id,
+        roomId: row.room_id,
+        userId: row.sender_id,
+        username: row.profiles?.username ?? row.sender_id.slice(0, 8) ?? "Usuario",
+        avatarUrl: row.profiles?.avatar_url || undefined,
+        content: row.content || "",
+        createdAt: row.created_at,
+      })) || [];
+
+      console.log("Mensajes cargados:", formatted.length);
+      setMessages(formatted);
+    }
+  } catch (err: any) {
+    console.error("Excepción al cargar mensajes:", err);
+    setLoadError("Error inesperado al cargar el chat");
+    setMessages([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
     loadMessages();
     return () => { cancelled = true; };
