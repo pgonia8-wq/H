@@ -443,7 +443,7 @@ const HomePage: React.FC<HomePageProps> = ({
       >
         {/* Logo */}
         <motion.img
-          src="/logoh-carbono.png"
+          src="https://vtjqfzpfehfofamhowjz.supabase.co/storage/v1/object/public/avatars/logoh-carbono.png"
           className="w-10 h-10 object-contain rounded-xl"
           alt="Humans Logo"
           whileHover={{ scale: 1.08 }}
