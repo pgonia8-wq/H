@@ -6,6 +6,9 @@ import { LanguageContext } from "../LanguageContext";
 import ProfileModal from "../components/ProfileModal";
 import ActionButton from "../components/ActionButton";
 import Inbox from "./chat/Inbox";
+import { useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ImageIcon, X, Send } from "lucide-react";
 
 const PAGE_SIZE = 8;
 
@@ -390,49 +393,227 @@ const handleProfileUpdated = (updatedProfile: { id: string; avatar_url?: string 
           />
       )}
 
-      {showNewPostModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-gray-900 rounded-2xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold mb-4">{t("create_post")}</h2>
+<AnimatePresence>
+  {showNewPostModal && (
+    <motion.div
+      key="create-post-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      style={{ backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.82)" }}
+      onClick={() => setShowNewPostModal(false)}
+    >
+      <motion.div
+        key="create-post-modal"
+        className={
+          "relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden " +
+          (theme === "dark"
+            ? "bg-gray-950 border border-white/10"
+            : "bg-white border border-gray-200")
+        }
+        initial={{ opacity: 0, scale: 0.92, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 24 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Gradiente decorativo superior */}
+        <div
+          className="absolute inset-x-0 top-0 h-1 rounded-t-3xl"
+          style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }}
+        />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+            >
+              <Send size={14} className="text-white -rotate-12" />
+            </div>
+            <h2
+              className={
+                "text-lg font-bold tracking-tight " +
+                (theme === "dark" ? "text-white" : "text-gray-900")
+              }
+            >
+              {t("create_post")}
+            </h2>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.1, rotate: 90 }}
+            whileTap={{ scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            onClick={() => setShowNewPostModal(false)}
+            className={
+              "w-8 h-8 rounded-full flex items-center justify-center transition-colors " +
+              (theme === "dark"
+                ? "text-gray-400 hover:text-white hover:bg-white/10"
+                : "text-gray-400 hover:text-gray-700 hover:bg-gray-100")
+            }
+          >
+            <X size={16} />
+          </motion.button>
+        </div>
+
+        {/* Textarea */}
+        <div className="px-6">
+          <div
+            className={
+              "relative rounded-2xl overflow-hidden " +
+              (theme === "dark"
+                ? "bg-gray-900 ring-1 ring-white/10 focus-within:ring-violet-500"
+                : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400")
+            }
+            style={{ transition: "box-shadow 0.2s" }}
+          >
             <textarea
               value={newPostContent}
               onChange={(e) => setNewPostContent(e.target.value)}
-              className={`w-full h-32 p-3 rounded-xl resize-y focus:outline-none focus:ring-2 focus:ring-purple-500 ${
-                theme === "dark" ? "bg-gray-800 text-white" : "bg-white text-black border border-gray-300"
-              }`}
+              className={
+                "w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed " +
+                (theme === "dark"
+                  ? "text-white placeholder-gray-500"
+                  : "text-gray-900 placeholder-gray-400")
+              }
               placeholder={t("whats_happening")}
               maxLength={maxChars}
             />
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  setNewPostImage(e.target.files[0]);
-                  setImagePreview(URL.createObjectURL(e.target.files[0]));
-                }
-              }}
-              className="mt-4"
-            />
-            {imagePreview && <img src={imagePreview} className="mt-4 rounded-xl max-h-60" alt="Preview" />}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowNewPostModal(false)}
-                className="flex-1 py-3 bg-gray-700 text-white rounded-xl"
-              >
-                {t("cancel")}
-              </button>
-              <button
-                onClick={handleCreatePost}
-                className="flex-1 py-3 bg-purple-600 text-white rounded-xl font-medium"
-              >
-                {t("publish")}
-              </button>
+            <div
+              className={
+                "absolute bottom-3 right-3 text-xs font-medium tabular-nums " +
+                (newPostContent.length > maxChars * 0.85
+                  ? "text-red-400"
+                  : theme === "dark"
+                  ? "text-gray-600"
+                  : "text-gray-400")
+              }
+            >
+              {newPostContent.length}/{maxChars}
             </div>
           </div>
         </div>
-      )}
 
+        {/* Preview de imagen */}
+        <AnimatePresence>
+          {imagePreview && (
+            <motion.div
+              className="px-6 mt-4"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="relative group rounded-2xl overflow-hidden shadow-lg max-h-60">
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="w-full object-cover max-h-60 transition-transform duration-300 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => {
+                    setNewPostImage(null);
+                    setImagePreview(null);
+                  }}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                >
+                  <X size={12} className="text-white" />
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Input de archivo oculto */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              setNewPostImage(e.target.files[0]);
+              setImagePreview(URL.createObjectURL(e.target.files[0]));
+            }
+          }}
+        />
+
+        {/* Footer */}
+        <div className="flex items-center gap-3 px-6 py-5 mt-2">
+          {/* Botón adjuntar imagen */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => fileInputRef.current?.click()}
+            className={
+              "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors " +
+              (theme === "dark"
+                ? "text-gray-400 hover:text-violet-400 hover:bg-violet-500/10"
+                : "text-gray-500 hover:text-violet-600 hover:bg-violet-50")
+            }
+          >
+            <ImageIcon size={16} />
+            <span className="hidden sm:inline">{t("add_image") || "Imagen"}</span>
+          </motion.button>
+
+          <div className="flex-1" />
+
+          {/* Cancelar */}
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setShowNewPostModal(false)}
+            className={
+              "px-4 py-2.5 rounded-xl text-sm font-medium transition-colors " +
+              (theme === "dark"
+                ? "text-gray-300 bg-white/5 hover:bg-white/10"
+                : "text-gray-600 bg-gray-100 hover:bg-gray-200")
+            }
+          >
+            {t("cancel")}
+          </motion.button>
+
+          {/* Publicar */}
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            onClick={handleCreatePost}
+            disabled={!newPostContent.trim()}
+            className="relative px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              boxShadow: newPostContent.trim()
+                ? "0 0 20px rgba(139,92,246,0.4)"
+                : "none",
+              transition: "box-shadow 0.3s",
+            }}
+          >
+            <motion.span
+              className="absolute inset-0 rounded-xl"
+              style={{
+                background:
+                  "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)",
+              }}
+              initial={{ x: "-100%" }}
+              whileHover={{ x: "100%" }}
+              transition={{ duration: 0.5 }}
+            />
+            <span className="relative flex items-center gap-2">
+              <Send size={14} className="-rotate-12" />
+              {t("publish")}
+            </span>
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
       
             {userId && (
   <Inbox
