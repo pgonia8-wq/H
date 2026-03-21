@@ -49,7 +49,7 @@ const HomePage: React.FC<HomePageProps> = ({
   const [newMessage, setNewMessage] = useState("");
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
-
+  const [isPosting, setIsPosting] = useState(false);
   const { theme, toggleTheme, username } = useContext(ThemeContext);
   const { language, setLanguage, t } = useContext(LanguageContext);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -199,51 +199,55 @@ const HomePage: React.FC<HomePageProps> = ({
   // Crear Post
   // -------------------------
   const handleCreatePost = async () => {
-    if (!newPostContent.trim()) {
-      alert(t("write_before_posting"));
-      return;
+  if (isPosting) return;
+  if (!newPostContent.trim()) {
+    alert(t("write_before_posting"));
+    return;
+  }
+  if (!userId) return;
+
+  setIsPosting(true);
+  let imageUrl = null;
+
+  try {
+    if (newPostImage) {
+      const fileExt = newPostImage.name.split(".").pop() || "png";
+      const fileName = `${userId}-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("post-images")
+        .upload(fileName, newPostImage);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("post-images").getPublicUrl(fileName);
+      imageUrl = data.publicUrl;
     }
-    if (!userId) return;
 
-    let imageUrl = null;
+    const { error } = await supabase.from("posts").insert({
+      user_id: userId,
+      content: newPostContent,
+      image_url: imageUrl,
+      timestamp: new Date().toISOString(),
+      deleted_flag: false,
+      visibility_score: 1,
+    });
 
-    try {
-      if (newPostImage) {
-        const fileExt = newPostImage.name.split(".").pop() || "png";
-        const fileName = `${userId}-${Date.now()}.${fileExt}`;
+    if (error) throw error;
 
-        const { error: uploadError } = await supabase.storage
-          .from("post-images")
-          .upload(fileName, newPostImage);
+    setShowNewPostModal(false);
+    setNewPostContent("");
+    setNewPostImage(null);
+    setImagePreview(null);
 
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from("post-images").getPublicUrl(fileName);
-        imageUrl = data.publicUrl;
-      }
-
-      const { error } = await supabase.from("posts").insert({
-        user_id: userId,
-        content: newPostContent,
-        image_url: imageUrl,
-        timestamp: new Date().toISOString(),
-        deleted_flag: false,
-        visibility_score: 1,
-      });
-
-      if (error) throw error;
-
-      setShowNewPostModal(false);
-      setNewPostContent("");
-      setNewPostImage(null);
-      setImagePreview(null);
-
-      fetchPosts(true);
-    } catch (err: any) {
-      console.error("Error creando post", err);
-      alert(err.message);
-    }
-  };
+    fetchPosts(true);
+  } catch (err: any) {
+    console.error("Error creando post", err);
+    alert(err.message);
+  } finally {
+    setIsPosting(false);
+  }
+};
 
   // -------------------------
   // Enviar mensaje
@@ -577,7 +581,7 @@ const handleProfileUpdated = (updatedProfile: { id: string; avatar_url?: string 
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={handleCreatePost}
-            disabled={!newPostContent.trim()}
+            disabled={!newPostContent.trim() || isPosting}
             className="relative px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
