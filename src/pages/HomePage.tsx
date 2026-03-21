@@ -491,7 +491,15 @@ const handleProfileUpdated = (updatedProfile: { id: string; avatar_url?: string 
           </div>
         </div>
       )}
+            {userId && (
+  <Inbox
+    isOpen={showInbox}
+    onClose={() => setShowInbox(false)}
+    currentUserId={userId}
+  />
+)}
 
+      
       {showNotifications && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-900 rounded-xl w-[90%] max-w-md p-4">
