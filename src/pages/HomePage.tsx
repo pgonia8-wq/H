@@ -799,9 +799,41 @@ const HomePage: React.FC<HomePageProps> = ({
       </AnimatePresence>
 
       {/* ── INBOX ── */}
-      {userId && (
-        <Inbox isOpen={showInbox} onClose={() => setShowInbox(false)} currentUserId={userId} />
-      )}
+      <AnimatePresence>
+        {showInbox && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xl"
+            onClick={() => setShowInbox(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 30 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              className="w-full max-w-md bg-[#111113] border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {userId && (
+                <Inbox
+                  isOpen={true}
+                  onClose={() => setShowInbox(false)}
+                  currentUserId={userId}
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  newMessageAttachments={newMessageAttachments}
+                  setNewMessageAttachments={setNewMessageAttachments}
+                  selectedChatUserId={selectedChatUserId}
+                  setSelectedChatUserId={setSelectedChatUserId}
+                  onSendMessage={handleSendMessage}
+                />
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── MODAL NOTIFICACIONES ── */}
       <AnimatePresence>
