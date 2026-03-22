@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useRef } from "react";
+import React, { useEffect, useState, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
@@ -84,7 +84,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [sendingComplaint, setSendingComplaint] = useState(false);
 
   const { theme, username: globalUsername } = useContext(ThemeContext);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const isOwnProfile = !!currentUserId;
 
   const countries = Country.getAllCountries();
@@ -388,16 +387,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </span>
           </div>
 
-          {/* Input de archivo oculto fuera del label para mayor compatibilidad en WebView */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleAvatarChange}
-            disabled={uploadingAvatar}
-          />
-
           {/* Avatar overlapping cover */}
           <div className="px-5 pb-0">
             <div className="flex items-end justify-between -mt-14 mb-3">
@@ -415,14 +404,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                   />
                 </div>
                 {isOwnProfile && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingAvatar}
-                    className="absolute bottom-0 right-0 bg-purple-600 hover:bg-purple-700 text-white rounded-full w-7 h-7 flex items-center justify-center shadow-md transition z-10"
-                  >
-                    <span className="text-xs">✏️</span>
-                  </button>
+                  <div className="absolute bottom-0 right-0 w-7 h-7 z-10">
+                    <div className="bg-purple-600 rounded-full w-7 h-7 flex items-center justify-center shadow-md pointer-events-none">
+                      <span className="text-xs">✏️</span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      disabled={uploadingAvatar}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </div>
                 )}
               </div>
 
@@ -451,8 +444,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             ) : (
               <>
                 <div className="mb-1">
-                  <p className="text-white text-lg font-bold leading-tight">{profile.name || `@${profile.username}`}</p>
-                  <p className="text-gray-400 text-sm">@{profile.username}</p>
+                  <p className="text-white text-lg font-bold leading-tight">@{profile.username}</p>
+                  {profile.name ? <p className="text-gray-400 text-sm">{profile.name}</p> : null}
                 </div>
 
                 {/* Bio preview (when not empty) */}
@@ -502,17 +495,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 {/* ── TAB: INFO ── */}
                 {activeTab === "info" && (
                   <div className="space-y-4 pb-2">
-                    {/* Username (readonly) */}
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t("nombre_usuario")}</label>
-                      <input
-                        type="text"
-                        value={globalUsername || profile.username}
-                        disabled
-                        className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-gray-400 text-sm cursor-not-allowed"
-                      />
-                    </div>
-
                     {/* Nombre visible */}
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</label>
