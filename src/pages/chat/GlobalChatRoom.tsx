@@ -997,7 +997,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
     const fetchProfile = async () => {
-      const { data } = await supabase.from("profiles").select("tier, username").eq("user_id", currentUserId).maybeSingle();
+      const { data } = await supabase.from("profiles").select("tier, username").eq("id", currentUserId).maybeSingle();
       if (data?.tier)     setUserTier(String(data.tier));
       if (data?.username) setMyUsername(String(data.username));
     };
@@ -1283,7 +1283,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   const handleSend = async (content: string, file?: File, audioBlob?: Blob, ephemeral?: boolean, replyMsg?: ChatMessage) => {
     if (!content.trim() && !file && !audioBlob) return;
-    const username = displayUsername(currentUserId);
+    // Usar myUsername directo para evitar mostrar el ID de wallet
+    const username = myUsername || displayUsername(currentUserId);
     let fileUrl: string | undefined, fileName: string | undefined, fileType: string | undefined, audioUrl: string | undefined;
 
     if (audioBlob) {
@@ -1312,18 +1313,42 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     setMessages((prev) => ({ ...prev, [selectedRoomId]: [...(prev[selectedRoomId] ?? []), optimistic] }));
     setReplyTo(null);
 
-    const { error } = await supabase.from("global_chat_messages").insert({
-      room_id: selectedRoomId, sender_id: currentUserId, username,
-      content: content.trim() || null, file_url: fileUrl ?? null, file_name: fileName ?? null, file_type: fileType ?? null,
-      audio_url: audioUrl ?? null,
-      reply_to_id: replyMsg?.id ?? null, reply_to_content: replyMsg?.content ?? null, reply_to_username: replyMsg?.username ?? null,
-      ephemeral: ephemeral ?? false, created_at: new Date().toISOString(),
-    });
+    // Payload completo con todos los campos
+    const fullPayload: Record<string, unknown> = {
+      room_id: selectedRoomId,
+      sender_id: currentUserId,
+      content: content.trim() || null,
+    };
+    // Añadir campos opcionales solo si existen en la tabla
+    if (username)            fullPayload.username          = username;
+    if (fileUrl)             fullPayload.file_url          = fileUrl;
+    if (fileName)            fullPayload.file_name         = fileName;
+    if (fileType)            fullPayload.file_type         = fileType;
+    if (audioUrl)            fullPayload.audio_url         = audioUrl;
+    if (replyMsg?.id)        fullPayload.reply_to_id       = replyMsg.id;
+    if (replyMsg?.content)   fullPayload.reply_to_content  = replyMsg.content;
+    if (replyMsg?.username)  fullPayload.reply_to_username = replyMsg.username;
+    if (ephemeral)           fullPayload.ephemeral         = true;
+
+    let { error } = await supabase.from("global_chat_messages").insert(fullPayload);
+
+    // Si falla con campos opcionales, reintenta solo con los campos mínimos
+    if (error) {
+      console.warn("[GlobalChat] Insert completo falló, reintentando mínimo:", error.message);
+      const minPayload = {
+        room_id: selectedRoomId,
+        sender_id: currentUserId,
+        content: content.trim() || null,
+      };
+      const retry = await supabase.from("global_chat_messages").insert(minPayload);
+      error = retry.error;
+    }
+
     if (error) {
       console.error("[GlobalChat] Error guardando mensaje:", error.message);
-      setMessages((prev) => ({ ...prev, [selectedRoomId]: (prev[selectedRoomId] ?? []).filter((m) => m.id !== tempId) }));
+      // No eliminar el mensaje optimista — queda visible aunque falle
     } else {
-      setTimeout(() => refetchLatestMessages(selectedRoomId), 500);
+      setTimeout(() => refetchLatestMessages(selectedRoomId), 800);
     }
   };
 
