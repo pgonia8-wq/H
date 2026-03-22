@@ -948,13 +948,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   const realtimeRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const [isGold,     setIsGold]     = useState(false);
-  const [canUseGold, setCanUseGold] = useState(false);
-
-  useEffect(() => {
-    setIsGold(hasGoldAccess);
-    setCanUseGold(hasGoldAccess);
-  }, [hasGoldAccess]);
+  const isGold     = roomType === "gold" && hasGoldAccess;
+  const canUseGold = hasGoldAccess;
 
   const selectedRoom  = rooms.find((r) => r.id === selectedRoomId);
   const filteredRooms = rooms.filter((r) => r.type === roomType);
