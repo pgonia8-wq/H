@@ -95,7 +95,7 @@ function getFlag(country: string) {
 function useCountUp(target: number, duration = 1200, decimals = 4) {
   const [value, setValue] = useState(0);
   const raf = useRef<number>(0);
-
+  const supabase = supabaseClient;
   useEffect(() => {
     if (target === 0) { setValue(0); return; }
     const start = performance.now();
