@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext } from "react";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
+import Dashboard from "./dashboard";
 import { useLanguage } from '../LanguageContext';
 // npm install country-state-city
 import { Country, State, City } from "country-state-city";
@@ -85,7 +86,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const { theme, username: globalUsername } = useContext(ThemeContext);
   const isOwnProfile = !!currentUserId;
-
+  const [showDashboard, setShowDashboard] = useState(false);
+  const currentUserId = user?.id;
   const countries = Country.getAllCountries();
   const selectedCountryObj = countries.find(c => c.isoCode === profile.country);
   const states = profile.country ? State.getStatesOfCountry(profile.country) : [];
@@ -359,7 +361,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     "basic": "bg-blue-600 text-white",
     "free": "bg-gray-600 text-white",
   };
-
+ if (showDashboard) {
+  return <Dashboard currentUserId={currentUserId} />;
+ }
   return (
     <>
       {/* Overlay */}
@@ -642,6 +646,19 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* ── BOTON DE DASHBOARD ── */}
+                
+                 
+                <button
+  onClick={(e) => {
+    e.stopPropagation();
+    setShowDashboard(true);
+  }}
+  className="mt-4 w-full bg-purple-600 text-white py-2 rounded-xl font-semibold"
+>
+  Creator Dashboard
+</button>
 
                 {/* ── BOTONES DE ACCIÓN ── */}
                 <div className="space-y-3 mt-5 pb-5">
