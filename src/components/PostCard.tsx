@@ -38,8 +38,10 @@ const CPC_BY_COUNTRY: Record<string, number> = {
   IN: 0.02,
   DEFAULT: 0.03,
 };
-const [userData, setUserData] = useState<any>(null);
+
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
+  const [userData, setUserData] = useState<any>(null);
+  
   useEffect(() => {
   if (!post?.id || !post.is_ad || !userData) return;
 
