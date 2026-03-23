@@ -43,6 +43,15 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     trackImpression();
   }, []);
 
+  const trackClick = async () => {
+  if (!post?.id || !post.is_ad) return;
+
+  await supabase.from("ad_metrics").insert({
+    post_id: post.id,
+    type: "click",
+    created_at: new Date().toISOString(),
+  });
+};
   
   const { theme, username: globalUsername } = useContext(ThemeContext);
   const { t } = useLanguage();
