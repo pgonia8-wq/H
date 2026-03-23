@@ -154,24 +154,29 @@ async function fetchDashboardData(userId: string): Promise<DashboardData> {
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
 
   const postMap = new Map<string, PostStats>();
-  posts.forEach(p =>
+
+  posts.forEach(p => {
     postMap.set(p.id, {
       id: p.id,
       content: p.content,
       earnings: 0,
       clicks: 0,
       impressions: 0,
-    })
-  );
+    });
+  });
 
   metrics.forEach(m => {
     const ps = postMap.get(m.post_id);
     if (!ps) return;
+
     if (m.type === "click") {
       ps.clicks++;
       ps.earnings += m.value || 0;
     }
-    if (m.type === "impression") ps.impressions++;
+
+    if (m.type === "impression") {
+      ps.impressions++;
+    }
   });
 
   const topPosts = Array.from(postMap.values())
