@@ -196,7 +196,7 @@ async function fetchDashboardData(userId: string): Promise<DashboardData> {
     interests: [],
     activity: [],
   };
-    }
+    
   const byDay = new Map<string, number>();
   metrics.forEach((m: AdMetric) => {
     if (m.value > 0) {
