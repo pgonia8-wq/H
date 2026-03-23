@@ -27,7 +27,17 @@ interface PostCardProps {
 }
 
 const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
-
+const CPC_BY_COUNTRY: Record<string, number> = {
+  US: 0.08,
+  GB: 0.07,
+  DE: 0.07,
+  FR: 0.06,
+  ES: 0.05,
+  MX: 0.04,
+  AR: 0.03,
+  IN: 0.02,
+  DEFAULT: 0.03,
+};
 const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   useEffect(() => {
     const trackImpression = async () => {
@@ -81,7 +91,7 @@ const [reportReason, setReportReason] = useState("");
 const [reportSent, setReportSent] = useState(false);
 const [blocked, setBlocked] = useState(false);
 const [showOptionsMenu, setShowOptionsMenu] = useState(false);
-  
+  const [userData, setUserData] = useState<any>(null);
   const handleSend = (e?: any) => {
     if (e) e.preventDefault();
     console.log("Mensaje temporal (chat aún no conectado)");
@@ -142,6 +152,22 @@ const [showOptionsMenu, setShowOptionsMenu] = useState(false);
     fetchOriginalPost();
   }, [post && post.reposted_post_id]);
 
+  useEffect(() => {
+  const fetchUser = async () => {
+    if (!currentUserId) return;
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("country, language, interests")
+      .eq("id", currentUserId)
+      .single();
+
+    setUserData(data);
+  };
+
+  fetchUser();
+}, [currentUserId]);
+ 
   const [error, setError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState<number | "">(1);
   const [showRepostModal, setShowRepostModal] = useState(false);
