@@ -55,15 +55,34 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   trackImpression();
 }, [post?.id, userData]);
+  
   const trackClick = async () => {
-  if (!post?.id || !post.is_ad) return;
+  if (!post?.id || !post.is_ad || !currentUserId) return;
 
+  // 🔒 Verificar si ya hizo click
+  const { data: existing } = await supabase
+    .from("ad_metrics")
+    .select("id")
+    .eq("post_id", post.id)
+    .eq("type", "click")
+    .eq("user_id", currentUserId)
+    .maybeSingle();
+
+  if (existing) return;
+
+  // 💰 calcular dinero por país
+  const country = userData?.country || "DEFAULT";
+  const cpc = CPC_BY_COUNTRY[country] || CPC_BY_COUNTRY.DEFAULT;
+
+  // ✅ registrar click + dinero
   await supabase.from("ad_metrics").insert({
     post_id: post.id,
     type: "click",
-    country: userData?.country || null,
+    user_id: currentUserId,
+    country,
     language: userData?.language || null,
     interests: userData?.interests || null,
+    value: cpc, // 🔥 ESTO ES LO QUE FALTABA
     created_at: new Date().toISOString(),
   });
 };
