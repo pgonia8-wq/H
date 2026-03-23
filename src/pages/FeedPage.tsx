@@ -220,7 +220,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
         );
       }
 
-      alert(
+      setUpgradeError(
         t
           ? t("upgrade_exitoso") + ` ${selectedTier}`
           : `Upgrade ${selectedTier} exitoso`
