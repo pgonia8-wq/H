@@ -744,7 +744,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         </div>
       )}
 
-      {/* Toast */}
+ {/* Toast */}
     {toast && (
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4">
         <div className="px-5 py-3 rounded-2xl text-sm font-medium shadow-xl">
@@ -753,7 +753,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       </div>
     )}
 
-    {/* 🔥 DASHBOARD (AQUÍ) */}
+    {/* 🔥 DASHBOARD */}
     {showDashboard && (
       <div
         className="fixed inset-0 z-[9999] bg-black"
