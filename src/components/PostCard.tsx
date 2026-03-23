@@ -33,7 +33,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   const { t } = useLanguage();
   const postRef = useRef<HTMLDivElement | null>(null);
   const viewRegistered = useRef(false);
-
+  const isAd = post.is_ad === true;
   const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(post.likes || 0);
@@ -150,14 +150,25 @@ const [showOptionsMenu, setShowOptionsMenu] = useState(false);
       async (entries) => {
         const entry = entries[0];
         if (entry.isIntersecting && !viewRegistered.current) {
-          viewRegistered.current = true;
-          try {
-            await supabase.rpc("increment_post_views", { post_id_input: post.id });
-          } catch (err) {
-            console.error(t("error_registrando_view"), err);
-          }
-          observer.disconnect();
-        }
+  viewRegistered.current = true;
+
+  try {
+    if (isAd) {
+      await supabase.rpc("increment_ad_impression", {
+        campaign_id_input: post.campaign_id,
+        cost_per_impression: "0.01"
+      });
+    } else {
+      await supabase.rpc("increment_post_views", {
+        post_id_input: post.id
+      });
+    }
+  } catch (err) {
+    console.error("Error:", err);
+  }
+
+  observer.disconnect();
+  }
       },
       { threshold: 0.6 }
     );
@@ -685,7 +696,13 @@ return (
   </div>
 )}
           {/* Post content */}
-<p className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${isDark ? "text-gray-100" : "text-gray-800"}`}>
+       {isAd && (
+  <div className="text-xs text-purple-500 mb-1 font-semibold">
+    Promoted
+  </div>
+)}
+          
+    <p className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${isDark ? "text-gray-100" : "text-gray-800"}`}>
   {post.content}
 </p>
 
