@@ -403,30 +403,39 @@ const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   };
 
   const handleBoost = async () => {
-    if (!currentUserId) return setError(t("debes_estar_logueado"));
-    setLoadingAction("boost");
-    setError(null);
-    try {
-      const payRes = await MiniKit.commandsAsync.pay({
-        reference: `boost-${post.id}-${Date.now()}`.slice(0, 36),
-        to: RECEIVER,
-        tokens: [
-          {
-            symbol: Tokens.WLD,
-            token_amount: tokenToDecimals(5, Tokens.WLD).toString(),
-          },
-        ],
-        description: t("boost_5_wld"),
-      });
-      if (payRes?.finalPayload?.status !== "success") {
-        setError(t("pago_cancelado"));
-      }
-    } catch (err: any) {
-      setError(t("error_procesar_pago") + ": " + (err.message || t("pago_cancelado")));
-    } finally {
-      setLoadingAction(null);
+  if (!currentUserId) return setError(t("debes_estar_logueado"));
+
+  setLoadingAction("boost");
+  setError(null);
+
+  try {
+    const payRes = await MiniKit.commandsAsync.pay({
+      reference: `boost-${post.id}-${Date.now()}`.slice(0, 36),
+      to: RECEIVER,
+      tokens: [
+        {
+          symbol: Tokens.WLD,
+          token_amount: tokenToDecimals(5, Tokens.WLD).toString(),
+        },
+      ],
+      description: t("boost_5_wld"),
+    });
+
+    if (payRes?.finalPayload?.status === "success") {
+      await supabase
+        .from("posts")
+        .update({ is_ad: true })
+        .eq("id", post.id);
+    } else {
+      setError(t("pago_cancelado"));
     }
-  };
+
+  } catch (err: any) {
+    setError(t("error_procesar_pago") + ": " + (err.message || t("pago_cancelado")));
+  } finally {
+    setLoadingAction(null);
+  }
+};
 
   const handleChatCreadores = async () => {
     if (!currentUserId) {
