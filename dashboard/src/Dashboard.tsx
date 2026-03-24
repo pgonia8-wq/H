@@ -10,6 +10,9 @@ import { EarningsChart } from "./components/EarningsChart/EarningsChart";
 import { TopPosts } from "./components/TopPosts/TopPosts";
 import { AudienceInsights } from "./components/AudienceInsights/AudienceInsights";
 import { ActivityFeed } from "./components/ActivityFeed/ActivityFeed";
+import { AdvertiserPanel } from "./components/AdvertiserPanel/AdvertiserPanel";
+import { WithdrawPanel } from "./components/WithdrawPanel/WithdrawPanel";
+import { MonetizationSettings } from "./components/MonetizationSettings/MonetizationSettings";
 import { FAB } from "./components/FAB/FAB";
 import { GlassCard } from "./components/primitives/GlassCard";
 import { LoadingSkeleton } from "./components/primitives/LoadingSkeleton";
@@ -123,6 +126,12 @@ export default function Dashboard({ currentUserId, onClose }: DashboardProps) {
               />
 
               <ActivityFeed activity={data?.activity ?? []} />
+
+              <AdvertiserPanel />
+
+              <WithdrawPanel totalEarnings={data?.totalEarnings ?? 0} />
+
+              <MonetizationSettings />
             </motion.div>
           )}
         </AnimatePresence>
