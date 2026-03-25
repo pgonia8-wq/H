@@ -1,62 +1,109 @@
 import { supabase } from "../../../src/supabaseClient";
 
-export async function trackImpression(postId: string, creatorId: string) {
+/**
+ * 🔒 Anti-duplicate memory (solo sesión actual)
+ */
+const impressionCache = new Set<string>();
+const clickCache = new Set<string>();
+
+interface UserData {
+  country?: string | null;
+  language?: string | null;
+  interests?: string[] | null;
+}
+
+interface TrackParams {
+  postId: string;
+  campaignId?: string | null;
+  userId?: string | null;
+  userData?: UserData | null;
+}
+
+/**
+ * 👁️ TRACK IMPRESSION
+ */
+export async function trackImpression({
+  postId,
+  campaignId,
+  userData,
+}: TrackParams) {
   try {
+    if (!postId || !campaignId) return;
+
+    // 🔒 evitar duplicados frontend
+    if (impressionCache.has(postId)) return;
+    impressionCache.add(postId);
+
     await supabase.from("ad_metrics").insert({
       post_id: postId,
-      user_id: creatorId,
+      campaign_id: campaignId,
       type: "impression",
       value: 0.001,
-      country: navigator.language || "unknown", // dinámico
-      language: navigator.language || "unknown",
+
+      country: userData?.country || navigator.language || "unknown",
+      language: userData?.language || navigator.language || "unknown",
+      interests: userData?.interests || null,
+
+      created_at: new Date().toISOString(),
     });
   } catch (e) {
-    console.error("impression error", e);
+    console.error("❌ impression error", e);
   }
 }
 
-export async function trackClick(postId: string) {
+/**
+ * 🖱️ TRACK CLICK
+ */
+export async function trackClick({
+  postId,
+  campaignId,
+  userId,
+  userData,
+}: TrackParams) {
   try {
-    // 🔎 traer post real
-    const { data: post } = await supabase
-      .from("posts")
-      .select("id, user_id, campaign_id")
-      .eq("id", postId)
+    if (!postId || !campaignId) return;
+
+    // 🔒 evitar doble click spam
+    if (clickCache.has(postId)) return;
+    clickCache.add(postId);
+
+    // 🔎 obtener campaña real
+    const { data: campaign, error } = await supabase
+      .from("campaigns")
+      .select("cpc")
+      .eq("id", campaignId)
       .single();
 
-    if (!post || !post.campaign_id) {
+    if (error || !campaign) {
       console.log("NO CAMPAIGN ❌");
       return;
     }
 
-    // 🔎 traer campaña
-    const { data: campaign } = await supabase
-      .from("campaigns")
-      .select("cpc")
-      .eq("id", post.campaign_id)
-      .single();
+    const cpc = campaign.cpc || 0;
 
-    if (!campaign) {
-      console.log("NO CAMPAIGN DATA ❌");
-      return;
-    }
+    // 💰 reparto
+    const creatorShare = cpc * 0.7;
+    const platformShare = cpc * 0.3;
 
-    const cpc = campaign.cpc;
-
-    // 💰 guardar con split
     await supabase.from("ad_metrics").insert({
-      post_id: post.id,
-      user_id: post.user_id,
-      campaign_id: post.campaign_id,
+      post_id: postId,
+      campaign_id: campaignId,
+      user_id: userId,
+
       type: "click",
       value: cpc,
-      creator_earning: cpc * 0.7,
-      platform_earning: cpc * 0.3,
-      country: navigator.language || "unknown",
-      language: navigator.language || "unknown",
+
+      creator_earning: creatorShare,
+      platform_earning: platformShare,
+
+      country: userData?.country || navigator.language || "unknown",
+      language: userData?.language || navigator.language || "unknown",
+      interests: userData?.interests || null,
+
+      created_at: new Date().toISOString(),
     });
 
   } catch (e) {
-    console.error("click error", e);
+    console.error("❌ click error", e);
   }
 }
