@@ -218,7 +218,7 @@ export const WithdrawPanel = memo(function WithdrawPanel({ userId, totalEarnings
   const missing = Math.max(0, MIN_WITHDRAW - totalEarnings);
 
   const handleOpen = () => { if (hasBalance) setShowModal(true); };
-  const handleClose = () => { setShowModal(false); onClose?.(); };
+  const handleClose = () => {  setShowModal(false); };
   const isOpen = showModal;
 
   const handleSubmit = async (amount: number, wallet: string, token: "WLD" | "USDC") => {
