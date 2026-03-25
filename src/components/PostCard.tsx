@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
+import { trackImpression, trackClick } from "../../dashboard/src/lib/tracking";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { useFollow } from "../lib/useFollow";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
 import { useLanguage } from "../LanguageContext";
 import GlobalChatRoom from "../pages/chat/GlobalChatRoom";
+
+
 
 const getRelativeTime = (timestamp: string | null) => {
   if (!timestamp) return "Desconocida";
@@ -47,13 +50,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
   const trackImpression = async () => {
     await supabase.from("ad_metrics").insert({
-      post_id: post.id,
-      type: "impression",
-      country: userData.country || null,
-      language: userData.language || null,
-      interests: userData.interests || null,
-      created_at: new Date().toISOString(),
-    });
+  post_id: post.id,
+  type: "impression",
+  country: userData.country || null,
+  language: userData.language || null,
+  interests: userData.interests || null,
+  value: 0.001, // 🔥 ESTE ES EL FIX REAL
+  created_at: new Date().toISOString(),
+});
   };
 
   trackImpression();
