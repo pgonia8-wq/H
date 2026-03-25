@@ -1,4 +1,5 @@
 import { supabase } from "../../../src/supabaseClient";
+
 export async function trackImpression(postId: string, creatorId: string) {
   try {
     await supabase.from("ad_metrics").insert({
@@ -6,6 +7,8 @@ export async function trackImpression(postId: string, creatorId: string) {
       user_id: creatorId,
       type: "impression",
       value: 0.001,
+      country: navigator.language || "unknown", // dinámico
+      language: navigator.language || "unknown",
     });
   } catch (e) {
     console.error("impression error", e);
