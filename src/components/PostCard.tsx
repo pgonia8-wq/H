@@ -104,7 +104,7 @@ useEffect(() => {
     country,
     language: userData?.language || null,
     interests: userData?.interests || null,
-    value: cpc,
+    value: 0,
     created_at: new Date().toISOString(),
   });
 
@@ -524,7 +524,7 @@ const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   await supabase
     .from("posts")
     .update({
-      is_ad: true,
+      is_boosted: true,
       boosted_until: new Date(Date.now() + 86400000).toISOString()
     })
     .eq("id", post.id);
