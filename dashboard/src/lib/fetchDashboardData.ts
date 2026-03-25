@@ -40,7 +40,10 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
 
   const clicks = metrics.filter((m: AdMetric) => m.type === "click").length;
   const impressions = metrics.filter((m: AdMetric) => m.type === "impression").length;
-  const totalEarnings = metrics.reduce((s: number, m: AdMetric) => s + (m.value || 0), 0);
+  const totalEarnings = metrics.reduce(
+  (s, m) => s + (m.creator_earning || 0),
+  0
+);
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
 
   const postMap = new Map<string, PostStats>();
@@ -51,7 +54,10 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
   metrics.forEach((m: AdMetric) => {
     const ps = postMap.get(m.post_id);
     if (!ps) return;
-    if (m.type === "click") { ps.clicks++; ps.earnings += m.value || 0; }
+    if (m.type === "click") {
+  ps.clicks++;
+  ps.earnings += m.creator_earning || 0;
+}
     if (m.type === "impression") ps.impressions++;
   });
 
