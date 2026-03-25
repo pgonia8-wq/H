@@ -1,5 +1,4 @@
-import { supabase } from "../supabaseClient";
-
+import { supabase } from "../../../src/supabaseClient";
 export async function trackImpression(postId: string, creatorId: string) {
   try {
     await supabase.from("ad_metrics").insert({
