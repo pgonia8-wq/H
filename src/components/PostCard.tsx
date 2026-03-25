@@ -51,75 +51,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 useEffect(() => {
   if (!post?.id || !post.is_ad || !userData || hasTrackedImpression.current) return;
 
-  const trackImpression = async () => {
-    const { error } = await supabase.from("ad_metrics").insert({
-      post_id: post.id,
-      type: "impression",
-      country: userData.country || null,
-      language: userData.language || null,
-      interests: userData.interests || null,
-      value: 0.001,
-      created_at: new Date().toISOString(),
+  const run = async () => {
+    await trackImpression({
+      postId: post.id,
+      campaignId: post.campaign_id,
+      userData,
     });
 
-    if (!error) {
-      hasTrackedImpression.current = true;
-    } else {
-      console.error("ERROR IMPRESSION ❌", error);
-    }
+    hasTrackedImpression.current = true;
   };
 
-  trackImpression();
+  run();
 }, [post?.id, userData]);
-  
-  const trackClick = async () => {
-  console.log("CLICK TRACKING 🚀");
-
-  if (hasClicked.current) return;
-  hasClicked.current = true;
-
-  if (!post?.id || !post.is_ad || !currentUserId) return;
-
-  // 🔥 SOLO campañas pagan
-  if (!post.campaign_id) {
-    console.log("NO CAMPAIGN ❌");
-    return;
-  }
-
-  // 🔎 traer campaña real
-  const { data: campaign } = await supabase
-    .from("campaigns")
-    .select("cpc")
-    .eq("id", post.campaign_id)
-    .single();
-
-  if (!campaign) {
-    console.log("NO CAMPAIGN DATA ❌");
-    return;
-  }
-
-  const cpc = campaign.cpc;
-
-  // 💰 reparto
-  const creatorShare = cpc * 0.7;
-  const platformShare = cpc * 0.3;
-
-  await supabase.from("ad_metrics").insert({
-    post_id: post.id,
-    campaign_id: post.campaign_id,
-    type: "click",
-    user_id: currentUserId,
-    country: userData?.country || null,
-    language: userData?.language || null,
-    interests: userData?.interests || null,
-    value: cpc,
-    creator_earning: creatorShare,
-    platform_earning: platformShare,
-    created_at: new Date().toISOString(),
-  });
-
-  console.log("CLICK GUARDADO ✅");
-};
   
   
   const { theme, username: globalUsername } = useContext(ThemeContext);
@@ -833,15 +776,23 @@ return (
   <img
     src={post.image_url}
     alt="post"
-    onClick={(e) => {
-      if (!post.is_ad) return; // 🔒 solo ads
+    onClick={async (e) => {
+      if (!post.is_ad) return;
       e.stopPropagation();
-      trackClick();
+
+      if (hasClicked.current) return;
+      hasClicked.current = true;
+
+      await trackClick({
+        postId: post.id,
+        campaignId: post.campaign_id,
+        userId: currentUserId,
+        userData,
+      });
     }}
     className="mt-3 rounded-xl w-full object-cover max-h-80 border border-gray-800 cursor-pointer"
   />
 )}
-
           {/* Original reposted post */}
           {originalPost && (
             <div className={`mt-3 rounded-xl border p-3 ${isDark ? "border-gray-700 bg-gray-900" : "border-gray-200 bg-gray-50"}`}>
