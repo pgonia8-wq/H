@@ -95,18 +95,22 @@ useEffect(() => {
 
   // 🔥 TODO ESTO VA DENTRO
   const country = userData?.country || "DEFAULT";
-  const cpc = CPC_BY_COUNTRY[country] || CPC_BY_COUNTRY.DEFAULT;
+  const cpc = campaign.cpc;
 
-  await supabase.from("ad_metrics").insert({
-    post_id: post.id,
-    type: "click",
-    user_id: currentUserId,
-    country,
-    language: userData?.language || null,
-    interests: userData?.interests || null,
-    value: 0,
-    created_at: new Date().toISOString(),
-  });
+// 💰 reparto
+const creatorShare = cpc * 0.7;
+const platformShare = cpc * 0.3;
+
+await supabase.from("ad_metrics").insert({
+  post_id: post.id,
+  campaign_id: campaign.id,
+  type: "click",
+  user_id: currentUserId,
+  value: cpc,
+  creator_earning: creatorShare,
+  platform_earning: platformShare,
+  created_at: new Date().toISOString(),
+});
 
   console.log("CLICK GUARDADO ✅");
 };
