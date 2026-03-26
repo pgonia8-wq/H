@@ -32,3 +32,119 @@ export interface UseRunConnectedPipelineReturn {
 }
 
 // ─── Content templates (fallback when Edge Function not deployed) ─────────────
+
+const CONTENT_TEMPLATES: Record<Category, string[]> = {
+  crypto_news: [
+    "🚨 Breaking: {topic} — what this means for the market and how you can position yourself now.",
+    "📰 Latest on {topic}. Here's the breakdown and what analysts are watching closely.",
+    "💡 {topic} — the signal everyone in crypto missed this week.",
+  ],
+  market_analysis: [
+    "📊 Deep dive on {topic} — key levels to watch and what the charts are telling us.",
+    "🔍 {topic}: technical analysis breakdown with entry zones and risk management tips.",
+    "⚡ {topic} alert — momentum building. Here's how to read the current structure.",
+  ],
+  worldcoin_updates: [
+    "🌍 WLD update: {topic}. The Worldcoin ecosystem keeps expanding — stay ahead.",
+    "🔵 World App news: {topic} — what this means for WLD holders and builders.",
+    "🛡️ {topic}: World ID just got more powerful. Here's everything you need to know.",
+  ],
+  trading_signals: [
+    "📈 Signal detected: {topic}. Risk/reward looking favorable. DYOR — not financial advice.",
+    "🎯 {topic} setup forming on the charts. Key zone to watch in the next 24–48h.",
+    "⚠️ {topic}: high probability setup. Here's the trade plan with stop-loss levels.",
+  ],
+  tech: [
+    "🤖 {topic} — how this changes Web3 infrastructure and what builders need to know.",
+    "🔧 Dev update: {topic}. The tools are getting better — here's what's shipping now.",
+    "🚀 {topic}: the tech breakthrough that could reshape decentralized apps.",
+  ],
+  memecoins: [
+    "🐕 {topic} is heating up — community activity through the roof. Eyes on this one.",
+    "🎭 {topic}: the memecoin narrative is shifting. Here's what's moving the market.",
+    "💎 {topic} spotted — early momentum, high attention. Classic signs of a run. DYOR.",
+  ],
+};
+
+function generateContent(category: Category, topic: string): string {
+  const templates = CONTENT_TEMPLATES[category];
+  const template = templates[Math.floor(Math.random() * templates.length)];
+  return template.replace(/\{topic\}/g, topic);
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+
+  const run = useCallback(
+    async (params: RunPipelineParams): Promise<RunPipelineResult> => {
+      const { category, account, topic, count } = params;
+
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // ── Attempt Edge Function ─────────────────────────────────────────
+        const { data: fnData, error: fnError } = await supabaseClient.functions.invoke<
+          RunPipelineResult
+        >("generate-posts", {
+          body: { category, account, topic, count },
+        });
+
+        if (!fnError && fnData) {
+          console.log(
+            `✅ [useRunConnectedPipeline] Edge Function queued ${fnData.queued} posts`
+          );
+          return fnData;
+        }
+
+        // ── Fallback: direct DB insert ────────────────────────────────────
+        if (fnError) {
+          console.warn(
+            `⚠️ [useRunConnectedPipeline] Edge Function unavailable (${fnError.message}). Using direct insert fallback.`
+          );
+        }
+
+        const topics: string[] = [];
+        const rows = Array.from({ length: count }, (_, i) => {
+          const postTopic = i === 0 ? topic : `${topic} — angle ${i + 1}`;
+          topics.push(postTopic);
+          return {
+            category,
+            account,
+            topic:        postTopic,
+            content:      generateContent(category, postTopic),
+            status:       "queued" as const,
+            published_at: null,
+            scheduled_at: null,
+          };
+        });
+
+        const { error: insertErr, data: inserted } = await supabaseClient
+          .from("content_queue")
+          .insert(rows)
+          .select("id");
+
+        if (insertErr) throw new Error(insertErr.message);
+
+        const queued = inserted?.length ?? 0;
+        console.log(
+          `✅ [useRunConnectedPipeline] Direct insert: ${queued} posts queued`
+        );
+        return { queued, topics };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown pipeline error";
+        console.error("❌ [useRunConnectedPipeline] Error:", message);
+        setError(message);
+        return { queued: 0, topics: [] };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
+  return { run, isLoading, error };
+}
