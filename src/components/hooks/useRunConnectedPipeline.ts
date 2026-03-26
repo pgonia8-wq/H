@@ -31,7 +31,7 @@ export interface UseRunConnectedPipelineReturn {
   error: string | null;
 }
 
-// ─── Content templates (fallback when Edge Function not deployed) ─────────────
+// ─── Content templates ────────────────────────────────────────────────────────
 
 const CONTENT_TEMPLATES: Record<Category, string[]> = {
   crypto_news: [
@@ -86,12 +86,13 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
       setError(null);
 
       try {
-        // ── Attempt Edge Function ─────────────────────────────────────────
-        const { data: fnData, error: fnError } = await supabaseClient.functions.invoke<
-          RunPipelineResult
-        >("generate-posts", {
-          body: { category, account, topic, count },
-        });
+        // ── Edge Function ─────────────────────────────────────────
+        const { data: fnData, error: fnError } = await supabase.functions.invoke<RunPipelineResult>(
+          "generate-posts",
+          {
+            body: { category, account, topic, count },
+          }
+        );
 
         if (!fnError && fnData) {
           console.log(
@@ -100,17 +101,19 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
           return fnData;
         }
 
-        // ── Fallback: direct DB insert ────────────────────────────────────
+        // ── Fallback ──────────────────────────────────────────────
         if (fnError) {
           console.warn(
-            `⚠️ [useRunConnectedPipeline] Edge Function unavailable (${fnError.message}). Using direct insert fallback.`
+            `⚠️ [useRunConnectedPipeline] Edge Function unavailable (${fnError.message}). Using fallback.`
           );
         }
 
         const topics: string[] = [];
+
         const rows = Array.from({ length: count }, (_, i) => {
           const postTopic = i === 0 ? topic : `${topic} — angle ${i + 1}`;
           topics.push(postTopic);
+
           return {
             category,
             account,
@@ -122,7 +125,7 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
           };
         });
 
-        const { error: insertErr, data: inserted } = await supabaseClient
+        const { data: inserted, error: insertErr } = await supabase
           .from("content_queue")
           .insert(rows)
           .select("id");
@@ -130,14 +133,19 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
         if (insertErr) throw new Error(insertErr.message);
 
         const queued = inserted?.length ?? 0;
+
         console.log(
           `✅ [useRunConnectedPipeline] Direct insert: ${queued} posts queued`
         );
+
         return { queued, topics };
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Unknown pipeline error";
+        const message =
+          err instanceof Error ? err.message : "Unknown pipeline error";
+
         console.error("❌ [useRunConnectedPipeline] Error:", message);
         setError(message);
+
         return { queued: 0, topics: [] };
       } finally {
         setIsLoading(false);
