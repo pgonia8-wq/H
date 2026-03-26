@@ -102,7 +102,7 @@ const HomePage: React.FC<HomePageProps> = ({
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
   const [isPosting, setIsPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
-
+  const [brainReady, setBrainReady] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
 
@@ -216,6 +216,11 @@ const HomePage: React.FC<HomePageProps> = ({
 
     return () => supabase.removeChannel(channel);
   }, []);
+
+  useEffect(() => {
+  const t = setTimeout(() => setBrainReady(true), 15000);
+  return () => clearTimeout(t);
+}, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -391,7 +396,7 @@ const HomePage: React.FC<HomePageProps> = ({
         isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"
       }`}
     >
-       <AutonomousGrowthBrain />
+       {brainReady && <AutonomousGrowthBrain />}
       {/* ── HEADER FLOTANTE ── */}
       <header
         className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
