@@ -18,29 +18,23 @@ const App = () => {
 
   const { setUsername: setGlobalUsername } = useTheme();
 
-  // ✅ Cargar ID (SIN bloquear la app)
+  // 🚀 1. CARGA INSTANTÁNEA (no bloquea)
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
 
     if (storedId) {
       setUserId(storedId);
       setVerified(true);
-      console.log("[APP] ID cargado:", storedId);
-    } else {
-      console.log("[APP] Usuario no verificado aún");
     }
   }, []);
 
-  // ✅ Inicializar MiniKit (no bloquea UI)
+  // ⚡ 2. MiniKit async (NO bloquea render)
   useEffect(() => {
-    const initMiniKit = async () => {
+    setTimeout(() => {
       try {
         MiniKit.install({ appId: APP_ID });
 
-        if (!MiniKit.isInstalled()) {
-          console.warn("[APP] MiniKit no disponible");
-          return;
-        }
+        if (!MiniKit.isInstalled()) return;
 
         setMiniKitReady(true);
 
@@ -55,12 +49,10 @@ const App = () => {
         console.error("[APP] MiniKit error:", err);
         setError("MiniKit error");
       }
-    };
-
-    initMiniKit();
+    }, 0); // 🔥 clave
   }, []);
 
-  // ✅ WalletAuth en background (NO bloquea UI)
+  // ⚡ 3. Wallet en background
   useEffect(() => {
     const loadWallet = async () => {
       if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
@@ -108,7 +100,7 @@ const App = () => {
     loadWallet();
   }, [verified, wallet, verifying, miniKitReady]);
 
-  // ✅ Verify manual (NO automático)
+  // 🔐 4. Verify manual (igual)
   const verifyUser = async () => {
     if (verifying || !miniKitReady) return;
 
@@ -166,18 +158,7 @@ const App = () => {
     }
   };
 
-  // ✅ Loader REAL (rápido, no bloqueante)
-  if (!miniKitReady) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-black text-white">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/10 animate-pulse" />
-          <p className="text-sm text-white/60">Loading Humans...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // 🚀 5. SIEMPRE renderiza (clave)
   return (
     <HomePage
       userId={userId}
