@@ -10,10 +10,9 @@
  */
 
 import { useEffect, useRef, useCallback } from "react";
-import { useRunConnectedPipeline } from "../hooks/useRunConnectedPipeline";
-import { usePublishQueuedPosts } from "../hooks/usePublishQueuedPosts";
-import { useGetContentQueue } from "../hooks/useGetContentQueue";
-
+import { useRunConnectedPipeline } from "./hooks/useRunConnectedPipeline";
+import { usePublishQueuedPosts } from "./hooks/usePublishQueuedPosts";
+import { useGetContentQueue } from "./hooks/useGetContentQueue";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Category =
