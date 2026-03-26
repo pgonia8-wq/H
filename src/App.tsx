@@ -18,41 +18,58 @@ const App = () => {
 
   const { setUsername: setGlobalUsername } = useTheme();
 
-  // 🚀 1. CARGA INSTANTÁNEA (no bloquea)
+  // Cargar ID de localStorage
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
 
     if (storedId) {
       setUserId(storedId);
       setVerified(true);
+      console.log("[APP] ID cargado de localStorage:", storedId);
+    } else {
+      console.log("[APP] No hay ID en localStorage, forzando verificación...");
+      if (miniKitReady) verifyUser();
     }
-  }, []);
+  }, [miniKitReady]);
 
-  // ⚡ 2. MiniKit async (NO bloquea render)
+  // Inicializar MiniKit
   useEffect(() => {
-    setTimeout(() => {
+    const initMiniKit = async () => {
       try {
+        console.log("[APP] Instalando MiniKit...");
+
         MiniKit.install({ appId: APP_ID });
 
-        if (!MiniKit.isInstalled()) return;
+        const installed = MiniKit.isInstalled();
+        console.log("[APP] MiniKit.isInstalled():", installed);
+
+        if (!installed) {
+          console.warn("[APP] MiniKit no está disponible");
+          return;
+        }
 
         setMiniKitReady(true);
+        console.log("[APP] MiniKit listo");
 
+        // --- NUEVO: obtener username y avatar desde MiniKit.user ---
         if (MiniKit.user) {
           const u = MiniKit.user.username || null;
           const a = MiniKit.user.avatar_url || null;
           setUsername(u);
           setAvatar(a);
           if (u) setGlobalUsername(u);
+          console.log("[APP] MiniKit user:", u, a);
         }
       } catch (err) {
-        console.error("[APP] MiniKit error:", err);
-        setError("MiniKit error");
+        console.error("[APP] Error instalando MiniKit:", err);
+        setError("Error instalando MiniKit");
       }
-    }, 0); // 🔥 clave
+    };
+
+    initMiniKit();
   }, []);
 
-  // ⚡ 3. Wallet en background
+  // Obtener wallet usando walletAuth
   useEffect(() => {
     const loadWallet = async () => {
       if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
@@ -60,12 +77,14 @@ const App = () => {
       }
 
       walletLoading.current = true;
+      console.log("[APP] Iniciando walletAuth...");
 
       try {
         const nonceRes = await fetch("/api/nonce");
-        if (!nonceRes.ok) throw new Error("No nonce");
-
+        if (!nonceRes.ok) throw new Error("No se pudo obtener nonce");
         const { nonce } = await nonceRes.json();
+
+        console.log("[APP] Nonce recibido:", nonce);
 
         const auth = await MiniKit.commandsAsync.walletAuth({
           nonce,
@@ -75,23 +94,30 @@ const App = () => {
           statement: "Autenticar wallet para H humans",
         });
 
+        console.log("[APP] walletAuth result:", auth);
+
         const address =
-          auth?.finalPayload?.address ||
-          auth?.finalPayload?.wallet_address ||
-          null;
+          auth?.finalPayload?.address || auth?.finalPayload?.wallet_address || null;
 
-        if (address) setWallet(address);
+        if (address) {
+          setWallet(address);
+          console.log("[APP] Wallet obtenida:", address);
+        } else {
+          console.warn("[APP] WalletAuth success pero sin address");
+        }
 
+        // --- NUEVO: obtener username y avatar también después de walletAuth ---
         if (MiniKit.user) {
           const u = MiniKit.user.username || null;
           const a = MiniKit.user.avatar_url || null;
           setUsername(u);
           setAvatar(a);
           if (u) setGlobalUsername(u);
+          console.log("[APP] MiniKit user post-walletAuth:", u, a);
         }
       } catch (err: any) {
-        console.error("[APP] walletAuth error:", err);
-        setError(err.message);
+        console.error("[APP] Error walletAuth:", err);
+        setError(err.message || "Error autenticando wallet");
       } finally {
         walletLoading.current = false;
       }
@@ -100,7 +126,7 @@ const App = () => {
     loadWallet();
   }, [verified, wallet, verifying, miniKitReady]);
 
-  // 🔐 4. Verify manual (igual)
+  // Función de verificación forzada
   const verifyUser = async () => {
     if (verifying || !miniKitReady) return;
 
@@ -112,13 +138,18 @@ const App = () => {
         throw new Error("MiniKit no instalado");
       }
 
+      console.log("[APP] Iniciando verify...");
+
       const verifyRes = await MiniKit.commandsAsync.verify({
         action: "verify-user",
         verification_level: VerificationLevel.Device,
       });
 
+      console.log("[APP] Verify response:", verifyRes);
+
       const proof = verifyRes?.finalPayload;
-      if (!proof) throw new Error("No proof");
+
+      if (!proof) throw new Error("No se recibió proof");
 
       const res = await fetch("/api/verify", {
         method: "POST",
@@ -128,37 +159,38 @@ const App = () => {
 
       if (!res.ok) {
         const text = await res.text();
-
         if (text.includes("already verified") && proof.nullifier_hash) {
+          console.log("[APP] Usuario ya verificado, usando nullifier_hash existente");
           const id = proof.nullifier_hash;
           localStorage.setItem("userId", id);
           setUserId(id);
           setVerified(true);
           return;
+        } else {
+          throw new Error(`Backend error: ${text}`);
         }
-
-        throw new Error(text);
       }
 
       const backend = await res.json();
+      console.log("[APP] Backend verify:", backend);
 
       if (backend.success && proof.nullifier_hash) {
         const id = proof.nullifier_hash;
         localStorage.setItem("userId", id);
         setUserId(id);
         setVerified(true);
+        console.log("[APP] Usuario verificado:", id);
       } else {
-        throw new Error(backend.error);
+        throw new Error(backend.error || "Backend rechazó la prueba");
       }
     } catch (err: any) {
-      console.error("[APP] verify error:", err);
-      setError(err.message);
+      console.error("[APP] Verify error:", err);
+      setError(err.message || "Error verificando usuario");
     } finally {
       setVerifying(false);
     }
   };
 
-  // 🚀 5. SIEMPRE renderiza (clave)
   return (
     <HomePage
       userId={userId}
