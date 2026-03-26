@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { supabaseClient } from "../lib/supabase";
+import { supabase } from "../../supabaseClient";
 import type { Category, OfficialAccount } from "../lib/database.types";
 
 export interface RunPipelineParams {
