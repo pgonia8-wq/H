@@ -12,6 +12,7 @@ import { LanguageContext } from "../LanguageContext";
 import ProfileModal from "../components/ProfileModal";
 import ActionButton from "../components/ActionButton";
 import Inbox from "./chat/Inbox";
+import AutonomousGrowthBrain from "../components/AutonomousGrowthBrain";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ImageIcon,
@@ -390,6 +391,7 @@ const HomePage: React.FC<HomePageProps> = ({
         isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"
       }`}
     >
+       <AutonomousGrowthBrain />
       {/* ── HEADER FLOTANTE ── */}
       <header
         className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
