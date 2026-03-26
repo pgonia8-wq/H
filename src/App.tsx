@@ -17,7 +17,7 @@ const App = () => {
   const walletLoading = useRef(false);
   const { setUsername: setGlobalUsername } = useTheme();
 
-  // ✅ 1. Cargar sesión SIN bloquear nada
+  // ✅ 1. Cargar sesión local (rápido, sin MiniKit)
   useEffect(() => {
     const storedId = localStorage.getItem("userId");
 
@@ -30,83 +30,7 @@ const App = () => {
     }
   }, []);
 
-  // ✅ 2. Inicializar MiniKit (no bloqueante)
-  useEffect(() => {
-    try {
-      console.log("[APP] Instalando MiniKit...");
-
-      MiniKit.install({ appId: APP_ID });
-
-      // ⚠️ NO usar isInstalled como bloqueo
-      if (MiniKit.user) {
-        const u = MiniKit.user.username || null;
-        const a = MiniKit.user.avatar_url || null;
-
-        setUsername(u);
-        setAvatar(a);
-
-        if (u) setGlobalUsername(u);
-      }
-    } catch (err) {
-      console.error("[APP] MiniKit error:", err);
-      setError("Error inicializando MiniKit");
-    }
-  }, []);
-
-  // ✅ 3. WalletAuth SOLO después de verify
-  useEffect(() => {
-    const loadWallet = async () => {
-      if (!verified || wallet || verifying || walletLoading.current) return;
-
-      walletLoading.current = true;
-
-      try {
-        console.log("[APP] walletAuth...");
-
-        const nonceRes = await fetch("/api/nonce");
-        if (!nonceRes.ok) throw new Error("No se pudo obtener nonce");
-
-        const { nonce } = await nonceRes.json();
-
-        const auth = await MiniKit.commandsAsync.walletAuth({
-          nonce,
-          requestId: "wallet-auth-" + Date.now(),
-          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          notBefore: new Date(Date.now() - 60 * 1000),
-          statement: "Autenticar wallet",
-        });
-
-        const address =
-          auth?.finalPayload?.address ||
-          auth?.finalPayload?.wallet_address ||
-          null;
-
-        if (address) {
-          setWallet(address);
-          console.log("[APP] Wallet:", address);
-        }
-
-        if (MiniKit.user) {
-          const u = MiniKit.user.username || null;
-          const a = MiniKit.user.avatar_url || null;
-
-          setUsername(u);
-          setAvatar(a);
-
-          if (u) setGlobalUsername(u);
-        }
-      } catch (err: any) {
-        console.error("[APP] walletAuth error:", err);
-        setError(err.message);
-      } finally {
-        walletLoading.current = false;
-      }
-    };
-
-    loadWallet();
-  }, [verified, wallet, verifying]);
-
-  // ✅ 4. Verify SOLO manual (como pide Worldcoin)
+  // ✅ 2. Verify SOLO cuando usuario toca
   const verifyUser = async () => {
     if (verifying) return;
 
@@ -115,6 +39,9 @@ const App = () => {
 
     try {
       console.log("[APP] Verify...");
+
+      // 🔥 MiniKit SOLO aquí
+      MiniKit.install({ appId: APP_ID });
 
       const verifyRes = await MiniKit.commandsAsync.verify({
         action: "verify-user",
@@ -165,7 +92,64 @@ const App = () => {
     }
   };
 
-  // ✅ 5. LOGIN SCREEN (rápido, sin bloqueos)
+  // ✅ 3. WalletAuth SOLO después de verify
+  useEffect(() => {
+    const loadWallet = async () => {
+      if (!verified || wallet || verifying || walletLoading.current) return;
+
+      walletLoading.current = true;
+
+      try {
+        console.log("[APP] walletAuth...");
+
+        // 🔥 MiniKit SOLO aquí también
+        MiniKit.install({ appId: APP_ID });
+
+        const nonceRes = await fetch("/api/nonce");
+        if (!nonceRes.ok) throw new Error("No se pudo obtener nonce");
+
+        const { nonce } = await nonceRes.json();
+
+        const auth = await MiniKit.commandsAsync.walletAuth({
+          nonce,
+          requestId: "wallet-auth-" + Date.now(),
+          expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          notBefore: new Date(Date.now() - 60 * 1000),
+          statement: "Autenticar wallet",
+        });
+
+        const address =
+          auth?.finalPayload?.address ||
+          auth?.finalPayload?.wallet_address ||
+          null;
+
+        if (address) {
+          setWallet(address);
+          console.log("[APP] Wallet:", address);
+        }
+
+        // ✅ user info después de auth (seguro aquí)
+        if (MiniKit.user) {
+          const u = MiniKit.user.username || null;
+          const a = MiniKit.user.avatar_url || null;
+
+          setUsername(u);
+          setAvatar(a);
+
+          if (u) setGlobalUsername(u);
+        }
+      } catch (err: any) {
+        console.error("[APP] walletAuth error:", err);
+        setError(err.message);
+      } finally {
+        walletLoading.current = false;
+      }
+    };
+
+    loadWallet();
+  }, [verified, wallet, verifying]);
+
+  // ✅ 4. LOGIN SCREEN instantáneo
   if (!userId) {
     return (
       <div className="w-full h-screen flex items-center justify-center bg-black text-white">
@@ -190,7 +174,7 @@ const App = () => {
     );
   }
 
-  // ✅ 6. APP NORMAL (instantáneo si ya está logueado)
+  // ✅ 5. APP normal (rápido si ya hay sesión)
   return (
     <HomePage
       userId={userId}
