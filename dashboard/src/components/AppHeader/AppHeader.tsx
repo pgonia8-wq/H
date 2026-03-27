@@ -23,7 +23,7 @@ export const AppHeader = memo(function AppHeader({ onClose, isRefreshing }: AppH
         className="flex items-center justify-center w-8 h-8 rounded-xl text-white/50 hover:text-white hover:bg-white/8 transition-all duration-200 active:scale-95"
         data-testid="header-back"
       >
-        {onClose ? <ArrowLeft size={18} /> : <X size={18} />}
+        {onClose ? <X size={18} /> : <ArrowLeft size={18} />}
       </button>
 
       <div className="flex flex-col items-center">
