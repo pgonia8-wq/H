@@ -66,17 +66,59 @@ const CONTENT_TEMPLATES: Record<Category, string[]> = {
   ],
 };
 
-function generateContent(category: Category, topic: string): string {
+// ─── Account Personality ─────────────────────────────────────────────────────
+
+const ACCOUNT_PERSONALITY: Record<OfficialAccount, string> = {
+  "@news":
+    "Professional but modern news voice. Clear, slightly energetic, explains context.",
+  "@crypto":
+    "Acts like a crypto professor. Analytical, structured, explains concepts.",
+  "@trading":
+    "Aggressive trader mindset. Confident, focused on opportunity and momentum.",
+  "@memes":
+    "Funny, sharp, trend-aware. Uses humor and sarcasm.",
+  "@builders":
+    "Visionary builder. Talks about future, systems, innovation.",
+};
+
+// ─── Content Generator ───────────────────────────────────────────────────────
+
+function generateContent(
+  category: Category,
+  topic: string,
+  account: OfficialAccount
+): string {
   const templates = CONTENT_TEMPLATES[category];
   const template = templates[Math.floor(Math.random() * templates.length)];
-  return template.replace(/\{topic\}/g, topic);
+
+  const base = template.replace(/\{topic\}/g, topic);
+
+  // Estilo por cuenta (ligero, sin IA pesada)
+  if (account === "@memes") {
+    return `${base} 😂🔥`;
+  }
+
+  if (account === "@trading") {
+    return `${base}\n\nWatch this closely.`;
+  }
+
+  if (account === "@crypto") {
+    return `${base}\n\nUnderstanding this is key.`;
+  }
+
+  if (account === "@builders") {
+    return `${base}\n\nThis is where things are going.`;
+  }
+
+  // default (@news)
+  return base;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError]         = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const run = useCallback(
     async (params: RunPipelineParams): Promise<RunPipelineResult> => {
@@ -87,12 +129,13 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
 
       try {
         // ── Edge Function ─────────────────────────────────────────
-        const { data: fnData, error: fnError } = await supabase.functions.invoke<RunPipelineResult>(
-          "generate-posts",
-          {
-            body: { category, account, topic, count },
-          }
-        );
+        const { data: fnData, error: fnError } =
+          await supabase.functions.invoke<RunPipelineResult>(
+            "generate-posts",
+            {
+              body: { category, account, topic, count },
+            }
+          );
 
         if (!fnError && fnData) {
           console.log(
@@ -117,9 +160,9 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
           return {
             category,
             account,
-            topic:        postTopic,
-            content:      generateContent(category, postTopic),
-            status:       "queued" as const,
+            topic: postTopic,
+            content: generateContent(category, postTopic, account), // 👈 AQUÍ CAMBIÓ
+            status: "queued" as const,
             published_at: null,
             scheduled_at: null,
           };
