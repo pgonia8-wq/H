@@ -134,11 +134,11 @@ const HomePage: React.FC<HomePageProps> = ({
         const from = reset ? 0 : page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         const { data, error } = await supabase
-          .from("posts")
-          .select("*")
-          .order("timestamp", { ascending: false })
-          .range(from, to);
-
+  .from("feed")
+  .select("*")
+  .eq("user_id", userId)
+  .order("timestamp", { ascending: false })
+  .range(from, to);
         const newPosts = data || [];
         setPosts((prev) => (reset ? newPosts : [...prev, ...newPosts]));
         setHasMore(newPosts.length === PAGE_SIZE);
