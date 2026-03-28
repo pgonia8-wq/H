@@ -224,29 +224,35 @@ const HomePage: React.FC<HomePageProps> = ({
   if (!userId) return;
 
   const channel = supabase
-    .channel("global-posts")
+    .channel(`feed:${userId}`)
 
-    // ✅ INSERT (único)
+    // ✅ INSERT SOLO DEL FEED DEL USUARIO
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "posts" },
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "feed",
+        filter: `user_id=eq.${userId}`,
+      },
       (payload) => {
         setPosts((prev) => {
-          // evitar duplicados
+          // 🔥 1. evitar duplicados reales
           if (prev.some((p) => p.id === payload.new.id)) {
             return prev;
           }
 
-          // eliminar optimistic si coincide
+          // 🔥 2. eliminar optimistic si coincide
           const withoutOptimistic = prev.filter(
             (p) =>
               !p.optimistic ||
               p.content !== payload.new.content
           );
 
+          // 🔥 3. insertar post real
           const updated = [payload.new, ...withoutOptimistic];
 
-          // mantener orden
+          // 🔥 4. ordenar por timestamp
           return updated.sort(
             (a, b) =>
               new Date(b.timestamp).getTime() -
@@ -256,10 +262,15 @@ const HomePage: React.FC<HomePageProps> = ({
       }
     )
 
-    // ✅ UPDATE
+    // ✅ UPDATE (opcional pero recomendado)
     .on(
       "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "posts" },
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "feed",
+        filter: `user_id=eq.${userId}`,
+      },
       (payload) => {
         setPosts((prev) =>
           prev.map((p) =>
