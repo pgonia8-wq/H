@@ -377,15 +377,19 @@ const HomePage: React.FC<HomePageProps> = ({
     setPosts((prev) => [tempPost, ...prev]);
 
     // 🚀 3. backend
-    const { error } = await supabase.functions.invoke("publish-post-user", {
-      body: {
-        content: newPostContent,
-        image_url: imageUrl,
-      },
-    });
+    const session = await supabase.auth.getSession();
 
-    if (error) throw error;
+const { error } = await supabase.functions.invoke("publish-post-user", {
+  body: {
+    content: newPostContent,
+    image_url: imageUrl,
+  },
+  headers: {
+    Authorization: `Bearer ${session.data.session?.access_token}`,
+  },
+});
 
+if (error) throw error;
     // 🧹 limpiar UI
     setShowNewPostModal(false);
     setNewPostContent("");
