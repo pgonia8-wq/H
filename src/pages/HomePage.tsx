@@ -258,7 +258,7 @@ const HomePage: React.FC<HomePageProps> = ({
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "feed", filter: `user_id=eq.${userId}` },
+        { event: "UPDATE", schema: "public",  table: "post", filter: `user_id=eq.${userId}` },
         (payload) => {
           setPosts((prev) => prev.map((p) => p.id === payload.new.id ? payload.new : p));
         }
