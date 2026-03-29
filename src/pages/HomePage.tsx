@@ -217,26 +217,57 @@ const HomePage: React.FC<HomePageProps> = ({
     setUnreadTotal(total);
   }, [userId]);
 
-    const fetchGlobalPosts = useCallback(async () => {
+    const globalCursor = useRef<string | null>(null);
+const globalFetching = useRef(false);
+const [globalHasMore, setGlobalHasMore] = useState(true);
+
+const fetchGlobalPosts = useCallback(async (reset = false) => {
+  if (globalFetching.current) return;
+  if (!globalHasMore && !reset) return;
+
+  globalFetching.current = true;
+
+  if (reset) {
+    globalCursor.current = null;
+    setGlobalPosts([]);
+    setGlobalHasMore(true);
+  }
+
   setGlobalLoading(true);
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("posts")
       .select("*")
       .order("timestamp", { ascending: false })
-      .limit(50);
+      .limit(10);
 
+    if (globalCursor.current) {
+      query = query.lt("timestamp", globalCursor.current);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
 
-    setGlobalPosts(data || []);
+    const newPosts = data || [];
+
+    setGlobalPosts((prev) =>
+      reset ? newPosts : [...prev, ...newPosts]
+    );
+
+    setGlobalHasMore(newPosts.length === 10);
+
+    if (newPosts.length > 0) {
+      globalCursor.current =
+        newPosts[newPosts.length - 1].timestamp;
+    }
   } catch (err) {
-    console.error("[HOME] Error fetching global posts:", err);
+    console.error("[HOME] Global fetch error:", err);
   } finally {
     setGlobalLoading(false);
+    globalFetching.current = false;
   }
-}, []);
-  
+}, [globalHasMore]);
   // ─────────────────────────────────────────────
   // INICIALIZACIÓN al tener userId
   // ─────────────────────────────────────────────
@@ -246,7 +277,9 @@ const HomePage: React.FC<HomePageProps> = ({
     fetchOrUpsertProfile();
     fetchNotifications();
     loadUnread();
-    fetchGlobalPosts();
+    setTimeout(() => {
+  fetchGlobalPosts();
+}, 20000); // 20 segundos
   }, [userId]);
 
   // ─────────────────────────────────────────────
