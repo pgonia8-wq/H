@@ -132,7 +132,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
     try {
       let query = supabase
-        .from("feed")
+        .from("post")
         .select("*")
         .eq("user_id", userIdRef.current)
         .order("timestamp", { ascending: false })
