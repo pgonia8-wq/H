@@ -4,6 +4,7 @@ import React, {
   useRef,
   useCallback,
   useContext,
+  useMemo,
   lazy,
   Suspense,
 } from "react";
@@ -31,15 +32,14 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-// Fix 3: lazy load de componentes que solo se usan bajo demanda (modales)
-// No entran en el bundle inicial — se descargan cuando el usuario los abre
+// Lazy load — no entran en el bundle inicial
 const ProfileModal = lazy(() => import("../components/ProfileModal"));
 const Inbox = lazy(() => import("./chat/Inbox"));
-// Fix 3b: AutonomousGrowthBrain se renderiza inmediatamente pero no es crítico para el primer paint
 const AutonomousGrowthBrain = lazy(() => import("../components/AutonomousGrowthBrain"));
 
-const PAGE_SIZE = 8;
-
+// ─────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────
 interface HomePageProps {
   userId: string | null;
   wallet: string | null;
@@ -60,25 +60,24 @@ interface Notification {
   read: boolean;
 }
 
+// ─────────────────────────────────────────────
+// ÍCONO DE NOTIFICACIÓN
+// ─────────────────────────────────────────────
 const notifIcon = (type: Notification["type"]) => {
   switch (type) {
-    case "like":
-      return <Heart size={13} className="text-pink-500" />;
-    case "comment":
-      return <MessageCircle size={13} className="text-blue-400" />;
-    case "follow":
-      return <UserPlus size={13} className="text-green-400" />;
-    case "mention":
-      return <AtSign size={13} className="text-violet-400" />;
-    case "repost":
-      return <Repeat2 size={13} className="text-emerald-400" />;
-    case "verified":
-      return <CheckCircle2 size={13} className="text-sky-400" />;
-    default:
-      return <Bell size={13} className="text-gray-400" />;
+    case "like":      return <Heart size={13} className="text-pink-500" />;
+    case "comment":   return <MessageCircle size={13} className="text-blue-400" />;
+    case "follow":    return <UserPlus size={13} className="text-green-400" />;
+    case "mention":   return <AtSign size={13} className="text-violet-400" />;
+    case "repost":    return <Repeat2 size={13} className="text-emerald-400" />;
+    case "verified":  return <CheckCircle2 size={13} className="text-sky-400" />;
+    default:          return <Bell size={13} className="text-gray-400" />;
   }
 };
 
+// ─────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────
 const HomePage: React.FC<HomePageProps> = ({
   userId,
   wallet,
@@ -88,82 +87,59 @@ const HomePage: React.FC<HomePageProps> = ({
   setUserId,
   verifyUser,
 }) => {
-  const [posts, setPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  // ── Post modal ──
+  const [optimisticPosts, setOptimisticPosts] = useState<any[]>([]);
   const [showNewPostModal, setShowNewPostModal] = useState(false);
-  const [showInbox, setShowInbox] = useState(false);
   const [newPostContent, setNewPostContent] = useState("");
   const [newPostImage, setNewPostImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [isPosting, setIsPosting] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
+
+  // ── Perfil ──
+  const [profile, setProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // ── Inbox ──
+  const [showInbox, setShowInbox] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [newMessage, setNewMessage] = useState("");
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
-  const [isPosting, setIsPosting] = useState(false);
-  const [postError, setPostError] = useState<string | null>(null);
 
+  // ── Notificaciones ──
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const unreadNotifCount = notifications.filter((n) => !n.read).length;
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Memoizado: no recalcula en cada render
+  const unreadNotifCount = useMemo(
+    () => notifications.filter((n) => !n.read).length,
+    [notifications],
+  );
 
   const { theme, toggleTheme, username } = useContext(ThemeContext);
   const { language, setLanguage, t } = useContext(LanguageContext);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const maxChars =
-    profile?.tier === "premium+"
-      ? 10000
-      : profile?.tier === "premium"
-      ? 4000
-      : 280;
-
   const isDark = theme === "dark";
 
-  const fetchPosts = useCallback(
-    async (reset = false) => {
-      if (!hasMore && !reset) return;
-      try {
-        setLoading(true);
-        const from = reset ? 0 : page * PAGE_SIZE;
-        const to = from + PAGE_SIZE - 1;
-        const { data, error } = await supabase
-          .from("posts")
-          .select("*")
-          .order("timestamp", { ascending: false })
-          .range(from, to);
+  const maxChars =
+    profile?.tier === "premium+" ? 10000
+    : profile?.tier === "premium" ? 4000
+    : 280;
 
-        const newPosts = data || [];
-        setPosts((prev) => (reset ? newPosts : [...prev, ...newPosts]));
-        setHasMore(newPosts.length === PAGE_SIZE);
-
-        if (reset) setPage(1);
-        else setPage((prev) => prev + 1);
-      } catch (err: any) {
-        console.error("Error fetching posts:", err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [hasMore, page],
-  );
-
-  // Fix 4: leer perfil primero (SELECT), solo hacer upsert si no existe
-  // Antes: upsert (escritura) en CADA carga → ~300-500ms de latencia bloqueante
-  // Ahora: SELECT rápido para usuarios existentes, upsert solo para nuevos
+  // ─────────────────────────────────────────────
+  // PERFIL: SELECT primero, upsert solo si no existe
+  // Evita escritura en cada carga (300-500ms de overhead)
+  // ─────────────────────────────────────────────
   const fetchOrUpsertProfile = useCallback(async () => {
     if (!userId) return;
     setProfileLoading(true);
     try {
+      // Solo columnas necesarias (no SELECT *)
       const { data: existing } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, username, avatar_url, verified, tier, wallet")
         .eq("id", userId)
         .maybeSingle();
 
@@ -172,21 +148,23 @@ const HomePage: React.FC<HomePageProps> = ({
         return;
       }
 
-      // Solo llega aquí si el perfil no existe (usuarios nuevos)
-      const { data, error } = await supabase
+      // Solo para usuarios nuevos
+      const { data, error: upsertError } = await supabase
         .from("profiles")
         .upsert(
           {
             id: userId,
             username: username || `user_${userId.slice(0, 8)}`,
             wallet: wallet || null,
-            verified: verified,
+            verified,
             verified_at: new Date().toISOString(),
           },
-          { onConflict: ["id"], returning: "representation" },
+          { onConflict: "id" }, // string, no array
         )
+        .select("id, username, avatar_url, verified, tier, wallet")
         .maybeSingle();
-      if (error) throw error;
+
+      if (upsertError) throw upsertError;
       setProfile(data);
     } catch (err: any) {
       console.error("[HOME] profile error:", err);
@@ -195,6 +173,9 @@ const HomePage: React.FC<HomePageProps> = ({
     }
   }, [userId, username, wallet, verified]);
 
+  // ─────────────────────────────────────────────
+  // NOTIFICACIONES: solo columnas necesarias, limit 30
+  // ─────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
     try {
@@ -203,105 +184,46 @@ const HomePage: React.FC<HomePageProps> = ({
         .select("id, type, user, avatar, message, time, read")
         .eq("receiver_id", userId)
         .order("created_at", { ascending: false })
-        .limit(50);
+        .limit(30); // 50 era innecesario, 30 es suficiente para UX
       if (data) setNotifications(data as Notification[]);
     } catch (err) {
       console.error("[HOME] Error fetching notifications:", err);
     }
   }, [userId]);
 
-  useEffect(() => {
-    if (!userId) return;
-    fetchOrUpsertProfile();
-    fetchPosts(true);
-    fetchNotifications();
-  }, [userId, fetchOrUpsertProfile]);
-
-  // Fix 2: canal realtime de posts ahora gateado por userId
-  // Antes: abría WebSocket en el primer render, antes de que hubiera usuario
-  // Ahora: espera a que haya userId para abrir la conexión
-       useEffect(() => {
-  if (!userId) return;
-
-  const channel = supabase
-    .channel("global-posts")
-
-    // ✅ INSERT (único)
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "posts" },
-      (payload) => {
-        setPosts((prev) => {
-          // evitar duplicados
-          if (prev.some((p) => p.id === payload.new.id)) {
-            return prev;
-          }
-
-          // eliminar optimistic si coincide
-          const withoutOptimistic = prev.filter(
-            (p) =>
-              !p.optimistic ||
-              p.content !== payload.new.content
-          );
-
-          const updated = [payload.new, ...withoutOptimistic];
-
-          // mantener orden
-          return updated.sort(
-            (a, b) =>
-              new Date(b.timestamp).getTime() -
-              new Date(a.timestamp).getTime()
-          );
-        });
-      }
-    )
-
-    // ✅ UPDATE
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "posts" },
-      (payload) => {
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === payload.new.id ? payload.new : p
-          )
-        );
-      }
-    )
-
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [userId]);
-  
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!containerRef.current) return;
-      const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-      if (scrollTop + clientHeight >= scrollHeight - 150) fetchPosts();
-    };
-    const el = containerRef.current;
-    el?.addEventListener("scroll", handleScroll);
-    return () => el?.removeEventListener("scroll", handleScroll);
-  }, [fetchPosts]);
-
-  const loadUnread = async () => {
+  // ─────────────────────────────────────────────
+  // MENSAJES NO LEÍDOS: limit para evitar traer miles de filas
+  // ─────────────────────────────────────────────
+  const loadUnread = useCallback(async () => {
     if (!userId) return;
     const { data } = await supabase
       .from("conversation_unread_counts")
       .select("unread")
-      .eq("receiver_id", userId);
+      .eq("receiver_id", userId)
+      .limit(200); // evita traer todo sin límite
 
-    const total = data?.reduce((sum: number, r: any) => sum + r.unread, 0) || 0;
+    const total = data?.reduce((sum: number, r: any) => sum + (r.unread || 0), 0) || 0;
     setUnreadMessages(total);
     setUnreadTotal(total);
-  };
+  }, [userId]);
 
+  // ─────────────────────────────────────────────
+  // INICIALIZACIÓN al tener userId
+  // ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
+    // Paralelo: no bloquear uno con el otro
+    fetchOrUpsertProfile();
+    fetchNotifications();
     loadUnread();
+  }, [userId]);
+
+  // ─────────────────────────────────────────────
+  // REALTIME: mensajes no leídos
+  // Solo se abre cuando hay userId (no en primer render)
+  // ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!userId) return;
 
     const channel = supabase
       .channel("messages-realtime")
@@ -317,140 +239,117 @@ const HomePage: React.FC<HomePageProps> = ({
       )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
+  // ─────────────────────────────────────────────
+  // CREAR POST con optimistic UI + rollback
+  // ─────────────────────────────────────────────
   const handleCreatePost = async () => {
-  if (isPosting) return;
-  if (!newPostContent.trim()) {
-    setPostError(t("write_before_posting"));
-    return;
-  }
-  if (!userId) return;
-
-  setIsPosting(true);
-  setPostError(null);
-
-  let imageUrl = null;
-  let tempId = "temp-" + Date.now(); // 👈 moverlo arriba para rollback
-
-  try {
-    // 🖼️ 1. subir imagen primero
-    if (newPostImage) {
-      const fileExt = newPostImage.name.split(".").pop() || "png";
-      const fileName = `${userId}-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("post-images")
-        .upload(fileName, newPostImage);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from("post-images")
-        .getPublicUrl(fileName);
-
-      imageUrl = data.publicUrl;
+    if (isPosting) return;
+    if (!newPostContent.trim()) {
+      setPostError(t("write_before_posting"));
+      return;
     }
+    if (!userId) return;
 
-    // ✅ 2. OPTIMISTIC UI (YA con imagen correcta)
-    const tempPost = {
-      id: tempId,
-      user_id: userId,
-      content: newPostContent,
-      image_url: imageUrl,
-      timestamp: new Date().toISOString(),
-      optimistic: true,
-    };
+    setIsPosting(true);
+    setPostError(null);
 
-    setPosts((prev) => [tempPost, ...prev]);
-
-    // 🚀 3. backend
-    const { error } = await supabase.functions.invoke("publish-post-user", {
-      body: {
-        content: newPostContent,
-        image_url: imageUrl,
-      },
-    });
-
-    if (error) throw error;
-
-    // 🧹 limpiar UI
-    setShowNewPostModal(false);
-    setNewPostContent("");
-    setNewPostImage(null);
-    setImagePreview(null);
-
-  } catch (err: any) {
-    console.error("Error creando post", err);
-    setPostError(err.message);
-
-    // 🔥 rollback limpio
-    setPosts((prev) => prev.filter((p) => p.id !== tempId));
-
-  } finally {
-    setIsPosting(false);
-  }
-};
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() && newMessageAttachments.length === 0) return;
+    let imageUrl: string | null = null;
+    const tempId = `temp-${Date.now()}`;
 
     try {
-      let attachmentsUrls: string[] = [];
+      // 1. Subir imagen primero (si la hay)
+      if (newPostImage) {
+        const fileExt = newPostImage.name.split(".").pop() || "png";
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
+        const { error: uploadError } = await supabase.storage
+          .from("post-images")
+          .upload(fileName, newPostImage);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage
+          .from("post-images")
+          .getPublicUrl(fileName);
+
+        imageUrl = data.publicUrl;
+      }
+
+      // 2. Optimistic UI (se muestra inmediatamente)
+      const tempPost = {
+        id: tempId,
+        user_id: userId,
+        content: newPostContent,
+        image_url: imageUrl,
+        timestamp: new Date().toISOString(),
+        username: profile?.username || username,
+        avatar_url: profile?.avatar_url || null,
+        verified: profile?.verified || false,
+        tier: profile?.tier || "free",
+        optimistic: true,
+      };
+
+      setOptimisticPosts((prev) => [tempPost, ...prev]);
+
+      // 3. Backend via Edge Function
+      const { error: fnError } = await supabase.functions.invoke("publish-post-user", {
+        body: { content: newPostContent, image_url: imageUrl },
+      });
+
+      if (fnError) throw fnError;
+
+      // 4. Limpiar UI
+      setShowNewPostModal(false);
+      setNewPostContent("");
+      setNewPostImage(null);
+      setImagePreview(null);
+
+      // El realtime en FeedPage reemplazará el optimistic automáticamente
+    } catch (err: any) {
+      console.error("[HOME] Error creando post:", err);
+      setPostError(err.message || "Error al publicar");
+      // Rollback: remover el optimistic
+      setOptimisticPosts((prev) => prev.filter((p) => p.id !== tempId));
+    } finally {
+      setIsPosting(false);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() && newMessageAttachments.length === 0) return;
+    try {
+      const attachmentsUrls: string[] = [];
       for (const file of newMessageAttachments) {
         const key = `${userId}-${Date.now()}-${file.name}`;
         const { error: uploadError } = await supabase.storage
           .from("message-attachments")
           .upload(key, file);
         if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage
-          .from("message-attachments")
-          .getPublicUrl(key);
+        const { data } = supabase.storage.from("message-attachments").getPublicUrl(key);
         attachmentsUrls.push(data.publicUrl);
       }
-
-      if (!selectedChatUserId) {
-        setPostError("Selecciona un chat antes de enviar mensaje");
-        return;
-      }
-
-      const { error } = await supabase.from("messages").insert({
+      if (!selectedChatUserId) return;
+      await supabase.from("messages").insert({
         sender_id: userId,
         receiver_id: selectedChatUserId,
         content: newMessage,
         attachments: attachmentsUrls,
         timestamp: new Date().toISOString(),
       });
-
-      if (error) throw error;
-
       setNewMessage("");
       setNewMessageAttachments([]);
       loadUnread();
     } catch (err: any) {
-      console.error("Error enviando mensaje", err);
-      setPostError(err.message);
+      console.error("[HOME] Error enviando mensaje:", err);
     }
   };
 
-  const handleProfileUpdated = (updatedProfile: {
-    id: string;
-    avatar_url?: string;
-  }) => {
+  const handleProfileUpdated = (updatedProfile: { id: string; avatar_url?: string }) => {
     if (updatedProfile.avatar_url) {
-      setProfile((prev: any) => ({
-        ...prev,
-        avatar_url: updatedProfile.avatar_url,
-      }));
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.user_id === updatedProfile.id
-            ? { ...post, avatar_url: updatedProfile.avatar_url }
-            : post,
-        ),
-      );
+      setProfile((prev: any) => ({ ...prev, avatar_url: updatedProfile.avatar_url }));
     }
   };
 
@@ -458,17 +357,11 @@ const HomePage: React.FC<HomePageProps> = ({
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  const handleOpenNotifications = () => setShowNotifications(true);
-  const handleCloseNotifications = () => setShowNotifications(false);
-
+  // ─────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────
   return (
-    <div
-      ref={containerRef}
-      className={`min-h-screen overflow-y-auto overflow-x-hidden ${
-        isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"
-      }`}
-    >
-      {/* Fix 3b: AutonomousGrowthBrain en Suspense — no bloquea el primer paint */}
+    <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"}`}>
       <Suspense fallback={null}>
         <AutonomousGrowthBrain />
       </Suspense>
@@ -476,9 +369,7 @@ const HomePage: React.FC<HomePageProps> = ({
       {/* ── HEADER FLOTANTE ── */}
       <header
         className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
-          isDark
-            ? "bg-[#09090b]/85 border-white/[0.09]"
-            : "bg-white/90 border-black/[0.07]"
+          isDark ? "bg-[#09090b]/85 border-white/[0.09]" : "bg-white/90 border-black/[0.07]"
         }`}
         style={{
           backdropFilter: "blur(24px)",
@@ -498,7 +389,7 @@ const HomePage: React.FC<HomePageProps> = ({
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
         />
 
-        {/* Botones centrales */}
+        {/* Controles centrales */}
         <div className="flex items-center gap-1.5">
           {/* Nuevo Post */}
           <motion.button
@@ -506,10 +397,7 @@ const HomePage: React.FC<HomePageProps> = ({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-white"
-            style={{
-              background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
-              boxShadow: "0 0 18px rgba(139,92,246,0.35)",
-            }}
+            style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", boxShadow: "0 0 18px rgba(139,92,246,0.35)" }}
           >
             <Plus size={15} />
             <span className="hidden sm:inline">{t("post") || "Post"}</span>
@@ -521,11 +409,7 @@ const HomePage: React.FC<HomePageProps> = ({
               onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
-                isDark
-                  ? "text-gray-300 hover:text-white hover:bg-white/10"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-black/5"
-              }`}
+              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
             >
               <Mail size={19} />
             </motion.button>
@@ -548,14 +432,10 @@ const HomePage: React.FC<HomePageProps> = ({
           {/* Notificaciones */}
           <div className="relative">
             <motion.button
-              onClick={handleOpenNotifications}
+              onClick={() => setShowNotifications(true)}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
-                isDark
-                  ? "text-gray-300 hover:text-white hover:bg-white/10"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-black/5"
-              }`}
+              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
             >
               <motion.div
                 animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
@@ -585,11 +465,7 @@ const HomePage: React.FC<HomePageProps> = ({
             onClick={toggleTheme}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
-            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
-              isDark
-                ? "text-gray-300 hover:text-white hover:bg-white/10"
-                : "text-gray-600 hover:text-gray-900 hover:bg-black/5"
-            }`}
+            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -609,11 +485,7 @@ const HomePage: React.FC<HomePageProps> = ({
             onClick={() => setLanguage(language === "es" ? "en" : "es")}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.94 }}
-            className={`h-9 px-3 flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${
-              isDark
-                ? "text-gray-300 hover:text-white bg-white/5 hover:bg-white/10"
-                : "text-gray-600 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"
-            }`}
+            className={`h-9 px-3 flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${isDark ? "text-gray-300 hover:text-white bg-white/5 hover:bg-white/10" : "text-gray-600 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"}`}
           >
             <Globe size={13} />
             {language.toUpperCase()}
@@ -622,11 +494,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
         {/* Avatar */}
         <motion.div
-          className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${
-            isDark
-              ? "ring-white/10 hover:ring-violet-500/60"
-              : "ring-black/10 hover:ring-violet-400/60"
-          }`}
+          className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${isDark ? "ring-white/10 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"}`}
           onClick={() => setShowProfileModal(true)}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.94 }}
@@ -645,19 +513,20 @@ const HomePage: React.FC<HomePageProps> = ({
         </motion.div>
       </header>
 
-      {/* ── FEED ── */}
+      {/* ── FEED con tabs (Global / Siguiendo / Mis posts) ── */}
       <main className="w-full px-2 pt-20 pb-6 flex justify-center">
         <FeedPage
-          posts={posts}
-          loading={loading}
+          posts={optimisticPosts}
+          loading={false}
           error={error}
           currentUserId={userId}
           userTier={profile?.tier || "free"}
-          onUpgradeSuccess={() => fetchOrUpsertProfile()}
+          onUpgradeSuccess={fetchOrUpsertProfile}
         />
       </main>
 
-      {/* ── MODAL PERFIL — lazy, solo se descarga cuando el usuario lo abre ── */}
+      {/* ── MODALES ── */}
+
       {showProfileModal && (
         <Suspense fallback={null}>
           <ProfileModal
@@ -668,7 +537,7 @@ const HomePage: React.FC<HomePageProps> = ({
         </Suspense>
       )}
 
-      {/* ── MODAL CREAR POST ── */}
+      {/* Modal crear post */}
       <AnimatePresence>
         {showNewPostModal && (
           <motion.div
@@ -683,75 +552,42 @@ const HomePage: React.FC<HomePageProps> = ({
           >
             <motion.div
               key="create-post-modal"
-              className={
-                "relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden " +
-                (isDark ? "bg-gray-950 border border-white/10" : "bg-white border border-gray-200")
-              }
+              className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${isDark ? "bg-gray-950 border border-white/10" : "bg-white border border-gray-200"}`}
               initial={{ opacity: 0, scale: 0.92, y: 24 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 24 }}
               transition={{ type: "spring", stiffness: 340, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="absolute inset-x-0 top-0 h-1 rounded-t-3xl"
-                style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }}
-              />
+              <div className="absolute inset-x-0 top-0 h-1 rounded-t-3xl" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }} />
               <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-                  >
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
                     <Send size={14} className="text-white -rotate-12" />
                   </div>
-                  <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>
-                    {t("create_post")}
-                  </h2>
+                  <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>{t("create_post")}</h2>
                 </div>
                 <motion.button
                   whileHover={{ scale: 1.1, rotate: 90 }}
                   whileTap={{ scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                   onClick={() => setShowNewPostModal(false)}
-                  className={
-                    "w-8 h-8 rounded-full flex items-center justify-center transition-colors " +
-                    (isDark
-                      ? "text-gray-400 hover:text-white hover:bg-white/10"
-                      : "text-gray-400 hover:text-gray-700 hover:bg-gray-100")
-                  }
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
                 >
                   <X size={16} />
                 </motion.button>
               </div>
 
               <div className="px-6">
-                <div
-                  className={
-                    "relative rounded-2xl overflow-hidden " +
-                    (isDark
-                      ? "bg-gray-900 ring-1 ring-white/10 focus-within:ring-violet-500"
-                      : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400")
-                  }
-                >
+                <div className={`relative rounded-2xl overflow-hidden ${isDark ? "bg-gray-900 ring-1 ring-white/10 focus-within:ring-violet-500" : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400"}`}>
                   <textarea
                     value={newPostContent}
                     onChange={(e) => setNewPostContent(e.target.value)}
-                    className={
-                      "w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed " +
-                      (isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400")
-                    }
+                    className={`w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400"}`}
                     placeholder={t("whats_happening")}
                     maxLength={maxChars}
                   />
-                  <div
-                    className={
-                      "absolute bottom-3 right-3 text-xs font-medium tabular-nums " +
-                      (newPostContent.length > maxChars * 0.85
-                        ? "text-red-400"
-                        : isDark ? "text-gray-600" : "text-gray-400")
-                    }
-                  >
+                  <div className={`absolute bottom-3 right-3 text-xs font-medium tabular-nums ${newPostContent.length > maxChars * 0.85 ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"}`}>
                     {newPostContent.length}/{maxChars}
                   </div>
                 </div>
@@ -759,21 +595,14 @@ const HomePage: React.FC<HomePageProps> = ({
 
               <AnimatePresence>
                 {imagePreview && (
-                  <motion.div
-                    className="px-6 mt-4"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25 }}
-                  >
+                  <motion.div className="px-6 mt-4" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
                     <div className="relative group rounded-2xl overflow-hidden shadow-lg max-h-60">
-                      <img src={imagePreview} alt="Preview" className="w-full object-cover max-h-60 transition-transform duration-300 group-hover:scale-105" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <img src={imagePreview} alt="Preview" className="w-full object-cover max-h-60" />
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => { setNewPostImage(null); setImagePreview(null); }}
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <X size={12} className="text-white" />
                       </motion.button>
@@ -785,37 +614,23 @@ const HomePage: React.FC<HomePageProps> = ({
               <AnimatePresence>
                 {postError && (
                   <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 4 }}
+                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
                     className="mx-6 mt-3 px-3 py-2 rounded-xl bg-red-900/60 border border-red-500/40 text-xs text-red-300 flex items-center justify-between gap-2"
                   >
                     <span className="truncate">⚠ {postError}</span>
-                    <button
-                      onClick={() => setPostError(null)}
-                      className="flex-shrink-0 text-red-400 hover:text-red-200"
-                    >
-                      <X size={13} />
-                    </button>
+                    <button onClick={() => setPostError(null)} className="flex-shrink-0 text-red-400 hover:text-red-200"><X size={13} /></button>
                   </motion.div>
                 )}
               </AnimatePresence>
 
               <div className="flex items-center gap-3 px-6 py-5 mt-2">
-                <label
-                  className={
-                    "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer " +
-                    (isDark
-                      ? "text-gray-400 hover:text-violet-400 hover:bg-violet-500/10"
-                      : "text-gray-500 hover:text-violet-600 hover:bg-violet-50")
-                  }
-                >
+                <label className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${isDark ? "text-gray-400 hover:text-violet-400 hover:bg-violet-500/10" : "text-gray-500 hover:text-violet-600 hover:bg-violet-50"}`}>
                   <input
                     type="file"
                     accept="image/*"
                     className="hidden"
                     onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
+                      if (e.target.files?.[0]) {
                         setNewPostImage(e.target.files[0]);
                         setImagePreview(URL.createObjectURL(e.target.files[0]));
                       }
@@ -826,37 +641,28 @@ const HomePage: React.FC<HomePageProps> = ({
                 </label>
                 <div className="flex-1" />
                 <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                   onClick={() => setShowNewPostModal(false)}
-                  className={
-                    "px-4 py-2.5 rounded-xl text-sm font-medium transition-colors " +
-                    (isDark ? "text-gray-300 bg-white/5 hover:bg-white/10" : "text-gray-600 bg-gray-100 hover:bg-gray-200")
-                  }
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${isDark ? "text-gray-300 bg-white/5 hover:bg-white/10" : "text-gray-600 bg-gray-100 hover:bg-gray-200"}`}
                 >
                   {t("cancel")}
                 </motion.button>
                 <motion.button
-                  whileHover={{ scale: 1.04 }}
-                  whileTap={{ scale: 0.96 }}
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                   onClick={handleCreatePost}
                   disabled={!newPostContent.trim() || isPosting}
                   className="relative px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
                     boxShadow: newPostContent.trim() ? "0 0 20px rgba(139,92,246,0.4)" : "none",
-                    transition: "box-shadow 0.3s",
                   }}
                 >
-                  <motion.span
-                    className="absolute inset-0 rounded-xl"
-                    style={{ background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.18) 50%, transparent 60%)" }}
-                    initial={{ x: "-100%" }}
-                    whileHover={{ x: "100%" }}
-                    transition={{ duration: 0.5 }}
-                  />
                   <span className="relative flex items-center gap-2">
-                    <Send size={14} className="-rotate-12" />
+                    {isPosting ? (
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    ) : (
+                      <Send size={14} className="-rotate-12" />
+                    )}
                     {t("publish")}
                   </span>
                 </motion.button>
@@ -866,20 +672,16 @@ const HomePage: React.FC<HomePageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── INBOX — lazy, solo se descarga cuando el usuario lo abre ── */}
+      {/* Inbox */}
       <AnimatePresence>
         {showInbox && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xl"
             onClick={() => setShowInbox(false)}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 30 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.92, y: 30 }}
+              initial={{ opacity: 0, scale: 0.92, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 30 }}
               transition={{ type: "spring", stiffness: 340, damping: 28 }}
               className="w-full max-w-md bg-[#111113] border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
               onClick={(e) => e.stopPropagation()}
@@ -905,26 +707,20 @@ const HomePage: React.FC<HomePageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── MODAL NOTIFICACIONES ── */}
+      {/* Notificaciones */}
       <AnimatePresence>
         {showNotifications && (
           <motion.div
             key="notif-overlay"
             className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             style={{ backdropFilter: "blur(10px)", background: "rgba(0,0,0,0.6)" }}
-            onClick={handleCloseNotifications}
+            onClick={() => setShowNotifications(false)}
           >
             <motion.div
               key="notif-modal"
-              className={`relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col ${
-                isDark
-                  ? "bg-[#111113] border border-white/[0.08]"
-                  : "bg-white border border-gray-200/80"
-              }`}
+              className={`relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#111113] border border-white/[0.08]" : "bg-white border border-gray-200/80"}`}
               style={{ maxHeight: "85vh" }}
               initial={{ opacity: 0, y: 60, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -932,53 +728,28 @@ const HomePage: React.FC<HomePageProps> = ({
               transition={{ type: "spring", stiffness: 360, damping: 30 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex justify-center pt-3 pb-1 sm:hidden">
-                <div className={`w-10 h-1 rounded-full ${isDark ? "bg-white/20" : "bg-black/10"}`} />
-              </div>
-
-              <div
-                className="absolute inset-x-0 top-0 h-[2px]"
-                style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, #6366f1)" }}
-              />
+              <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }} />
 
               <div className={`flex items-center justify-between px-5 pt-5 pb-3 border-b ${isDark ? "border-white/[0.07]" : "border-gray-100"}`}>
                 <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center"
-                    style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
-                  >
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
                     <Bell size={14} className="text-white" />
                   </div>
                   <div>
-                    <h2 className={`text-base font-bold leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
-                      {t("notifications") || "Notificaciones"}
-                    </h2>
-                    {unreadNotifCount > 0 && (
-                      <p className="text-xs text-violet-400 font-medium">{unreadNotifCount} sin leer</p>
-                    )}
+                    <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>{t("notifications") || "Notificaciones"}</h2>
+                    {unreadNotifCount > 0 && <p className="text-xs text-violet-400 font-medium">{unreadNotifCount} sin leer</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {unreadNotifCount > 0 && (
-                    <motion.button
-                      whileHover={{ scale: 1.04 }}
-                      whileTap={{ scale: 0.96 }}
-                      onClick={markAllNotifsRead}
-                      className="text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10"
-                    >
+                    <button onClick={markAllNotifsRead} className="text-xs font-medium text-violet-400 hover:text-violet-300 px-2 py-1 rounded-lg hover:bg-violet-500/10">
                       Marcar todo
-                    </motion.button>
+                    </button>
                   )}
                   <motion.button
-                    whileHover={{ scale: 1.1, rotate: 90 }}
-                    whileTap={{ scale: 0.9 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    onClick={handleCloseNotifications}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                      isDark
-                        ? "text-gray-400 hover:text-white hover:bg-white/10"
-                        : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
-                    }`}
+                    whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}
+                    onClick={() => setShowNotifications(false)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
                   >
                     <X size={15} />
                   </motion.button>
@@ -987,67 +758,40 @@ const HomePage: React.FC<HomePageProps> = ({
 
               <div className="overflow-y-auto flex-1">
                 {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
-                      <Bell size={24} className={isDark ? "text-gray-600" : "text-gray-300"} />
-                    </div>
-                    <p className={`text-sm font-medium ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                      {t("no_notifications") || "Sin notificaciones"}
-                    </p>
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <span className="text-3xl mb-2">🔔</span>
+                    <p className="text-sm text-gray-500">Sin notificaciones</p>
                   </div>
                 ) : (
-                  <ul className="py-1">
-                    {notifications.map((notif, i) => (
-                      <motion.li
-                        key={notif.id}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.04, duration: 0.22 }}
-                        onClick={() =>
-                          setNotifications((prev) =>
-                            prev.map((n) => n.id === notif.id ? { ...n, read: true } : n)
-                          )
-                        }
-                        className={`flex items-start gap-3 px-5 py-3.5 cursor-pointer transition-colors ${
-                          !notif.read
-                            ? isDark
-                              ? "bg-violet-500/[0.06] hover:bg-violet-500/[0.1]"
-                              : "bg-violet-50/80 hover:bg-violet-50"
-                            : isDark
-                            ? "hover:bg-white/[0.03]"
-                            : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <div className="relative flex-shrink-0 mt-0.5">
-                          <img
-                            src={notif.avatar}
-                            alt={notif.user}
-                            className="w-9 h-9 rounded-full object-cover"
-                            style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
-                          />
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 ${
-                              isDark ? "border-[#111113]" : "border-white"
-                            } bg-[#111113]`}
-                          >
-                            {notifIcon(notif.type)}
-                          </span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm leading-snug ${isDark ? "text-gray-200" : "text-gray-800"}`}>
-                            <span className="font-semibold">{notif.user}</span>{" "}
-                            {notif.message}
-                          </p>
-                          <p className={`text-xs mt-0.5 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                            {notif.time}
-                          </p>
-                        </div>
-                        {!notif.read && (
-                          <div className="flex-shrink-0 w-2 h-2 rounded-full bg-violet-500 mt-2" />
+                  notifications.map((notif) => (
+                    <div
+                      key={notif.id}
+                      className={`flex items-start gap-3 px-5 py-3.5 border-b transition-colors ${
+                        isDark ? "border-white/[0.04] hover:bg-white/[0.02]" : "border-gray-50 hover:bg-gray-50"
+                      } ${!notif.read ? (isDark ? "bg-violet-500/[0.04]" : "bg-violet-50/50") : ""}`}
+                    >
+                      <div className="relative flex-shrink-0">
+                        {notif.avatar ? (
+                          <img src={notif.avatar} className="w-9 h-9 rounded-full object-cover" alt={notif.user} />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+                            {(notif.user || "?")[0].toUpperCase()}
+                          </div>
                         )}
-                      </motion.li>
-                    ))}
-                  </ul>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ${isDark ? "bg-[#111113]" : "bg-white"}`}>
+                          {notifIcon(notif.type)}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm leading-snug ${isDark ? "text-gray-200" : "text-gray-800"}`}>
+                          <span className="font-semibold">{notif.user}</span>{" "}
+                          <span className={isDark ? "text-gray-400" : "text-gray-600"}>{notif.message}</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">{notif.time}</p>
+                      </div>
+                      {!notif.read && <div className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1.5" />}
+                    </div>
+                  ))
                 )}
               </div>
             </motion.div>
