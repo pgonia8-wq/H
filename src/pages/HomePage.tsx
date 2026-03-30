@@ -279,7 +279,7 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
     loadUnread();
     setTimeout(() => {
   fetchGlobalPosts();
-}, 20000); // 20 segundos
+}, 10000); // 10 segundos
   }, [userId]);
 
   // ─────────────────────────────────────────────
@@ -586,7 +586,9 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
   currentUserId={userId}
   userTier={profile?.tier || "free"}
   onUpgradeSuccess={fetchOrUpsertProfile}
-/>
+  onLoadMoreGlobal={fetchGlobalPosts}
+  globalHasMore={globalHasMore} 
+          />
       </main>
 
       {/* ── MODALES ── */}
