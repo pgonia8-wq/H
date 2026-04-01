@@ -1,14 +1,7 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { useTheme } from "./lib/ThemeContext";
-
-// Fix 1: lazy load de HomePage — saca todo el peso del bundle inicial
-// La descarga empieza INMEDIATAMENTE al parsear este archivo,
-// no cuando React intenta renderizar el componente.
-// Esto elimina la descarga secuencial: chunk inicial y chunk de HomePage
-// se descargan en paralelo en lugar de uno después del otro.
-const homePagePromise = import("./pages/HomePage");
-const HomePage = lazy(() => homePagePromise);
+import HomePage from "./pages/HomePage";
 
 const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
 
@@ -203,29 +196,17 @@ const App = () => {
   };
 
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-          <img
-            src="https://vtjqfzpfehfofamhowjz.supabase.co/storage/v1/object/public/avatars/logoh-carbono.png"
-            alt="H"
-            className="w-16 h-16 object-contain rounded-2xl animate-pulse"
-          />
-        </div>
-      }
-    >
-      <HomePage
-        userId={userId}
-        verifyUser={verifyUser}
-        verified={verified}
-        wallet={wallet}
-        username={username}
-        avatar={avatar}
-        error={error}
-        verifying={verifying}
-        setUserId={setUserId}
-      />
-    </Suspense>
+    <HomePage
+      userId={userId}
+      verifyUser={verifyUser}
+      verified={verified}
+      wallet={wallet}
+      username={username}
+      avatar={avatar}
+      error={error}
+      verifying={verifying}
+      setUserId={setUserId}
+    />
   );
 };
 
