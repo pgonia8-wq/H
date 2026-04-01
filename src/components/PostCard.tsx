@@ -1170,7 +1170,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       {/* ProfileModal — CORRECCIÓN F4 */}
       {profileModalUserId && (
         <ProfileModal
-          currentUserId={profileModalUserId}
+          id={profileModalUserId}
+          currentUserId={currentUserId}
           onClose={() => setProfileModalUserId(null)}
         />
       )}
