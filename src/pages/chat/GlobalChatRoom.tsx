@@ -596,6 +596,18 @@ function CreateRoomModal({ onClose, onCreate, canCreateGold }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // CHAT INPUT
 // ─────────────────────────────────────────────────────────────────────────────
+// Tipos permitidos para adjuntos de chat
+const FILE_ACCEPT = [
+  "image/png","image/jpeg","image/jpg","image/gif","image/webp",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/zip","application/x-zip-compressed","application/x-rar-compressed",
+  "video/mp4","video/webm","video/quicktime",
+  "audio/mpeg","audio/mp3","audio/ogg",
+  "text/plain",
+].join(",");
+
 interface ChatInputProps {
   onSend: (content: string, file?: File, audio?: Blob, ephemeral?: boolean, reply?: ChatMessage) => void;
   onTyping: (typing: boolean) => void;
@@ -604,8 +616,9 @@ interface ChatInputProps {
   disabled: boolean;
   replyTo: ChatMessage | null;
   onCancelReply: () => void;
+  onShowToast: (msg: string) => void;
 }
-function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply }: ChatInputProps) {
+function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo, onCancelReply, onShowToast }: ChatInputProps) {
   const [text, setText] = useState("");
   const [ephemeral, setEphemeral] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -629,7 +642,12 @@ function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply 
     e.target.value = "";
   };
 
+  // Solo Gold puede grabar audio
   const toggleRecord = async () => {
+    if (!hasGoldAccess) {
+      onShowToast("¡Hazte Gold para enviar audios! 🎙️");
+      return;
+    }
     if (recording && mediaRef.current) {
       mediaRef.current.stop();
       setRecording(false);
@@ -637,19 +655,21 @@ function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply 
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
-      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mimeType });
         onSend("", undefined, blob, ephemeral, replyTo ?? undefined);
         stream.getTracks().forEach(t => t.stop());
       };
       recorder.start();
       mediaRef.current = recorder;
       setRecording(true);
-    } catch {
-      console.warn("[ChatInput] No se pudo acceder al micrófono.");
+    } catch (err) {
+      console.warn("[ChatInput] No se pudo acceder al micrófono:", err);
+      onShowToast("No se pudo acceder al micrófono. Verifica los permisos.");
     }
   };
 
@@ -682,8 +702,8 @@ function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply 
       </AnimatePresence>
 
       <div className="flex items-end gap-2">
-        {/* Attachments */}
-        <input ref={fileRef} type="file" className="hidden" onChange={handleFile} />
+        {/* Attachments — acepta imágenes, PDF, Word, ZIP, video */}
+        <input ref={fileRef} type="file" accept={FILE_ACCEPT} className="hidden" onChange={handleFile} />
         <button onClick={() => fileRef.current?.click()} disabled={disabled}
           className="flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
           <Paperclip className="h-4 w-4" />
@@ -712,10 +732,12 @@ function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply 
           className="flex-1 resize-none rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-violet-500/50 transition-colors disabled:opacity-40 max-h-24 overflow-y-auto"
         />
 
-        {/* Voice */}
+        {/* Voice — solo Gold; Classic ve toast */}
         <button onClick={toggleRecord} disabled={disabled}
           className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed",
-            recording ? "text-red-400 bg-red-400/20 animate-pulse" : "text-white/30 hover:text-white/60 hover:bg-white/10")}>
+            recording ? "text-red-400 bg-red-400/20 animate-pulse"
+              : hasGoldAccess ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-400/10"
+              : "text-white/30 hover:text-white/60 hover:bg-white/10")}>
           {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
 
@@ -824,11 +846,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   const pinnedMessages = allMessages.filter((m) => pinnedIds.includes(m.id));
 
-  // [C4] Límites correctos: Classic → 2 salas, Gold → 5 salas
-  const freeRoomLimit  = hasGoldAccess ? 5 : 2;
   const extraRoomPrice = hasGoldAccess ? 12 : 18;
-
-  const myRoomsOfType = rooms.filter((r) => r.createdBy === currentUserId && r.type === roomType).length;
 
   const noAccess = roomType === "gold" ? !hasGoldAccess : !hasClassicAccess;
 
@@ -980,12 +998,12 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   }, []);
 
-  // [C2] useEffect separado para fetchMessages, reactivo al selectedRoomId
+  // [C2] Re-fetch mensajes al cambiar sala O al reabrir el chat
   useEffect(() => {
-    if (!selectedRoomId) return;
+    if (!isOpen || !selectedRoomId) return;
     fetchMessages(selectedRoomId);
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selectedRoomId, fetchMessages]);
+  }, [isOpen, selectedRoomId, fetchMessages]);
 
   const switchRoom = useCallback((id: string) => {
     setSelectedRoomId(id);
@@ -1299,24 +1317,35 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   };
 
-  // [C4] handleCreateRoom con límites correctos: Classic → 2, Gold → 5
+  // [C4] handleCreateRoom con límites correctos:
+  //   Classic → máx 2 salas propias (excluyendo sala General del sistema)
+  //   Gold    → máx 5 salas propias; si supera, pago extra
   const handleCreateRoom = async (data: Omit<ChatRoom, "id">) => {
     try {
+      // Contar salas del usuario de este tipo (excluir sala General del sistema)
       const { count, error: countError } = await supabase.from("chat_rooms")
         .select("*", { count: "exact", head: true })
         .eq("created_by", currentUserId)
-        .eq("type", data.type);
+        .eq("type", data.type)
+        .neq("name", DEFAULT_ROOM_NAME);
       if (countError) { console.error("[GlobalChat] Error contando rooms:", countError.message); }
       const userCount = count ?? 0;
 
-      // [C4] Límite según tier: Gold → 5, Classic → 2
-      const limit = hasGoldAccess ? 5 : 2;
-
-      if (userCount < limit) {
-        await insertRoom(data);
+      if (hasGoldAccess) {
+        // Gold: hasta 5 salas; si supera → modal de pago extra
+        if (userCount < 5) {
+          await insertRoom(data);
+        } else {
+          setPendingRoomData(data);
+          setShowExtraRoomModal(true);
+        }
       } else {
-        setPendingRoomData(data);
-        setShowExtraRoomModal(true);
+        // Classic: hasta 2 salas; si supera → toast informativo
+        if (userCount < 2) {
+          await insertRoom(data);
+        } else {
+          showError("¡Hazte Gold para crear más salas! Con Gold puedes tener hasta 5 salas. ✨");
+        }
       }
       setShowCreateRoom(false);
     } catch (e: unknown) {
@@ -1334,16 +1363,24 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     let fileUrl: string | undefined, fileName: string | undefined, fileType: string | undefined, audioUrl: string | undefined;
 
     if (audioBlob) {
-      const path = `${currentUserId}/${Date.now()}-voice.webm`;
-      const { error: upErr } = await supabase.storage.from("chat-files").upload(path, audioBlob, { cacheControl: "3600" });
+      const ext = audioBlob.type.includes("ogg") ? "ogg" : "webm";
+      const sanitized = `voice-${Date.now()}.${ext}`;
+      const path = `${currentUserId}/${sanitized}`;
+      const { error: upErr } = await supabase.storage.from("chat-files").upload(path, audioBlob, {
+        cacheControl: "3600", contentType: audioBlob.type,
+      });
       if (upErr) { console.error("[GlobalChat] Error subiendo audio:", upErr.message); showError("Error al subir audio. Intenta de nuevo."); return; }
       const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
       audioUrl = urlData.publicUrl;
     }
 
     if (file) {
-      const path = `${currentUserId}/${Date.now()}-${file.name}`;
-      const { error: upErr } = await supabase.storage.from("chat-files").upload(path, file, { cacheControl: "3600" });
+      // Sanitizar nombre de archivo: quitar caracteres que causan problemas en Storage
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_{2,}/g, "_");
+      const path = `${currentUserId}/${Date.now()}-${safeName}`;
+      const { error: upErr } = await supabase.storage.from("chat-files").upload(path, file, {
+        cacheControl: "3600", contentType: file.type,
+      });
       if (upErr) { console.error("[GlobalChat] Error subiendo archivo:", upErr.message); showError("Error al subir archivo. Intenta de nuevo."); return; }
       const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
       fileUrl = urlData.publicUrl; fileName = file.name; fileType = file.type;
@@ -1650,6 +1687,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
               onSend={handleSend} onTyping={handleTyping} isGold={isGold}
               hasGoldAccess={hasGoldAccess}
               disabled={noAccess} replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
+              onShowToast={showError}
             />
 
             {/* ══ ERROR TOAST ══ */}
