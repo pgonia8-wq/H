@@ -642,7 +642,7 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
     e.target.value = "";
   };
 
-  // Solo Gold puede grabar audio
+  // Solo Gold puede grabar audio; Classic siempre ve toast (botón nunca disabled)
   const toggleRecord = async () => {
     if (!hasGoldAccess) {
       onShowToast("¡Hazte Gold para enviar audios! 🎙️");
@@ -653,9 +653,18 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
       setRecording(false);
       return;
     }
+    // Verificar soporte antes de pedir permiso
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      onShowToast("Tu navegador no soporta grabación de audio.");
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg";
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "audio/ogg";
       const recorder = new MediaRecorder(stream, { mimeType });
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -667,9 +676,15 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
       recorder.start();
       mediaRef.current = recorder;
       setRecording(true);
-    } catch (err) {
+    } catch (err: any) {
       console.warn("[ChatInput] No se pudo acceder al micrófono:", err);
-      onShowToast("No se pudo acceder al micrófono. Verifica los permisos.");
+      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+        onShowToast("Permiso de micrófono denegado. Ve a Ajustes del navegador para habilitarlo.");
+      } else if (err?.name === "NotFoundError") {
+        onShowToast("No se encontró micrófono en este dispositivo.");
+      } else {
+        onShowToast("No se pudo acceder al micrófono. Verifica los permisos.");
+      }
     }
   };
 
@@ -732,12 +747,12 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
           className="flex-1 resize-none rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-violet-500/50 transition-colors disabled:opacity-40 max-h-24 overflow-y-auto"
         />
 
-        {/* Voice — solo Gold; Classic ve toast */}
-        <button onClick={toggleRecord} disabled={disabled}
-          className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed",
+        {/* Voice — Gold graba; Classic siempre recibe toast (NO disabled aquí) */}
+        <button onClick={toggleRecord}
+          className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer",
             recording ? "text-red-400 bg-red-400/20 animate-pulse"
               : hasGoldAccess ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-400/10"
-              : "text-white/30 hover:text-white/60 hover:bg-white/10")}>
+              : "text-white/40 hover:text-white/70 hover:bg-white/10")}>
           {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
         </button>
 
@@ -902,44 +917,40 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     fetchProfile();
   }, [currentUserId, isOpen]);
 
-  // ── [C3] Asegurar sala General existe ──
-  const ensureDefaultRoom = useCallback(async (parsedRooms: ChatRoom[]) => {
-    const hasGeneral = parsedRooms.some(r => r.name === DEFAULT_ROOM_NAME && r.type === "classic");
-    if (!hasGeneral) {
+  // ── [C3] Asegurar sala General existe por cada tipo (Classic Y Gold son independientes) ──
+  const ensureDefaultRooms = useCallback(async (parsedRooms: ChatRoom[]) => {
+    let result = [...parsedRooms];
+    const roomTypesToEnsure: Array<{ type: RoomType; desc: string }> = [
+      { type: "classic", desc: "Sala general de bienvenida" },
+      { type: "gold",    desc: "Sala general Gold exclusiva" },
+    ];
+    for (const { type, desc } of roomTypesToEnsure) {
+      if (result.some(r => r.name === DEFAULT_ROOM_NAME && r.type === type)) continue;
       try {
-        const { data: inserted, error } = await supabase.from("chat_rooms")
-          .insert({
-            name: DEFAULT_ROOM_NAME,
-            type: "classic",
-            is_private: false,
-            description: "Sala general de bienvenida",
-            created_by: currentUserId,
-          })
+        const { data: inserted } = await supabase.from("chat_rooms")
+          .insert({ name: DEFAULT_ROOM_NAME, type, is_private: false, description: desc, created_by: currentUserId })
           .select("id, name, type, is_private, description, created_by")
           .maybeSingle();
-        if (error) {
-          console.error("[GlobalChat] Error creando sala General:", error.message);
-          return parsedRooms;
-        }
         if (inserted) {
-          const generalRoom: ChatRoom = {
-            id: String(inserted.id),
-            name: String(inserted.name),
-            type: "classic",
+          const newRoom: ChatRoom = {
+            id: String(inserted.id), name: String(inserted.name), type,
             isPrivate: false,
             description: inserted.description ? String(inserted.description) : undefined,
-            createdBy: inserted.created_by ? String(inserted.created_by) : undefined,
+            createdBy:   inserted.created_by  ? String(inserted.created_by)  : undefined,
           };
-          return [generalRoom, ...parsedRooms];
+          // Classic General va primero; Gold General al frente de las Gold
+          result = type === "classic" ? [newRoom, ...result] : [newRoom, ...result];
         }
       } catch (e) {
-        console.error("[GlobalChat] Error inesperado ensureDefaultRoom:", e);
+        console.error("[GlobalChat] Error inesperado ensureDefaultRooms:", type, e);
       }
     }
-    return parsedRooms;
+    return result;
   }, [currentUserId]);
 
   // ── Fetch rooms ──
+  // IMPORTANTE: selectedRoomId NO está en las deps para evitar el loop
+  // que causaba que cambiar de sala re-lanzara fetchRooms infinitamente.
   const fetchRooms = useCallback(async () => {
     try {
       const { data, error } = await supabase.from("chat_rooms")
@@ -955,21 +966,24 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
         createdBy:   r.created_by  ? String(r.created_by)  : undefined,
       }));
 
-      // [C3] Garantizar que exista sala General
-      parsed = await ensureDefaultRoom(parsed);
+      // [C3] Garantizar salas General independientes por tipo
+      parsed = await ensureDefaultRooms(parsed);
 
       setRooms(parsed);
 
-      // [C1] Seleccionar sala del tipo activo, no cualquier sala
-      if (parsed.length > 0 && !selectedRoomId) {
-        const defaultRoom = parsed.find(r => r.type === roomType) ?? parsed[0];
-        setSelectedRoomId(defaultRoom.id);
-      }
+      // [C1] Solo seleccionar sala si aún no hay ninguna seleccionada (update funcional
+      // para leer el valor más reciente sin añadir selectedRoomId a las deps)
+      setSelectedRoomId((currentId) => {
+        if (currentId) return currentId; // no pisar selección existente
+        // Buscar sala del tipo activo; NUNCA cruzar a otro tipo
+        const defaultRoom = parsed.find(r => r.type === roomType);
+        return defaultRoom?.id || "";
+      });
     } catch (e) {
       console.error("[GlobalChat] Error inesperado fetchRooms:", e);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRoomId, roomType, ensureDefaultRoom]);
+  }, [roomType, ensureDefaultRooms]);
 
   useEffect(() => {
     if (!isOpen || !currentUserId) return;
@@ -1161,14 +1175,16 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   }, []);
 
-  // [C1] Al cambiar de tipo de sala, seleccionar la primera sala del tipo correcto
+  // [C1] Al cambiar de tipo, resetear sala → fetchRooms (que depende de roomType)
+  // se re-ejecuta y selecciona la primera sala del nuevo tipo correctamente.
   const handleSwitchType = (type: RoomType) => {
     if (type === "gold" && !canUseGold) { setShowGoldModal(true); return; }
     if (type === "classic" && !hasClassicAccess) { return; }
+    // Resetear selectedRoomId ANTES de cambiar roomType para que fetchRooms,
+    // cuando se dispare por el cambio de roomType, encuentre currentId="" y pueda
+    // seleccionar la sala correcta del nuevo tipo.
+    setSelectedRoomId("");
     setRoomType(type);
-    // [C1] Seleccionar la primera sala del nuevo tipo, NO cualquier sala
-    const firstRoomOfType = rooms.find(r => r.type === type);
-    setSelectedRoomId(firstRoomOfType?.id || "");
     setSearchQuery(""); setShowSearch(false); setReplyTo(null); setEditingId(null);
   };
 
@@ -1571,39 +1587,41 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                 })}
               </div>
 
-              {/* Room selector */}
-              <div className="relative flex-1">
-                <button
-                  className="flex items-center gap-1 text-sm font-semibold text-white/80 hover:text-white transition-colors cursor-pointer truncate max-w-full"
-                  onClick={() => {}}>
-                  <span className="truncate">{selectedRoom?.name ?? "Selecciona sala"}</span>
-                  <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-white/40" />
-                </button>
-              </div>
-
-              {/* Room list dropdown — solo salas del tipo activo */}
-              <div className="flex items-center gap-1">
-                {filteredRooms.slice(0, 3).map((r) => (
+              {/* Room list — TODAS las salas del tipo activo, scroll horizontal */}
+              <div className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-none min-w-0">
+                {filteredRooms.map((r) => (
                   <button key={r.id} onClick={() => switchRoom(r.id)}
                     title={r.name}
-                    className={cx("px-2 py-0.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer",
+                    className={cx("flex-shrink-0 flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer whitespace-nowrap",
                       r.id === selectedRoomId
                         ? isGold ? "bg-yellow-400/20 text-yellow-300" : "bg-violet-400/20 text-violet-300"
                         : "text-white/30 hover:text-white/60 hover:bg-white/5")}>
-                    {r.isPrivate ? <Lock className="h-3 w-3 inline" /> : null} {r.name.slice(0, 8)}
+                    {r.isPrivate && <Lock className="h-2.5 w-2.5 flex-shrink-0" />}
+                    {r.name.slice(0, 10)}
                   </button>
                 ))}
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+              <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
                 <button onClick={() => setShowSearch(s => !s)}
                   className={cx("p-1.5 rounded-xl transition-colors cursor-pointer",
                     showSearch ? "text-violet-300 bg-violet-400/15" : "text-white/30 hover:text-white/60 hover:bg-white/8")}>
                   <Search className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => setShowCreateRoom(true)}
-                  className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer">
+                {/* Botón crear sala — visible para Classic Y Gold */}
+                <button
+                  onClick={() => {
+                    if (!hasClassicAccess && !hasGoldAccess) {
+                      showError("Necesitas una suscripción para crear salas.");
+                      return;
+                    }
+                    setShowCreateRoom(true);
+                  }}
+                  title="Crear sala"
+                  className={cx("p-1.5 rounded-xl transition-colors cursor-pointer",
+                    isGold ? "text-yellow-400/60 hover:text-yellow-300 hover:bg-yellow-400/10"
+                           : "text-white/30 hover:text-white/60 hover:bg-white/8")}>
                   <Plus className="h-3.5 w-3.5" />
                 </button>
                 <button onClick={() => {}}
