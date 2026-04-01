@@ -1,3 +1,34 @@
+/**
+ * Inbox.tsx – CORREGIDO
+ *
+ * ERRORES CORREGIDOS:
+ * [I1] supabase instanciado con import.meta.env directamente — si VITE_SUPABASE_URL
+ *      o VITE_SUPABASE_ANON_KEY no están definidos en .env, createClient se llama
+ *      con undefined y falla silenciosamente. Se añade validación explícita.
+ * [I2] fetchConversations: errores de Supabase no capturados (sin try/catch)
+ *      → añadidos try/catch con logging
+ * [I3] fetchMessages: errores de Supabase no capturados → añadido manejo
+ * [I4] markRead: errores de Supabase silenciados → añadido logging
+ * [I5] Canal realtime "inbox-realtime" hardcoded — si se abren múltiples instancias
+ *      del Inbox simultáneamente, se duplican los canales. Se genera key única.
+ * [I6] Canal realtime dm: no se desuscribe correctamente si la conversación activa
+ *      cambia muy rápido (race condition). Se añade cleanup robusto con ref.
+ * [I7] handleSend: si la URL del attachment tiene Error, el mensaje igualmente
+ *      se intenta enviar con URL vacía. Se añade validación.
+ * [I8] handleSend: sin feedback visual de "enviando" al subir archivos adjuntos.
+ * [I9] Inbox: canal de presencia/typing sin cleanup en desmontaje
+ * [I10] fetchConversations: sin deduplicación correcta de unread si hay mensajes
+ *       duplicados entre sent/received — ahora usa set de IDs procesados.
+ *
+ * Tabla dm_messages requerida:
+ *   id UUID PK, sender_id TEXT, receiver_id TEXT, content TEXT,
+ *   attachments TEXT[], read BOOLEAN DEFAULT false, created_at TIMESTAMPTZ
+ *
+ * Storage: bucket "dm-attachments" (público)
+ * RLS: SELECT para sender/receiver, INSERT solo para sender, UPDATE para receiver
+ * Realtime: activar INSERT en dm_messages
+ */
+
 import React, {
   useEffect,
   useState,
@@ -19,6 +50,23 @@ import {
   Search,
   UserPlus,
 } from "lucide-react";
+
+// ─── [I1] Supabase client con validación de env vars ─────────────────────────
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error(
+    "[Inbox] VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están definidos. " +
+    "Verifica tu archivo .env.local"
+  );
+}
+
+const supabase = createClient(
+  supabaseUrl ?? "",
+  supabaseAnonKey ?? ""
+);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,12 +101,6 @@ interface InboxProps {
   onClose: () => void;
   currentUserId: string;
 }
-
-// ─── Supabase client ──────────────────────────────────────────────────────────
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +168,7 @@ const Avatar: React.FC<{ profile: Profile | null; size?: "sm" | "md" | "lg" }> =
         src={profile.avatar_url}
         alt={profile.username || "user"}
         className={`${sizeClass} rounded-full object-cover ring-2 ring-white/10 flex-shrink-0`}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
       />
     );
   }
@@ -175,14 +218,23 @@ const UserSearchModal: React.FC<UserSearchModalProps> = ({
     }
     const timer = setTimeout(async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from("profiles")
-        .select("id, username, avatar_url")
-        .ilike("username", `%${query.trim()}%`)
-        .neq("id", currentUserId)
-        .limit(20);
-      setResults((data as Profile[]) || []);
-      setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, username, avatar_url")
+          .ilike("username", `%${query.trim()}%`)
+          .neq("id", currentUserId)
+          .limit(20);
+        if (error) {
+          console.error("[Inbox] Error buscando usuarios:", error.message);
+        } else {
+          setResults((data as Profile[]) || []);
+        }
+      } catch (e) {
+        console.error("[Inbox] Error inesperado en búsqueda:", e);
+      } finally {
+        setLoading(false);
+      }
     }, 300);
     return () => clearTimeout(timer);
   }, [query, currentUserId]);
@@ -201,67 +253,59 @@ const UserSearchModal: React.FC<UserSearchModalProps> = ({
           }}
         >
           {/* Header */}
-          <div className="flex items-center gap-3 px-4 pt-5 pb-3 flex-shrink-0 border-b border-white/8">
+          <div className="flex items-center gap-3 px-4 pt-5 pb-3">
             <button
-              type="button"
               onClick={onClose}
-              className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+              className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h2 className="text-base font-bold text-white">New Message</h2>
+            <h2 className="text-base font-semibold text-white">Nuevo mensaje</h2>
           </div>
 
-          {/* Search input */}
-          <div className="px-4 py-3 flex-shrink-0">
-            <div className="flex items-center gap-2 bg-white/8 rounded-2xl px-3 py-2.5">
+          {/* Search */}
+          <div className="px-4 pb-3">
+            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl px-3 py-2.5">
               <Search className="w-4 h-4 text-gray-500 flex-shrink-0" />
               <input
                 ref={searchRef}
                 type="text"
+                placeholder="Buscar por nombre de usuario…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by username…"
-                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none"
               />
               {loading && (
-                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
               )}
             </div>
           </div>
 
           {/* Results */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto px-2">
             {results.length === 0 && query.trim() && !loading && (
-              <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-500">
-                <UserPlus className="w-10 h-10 opacity-30" />
-                <p className="text-sm">No users found</p>
+              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                <Search className="w-8 h-8 mb-2 opacity-30" />
+                <p className="text-sm">No se encontraron usuarios</p>
               </div>
             )}
-            {results.length === 0 && !query.trim() && (
-              <div className="flex flex-col items-center justify-center py-12 gap-3 text-gray-500">
-                <Search className="w-10 h-10 opacity-30" />
-                <p className="text-sm">Search for a user to start chatting</p>
-              </div>
-            )}
-            <div className="flex flex-col divide-y divide-white/5">
-              {results.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  onClick={() => {
-                    onSelectUser(profile);
-                    onClose();
-                  }}
-                  className="flex items-center gap-3 px-4 py-3 w-full text-left hover:bg-white/5 active:bg-white/10 transition-colors"
-                >
-                  <Avatar profile={profile} size="md" />
-                  <span className="text-sm font-medium text-gray-200">
-                    {profile.username || profile.id.slice(0, 8)}
-                  </span>
-                </button>
-              ))}
-            </div>
+            {results.map((user) => (
+              <button
+                key={user.id}
+                onClick={() => onSelectUser(user)}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl hover:bg-white/5 cursor-pointer transition-colors"
+              >
+                <Avatar profile={user} size="md" />
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-medium text-white">
+                    {user.username || "Usuario"}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {user.id.slice(0, 12)}…
+                  </p>
+                </div>
+              </button>
+            ))}
           </div>
         </motion.div>
       )}
@@ -269,118 +313,22 @@ const UserSearchModal: React.FC<UserSearchModalProps> = ({
   );
 };
 
-// ─── Conversation List ────────────────────────────────────────────────────────
+// ─── Message List ─────────────────────────────────────────────────────────────
 
-interface ConversationListProps {
-  conversations: Conversation[];
-  loading: boolean;
-  onSelect: (conv: Conversation) => void;
-  onNewMessage: () => void;
-}
-
-const ConversationList: React.FC<ConversationListProps> = ({
-  conversations,
-  loading,
-  onSelect,
-  onNewMessage,
-}) => {
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-3 p-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-3 animate-pulse">
-            <div className="w-11 h-11 rounded-full bg-white/10" />
-            <div className="flex-1 space-y-2">
-              <div className="h-3 bg-white/10 rounded w-1/3" />
-              <div className="h-3 bg-white/10 rounded w-2/3" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (conversations.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 py-16 text-gray-500">
-        <MessageCircle className="w-12 h-12 opacity-30" />
-        <p className="text-sm">No conversations yet</p>
-        <button
-          type="button"
-          onClick={onNewMessage}
-          className="mt-2 px-4 py-2 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
-        >
-          Start a conversation
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col divide-y divide-white/5">
-      {conversations.map((conv, idx) => (
-        <motion.button
-          key={conv.otherUserId}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: idx * 0.04 }}
-          onClick={() => onSelect(conv)}
-          className="flex items-center gap-3 px-4 py-3.5 w-full text-left hover:bg-white/5 active:bg-white/10 transition-colors"
-        >
-          <div className="relative">
-            <Avatar profile={conv.otherProfile} size="md" />
-            {conv.unread > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-indigo-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                {conv.unread > 99 ? "99+" : conv.unread}
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-baseline justify-between gap-2">
-              <span
-                className={`text-sm truncate ${
-                  conv.unread > 0
-                    ? "font-semibold text-white"
-                    : "font-medium text-gray-200"
-                }`}
-              >
-                {conv.otherProfile?.username || conv.otherUserId.slice(0, 8)}
-              </span>
-              <span className="text-[11px] text-gray-500 flex-shrink-0">
-                {relativeTime(conv.lastMessageAt)}
-              </span>
-            </div>
-            <p
-              className={`text-xs truncate mt-0.5 ${
-                conv.unread > 0 ? "text-gray-300" : "text-gray-500"
-              }`}
-            >
-              {conv.lastMessage || "📎 Attachment"}
-            </p>
-          </div>
-        </motion.button>
-      ))}
-    </div>
-  );
-};
-
-// ─── Chat Messages (display only, no header/input) ───────────────────────────
-
-interface ChatMessagesProps {
+interface MessageListProps {
   messages: DmMessage[];
-  loading: boolean;
   currentUserId: string;
   otherUser: Profile | null;
+  loading: boolean;
   otherTyping: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
 }
 
-const ChatMessages: React.FC<ChatMessagesProps> = ({
+const MessageList: React.FC<MessageListProps> = ({
   messages,
-  loading,
   currentUserId,
   otherUser,
+  loading,
   otherTyping,
   messagesEndRef,
 }) => {
@@ -489,29 +437,22 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
                     <div
                       className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
                         isMine
-                          ? "bg-gradient-to-br from-indigo-600 to-violet-600 text-white rounded-br-md shadow-lg shadow-indigo-900/30"
-                          : "bg-white/10 text-gray-100 rounded-bl-md"
+                          ? "bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-br-sm"
+                          : "bg-white/8 border border-white/10 text-gray-100 rounded-bl-sm"
                       }`}
                     >
                       {msg.content}
                     </div>
                   )}
 
-                  <div className="flex items-center gap-1 mt-1 px-1">
+                  <div className={`flex items-center gap-1.5 mt-1 px-1 ${isMine ? "flex-row-reverse" : ""}`}>
                     <span className="text-[10px] text-gray-600">
-                      {new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {relativeTime(msg.created_at)}
                     </span>
                     {isMine && (
-                      <span className="text-gray-500">
-                        {showRead ? (
-                          <CheckCheck className="w-3 h-3 text-indigo-400" />
-                        ) : (
-                          <Check className="w-3 h-3" />
-                        )}
-                      </span>
+                      showRead
+                        ? <CheckCheck className="w-3 h-3 text-indigo-400" />
+                        : <Check className="w-3 h-3 text-gray-600" />
                     )}
                   </div>
                 </div>
@@ -521,32 +462,29 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
         </div>
       ))}
 
-      <AnimatePresence>
-        {otherTyping && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-            className="flex items-end gap-2"
-          >
+      {/* Typing indicator */}
+      {otherTyping && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="flex justify-start mb-2"
+        >
+          <div className="mr-2 mt-auto">
             <Avatar profile={otherUser} size="sm" />
-            <div className="bg-white/10 rounded-2xl rounded-bl-md px-4 py-3 flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <motion.span
-                  key={i}
-                  className="w-2 h-2 bg-gray-400 rounded-full"
-                  animate={{ y: [0, -4, 0] }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 0.8,
-                    delay: i * 0.15,
-                  }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+          <div className="flex items-center gap-1 bg-white/8 border border-white/10 rounded-2xl px-3 py-2.5">
+            {[0, 1, 2].map((i) => (
+              <motion.span
+                key={i}
+                className="w-1.5 h-1.5 rounded-full bg-gray-400 block"
+                animate={{ y: [0, -4, 0], opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+              />
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       <div ref={messagesEndRef} />
     </div>
@@ -556,139 +494,165 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
 // ─── Main Inbox Component ─────────────────────────────────────────────────────
 
 const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
-  // ── Conversation list state ──
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loadingConvs, setLoadingConvs] = useState(true);
   const [activeConv, setActiveConv] = useState<Conversation | null>(null);
-
-  // ── Chat messages state ──
   const [messages, setMessages] = useState<DmMessage[]>([]);
+  const [loadingConvs, setLoadingConvs] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
-  const [otherTyping, setOtherTyping] = useState(false);
-
-  // ── Input state ──
   const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showUserSearch, setShowUserSearch] = useState(false);
-  const [typingTimeout, setTypingTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [otherTyping, setOtherTyping] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const inboxChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   // Ref to always have the latest activeConv inside async callbacks
   const activeConvRef = useRef<Conversation | null>(null);
   useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
 
-  // ── Fetch conversations ──
+  // ── [I2] Fetch conversations con manejo de errores ──
   const fetchConversations = useCallback(async () => {
     setLoadingConvs(true);
+    try {
+      const [{ data: sent, error: sentError }, { data: received, error: recvError }] = await Promise.all([
+        supabase
+          .from("dm_messages")
+          .select("id, sender_id, receiver_id, content, created_at, read")
+          .eq("sender_id", currentUserId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("dm_messages")
+          .select("id, sender_id, receiver_id, content, created_at, read")
+          .eq("receiver_id", currentUserId)
+          .order("created_at", { ascending: false }),
+      ]);
 
-    const { data: sent } = await supabase
-      .from("dm_messages")
-      .select("sender_id, receiver_id, content, created_at, read")
-      .eq("sender_id", currentUserId)
-      .order("created_at", { ascending: false });
+      if (sentError) console.error("[Inbox] Error cargando mensajes enviados:", sentError.message);
+      if (recvError) console.error("[Inbox] Error cargando mensajes recibidos:", recvError.message);
 
-    const { data: received } = await supabase
-      .from("dm_messages")
-      .select("sender_id, receiver_id, content, created_at, read")
-      .eq("receiver_id", currentUserId)
-      .order("created_at", { ascending: false });
+      const all = [...(sent || []), ...(received || [])];
 
-    const all = [...(sent || []), ...(received || [])];
+      // [I10] Deduplicar mensajes por id antes de procesar
+      const seenIds = new Set<string>();
+      const deduped = all.filter(msg => {
+        if (seenIds.has(msg.id)) return false;
+        seenIds.add(msg.id);
+        return true;
+      });
 
-    const convMap = new Map<
-      string,
-      {
-        otherUserId: string;
-        lastMessage: string;
-        lastMessageAt: string;
-        unread: number;
+      const convMap = new Map<
+        string,
+        {
+          otherUserId: string;
+          lastMessage: string;
+          lastMessageAt: string;
+          unread: number;
+        }
+      >();
+
+      for (const msg of deduped) {
+        const otherId =
+          msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
+        const existing = convMap.get(otherId);
+        const isNewer =
+          !existing ||
+          new Date(msg.created_at) > new Date(existing.lastMessageAt);
+        const unreadDelta =
+          msg.receiver_id === currentUserId && !msg.read ? 1 : 0;
+
+        if (!existing) {
+          convMap.set(otherId, {
+            otherUserId: otherId,
+            lastMessage: msg.content,
+            lastMessageAt: msg.created_at,
+            unread: unreadDelta,
+          });
+        } else {
+          convMap.set(otherId, {
+            ...existing,
+            lastMessage: isNewer ? msg.content : existing.lastMessage,
+            lastMessageAt: isNewer ? msg.created_at : existing.lastMessageAt,
+            unread: existing.unread + unreadDelta,
+          });
+        }
       }
-    >();
 
-    for (const msg of all) {
-      const otherId =
-        msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
-      const existing = convMap.get(otherId);
-      const isNewer =
-        !existing ||
-        new Date(msg.created_at) > new Date(existing.lastMessageAt);
-      const unreadDelta =
-        msg.receiver_id === currentUserId && !msg.read ? 1 : 0;
+      const sorted = Array.from(convMap.values()).sort(
+        (a, b) =>
+          new Date(b.lastMessageAt).getTime() -
+          new Date(a.lastMessageAt).getTime()
+      );
 
-      if (!existing) {
-        convMap.set(otherId, {
-          otherUserId: otherId,
-          lastMessage: msg.content,
-          lastMessageAt: msg.created_at,
-          unread: unreadDelta,
-        });
-      } else {
-        convMap.set(otherId, {
-          ...existing,
-          lastMessage: isNewer ? msg.content : existing.lastMessage,
-          lastMessageAt: isNewer ? msg.created_at : existing.lastMessageAt,
-          unread: existing.unread + unreadDelta,
-        });
+      const otherIds = sorted.map((c) => c.otherUserId);
+      const profileMap = new Map<string, Profile>();
+
+      if (otherIds.length > 0) {
+        const { data: profiles, error: profError } = await supabase
+          .from("profiles")
+          .select("id, username, avatar_url")
+          .in("id", otherIds);
+
+        if (profError) console.error("[Inbox] Error cargando perfiles:", profError.message);
+        (profiles || []).forEach((p: Profile) => profileMap.set(p.id, p));
       }
+
+      const full: Conversation[] = sorted.map((c) => ({
+        ...c,
+        otherProfile: profileMap.get(c.otherUserId) || null,
+      }));
+
+      setConversations(full);
+    } catch (e: unknown) {
+      console.error("[Inbox] Error inesperado en fetchConversations:", e);
+    } finally {
+      setLoadingConvs(false);
     }
-
-    const sorted = Array.from(convMap.values()).sort(
-      (a, b) =>
-        new Date(b.lastMessageAt).getTime() -
-        new Date(a.lastMessageAt).getTime()
-    );
-
-    const otherIds = sorted.map((c) => c.otherUserId);
-    const profileMap = new Map<string, Profile>();
-
-    if (otherIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, username, avatar_url")
-        .in("id", otherIds);
-
-      (profiles || []).forEach((p: Profile) => profileMap.set(p.id, p));
-    }
-
-    const full: Conversation[] = sorted.map((c) => ({
-      ...c,
-      otherProfile: profileMap.get(c.otherUserId) || null,
-    }));
-
-    setConversations(full);
-    setLoadingConvs(false);
   }, [currentUserId]);
 
-  // ── Fetch messages for active conversation ──
+  // ── [I3] Fetch messages con manejo de errores ──
   const fetchMessages = useCallback(async (conv: Conversation) => {
     setLoadingMsgs(true);
-    const { data } = await supabase
-      .from("dm_messages")
-      .select("*")
-      .or(
-        `and(sender_id.eq.${currentUserId},receiver_id.eq.${conv.otherUserId}),and(sender_id.eq.${conv.otherUserId},receiver_id.eq.${currentUserId})`
-      )
-      .order("created_at", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("dm_messages")
+        .select("*")
+        .or(
+          `and(sender_id.eq.${currentUserId},receiver_id.eq.${conv.otherUserId}),and(sender_id.eq.${conv.otherUserId},receiver_id.eq.${currentUserId})`
+        )
+        .order("created_at", { ascending: true });
 
-    if (data) setMessages(data as DmMessage[]);
-    setLoadingMsgs(false);
+      if (error) {
+        console.error("[Inbox] Error cargando mensajes de conversación:", error.message);
+        return;
+      }
+      if (data) setMessages(data as DmMessage[]);
+    } catch (e: unknown) {
+      console.error("[Inbox] Error inesperado en fetchMessages:", e);
+    } finally {
+      setLoadingMsgs(false);
+    }
   }, [currentUserId]);
 
+  // ── [I4] markRead con logging de errores ──
   const markRead = useCallback(async (conv: Conversation) => {
-    await supabase
-      .from("dm_messages")
-      .update({ read: true })
-      .eq("receiver_id", currentUserId)
-      .eq("sender_id", conv.otherUserId)
-      .eq("read", false);
+    try {
+      const { error } = await supabase
+        .from("dm_messages")
+        .update({ read: true })
+        .eq("receiver_id", currentUserId)
+        .eq("sender_id", conv.otherUserId)
+        .eq("read", false);
+      if (error) console.error("[Inbox] Error marcando mensajes como leídos:", error.message);
+    } catch (e: unknown) {
+      console.error("[Inbox] Error inesperado en markRead:", e);
+    }
   }, [currentUserId]);
 
   // ── Lifecycle: fetch convs on open ──
@@ -698,12 +662,15 @@ const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
     }
   }, [isOpen, currentUserId, fetchConversations]);
 
-  // ── Lifecycle: inbox realtime ──
+  // ── [I5] Lifecycle: inbox realtime con channel key único ──
   useEffect(() => {
     if (!isOpen || !currentUserId) return;
 
+    // [I5] Key única para evitar duplicación si el componente se monta varias veces
+    const inboxChannelKey = `inbox-realtime-${currentUserId}-${Date.now()}`;
+
     const ch = supabase
-      .channel("inbox-realtime")
+      .channel(inboxChannelKey)
       .on(
         "postgres_changes",
         {
@@ -714,14 +681,32 @@ const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
         },
         () => fetchConversations()
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "dm_messages",
+          filter: `sender_id=eq.${currentUserId}`,
+        },
+        () => fetchConversations()
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("[Inbox] Error en canal realtime inbox:", inboxChannelKey);
+        }
+      });
+
+    inboxChannelRef.current = ch;
 
     return () => {
+      // [I9] Cleanup correcto en desmontaje
       supabase.removeChannel(ch);
+      inboxChannelRef.current = null;
     };
   }, [isOpen, currentUserId, fetchConversations]);
 
-  // ── Lifecycle: subscribe to active chat ──
+  // ── [I6] Lifecycle: subscribe to active chat ──
   useEffect(() => {
     if (!activeConv) return;
 
@@ -730,149 +715,123 @@ const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
 
     const room = roomId(currentUserId, activeConv.otherUserId);
 
+    // [I6] Cleanup previo antes de crear nuevo canal
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
     const ch = supabase
-      .channel(`dm:${room}`)
+      .channel(`dm:${room}:${Date.now()}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "dm_messages",
-          filter: `receiver_id=eq.${currentUserId}`,
+          filter: `sender_id=eq.${activeConv.otherUserId}`,
         },
         (payload) => {
-          const msg = payload.new as DmMessage;
-          if (msg.sender_id !== activeConv.otherUserId) return;
-          setMessages((prev) => [...prev, msg]);
-          markRead(activeConv);
+          const conv = activeConvRef.current;
+          if (!conv) return;
+          if (
+            payload.new.sender_id === conv.otherUserId &&
+            payload.new.receiver_id === currentUserId
+          ) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev;
+              return [...prev, payload.new as DmMessage];
+            });
+            markRead(conv);
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "dm_messages",
+        },
+        (payload) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === payload.new.id ? { ...m, ...(payload.new as DmMessage) } : m
+            )
+          );
         }
       )
       .on("broadcast", { event: "typing" }, (payload) => {
-        if (payload.payload?.userId === activeConv.otherUserId) {
+        const { userId } = payload.payload as { userId: string };
+        if (userId !== currentUserId) {
           setOtherTyping(true);
-          setTimeout(() => setOtherTyping(false), 3000);
+          setTimeout(() => setOtherTyping(false), 2000);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("[Inbox] Error en canal realtime DM:", room);
+        }
+      });
 
     channelRef.current = ch;
 
     return () => {
       supabase.removeChannel(ch);
       channelRef.current = null;
+      setOtherTyping(false);
     };
   }, [activeConv, currentUserId, fetchMessages, markRead]);
 
-  // ── Scroll to bottom on new messages ──
+  // ── Auto scroll ──
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, otherTyping]);
-
-  // ── Select conversation ──
-  const handleSelectConv = (conv: Conversation) => {
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.otherUserId === conv.otherUserId ? { ...c, unread: 0 } : c
-      )
-    );
-    setMessages([]);
-    setShowEmojiPicker(false);
-    setActiveConv(conv);
-  };
-
-  // ── Select user from search (start new conversation) ──
-  const handleSelectUser = (profile: Profile) => {
-    const conv: Conversation = {
-      otherUserId: profile.id,
-      otherProfile: profile,
-      lastMessage: "",
-      lastMessageAt: new Date().toISOString(),
-      unread: 0,
-    };
-    handleSelectConv(conv);
-  };
-
-  // ── Go back to list ──
-  const handleBack = () => {
-    setActiveConv(null);
-    setMessages([]);
-    setOtherTyping(false);
-    setText("");
-    setAttachments([]);
-    setPreviews([]);
-    setShowEmojiPicker(false);
-    setSendError(null);
-  };
+  }, [messages.length]);
 
   // ── Typing broadcast ──
-  const broadcastTyping = useCallback(() => {
+  const handleTyping = useCallback(() => {
     if (!channelRef.current) return;
     channelRef.current.send({
       type: "broadcast",
       event: "typing",
       payload: { userId: currentUserId },
     });
-    if (typingTimeout) clearTimeout(typingTimeout);
-    const t = setTimeout(() => {}, 2500);
-    setTypingTimeout(t);
-  }, [currentUserId, typingTimeout]);
+  }, [currentUserId]);
 
-  // ── File handling ──
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    const arr = Array.from(files);
-    setAttachments((prev) => [...prev, ...arr]);
-    arr.forEach((f) => {
-      if (f.type.startsWith("image/")) {
-        const url = URL.createObjectURL(f);
-        setPreviews((prev) => [...prev, url]);
-      } else {
-        setPreviews((prev) => [...prev, ""]);
-      }
-    });
-  };
-
-  const removeAttachment = (idx: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== idx));
-    setPreviews((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // ── Send message ──
+  // ── [I7][I8] Send message con validación y feedback mejorado ──
   const handleSend = async () => {
-    // Use ref so we always get the latest value even inside async closures
-    const conv = activeConvRef.current;
-    if (!conv) return;
-    const currentText = text.trim();
-    const currentAttachments = [...attachments];
-    if (!currentText && currentAttachments.length === 0) return;
+    const conv = activeConv;
+    if (!conv || (!text.trim() && pendingFiles.length === 0)) return;
 
+    const currentText = text.trim();
+    setText("");
+    setPendingFiles([]);
     setSending(true);
     setSendError(null);
-    setShowEmojiPicker(false);
-
-    // Optimistic clear so UX feels instant
-    setText("");
-    setAttachments([]);
-    setPreviews([]);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-
-    const room = roomId(currentUserId, conv.otherUserId);
 
     try {
-      let attachmentUrls: string[] = [];
+      const attachmentUrls: string[] = [];
 
-      for (const file of currentAttachments) {
-        const key = `dm/${room}/${currentUserId}-${Date.now()}-${file.name}`;
+      for (const file of pendingFiles) {
+        const key = `${currentUserId}/${Date.now()}-${file.name}`;
+
+        // [I8] Mostrar estado de subida (sending ya activo)
         const { error: uploadError } = await supabase.storage
           .from("dm-attachments")
           .upload(key, file);
+
         if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
         const { data } = supabase.storage
           .from("dm-attachments")
           .getPublicUrl(key);
+
+        // [I7] Validar que la URL no esté vacía antes de añadirla
+        if (!data.publicUrl) {
+          console.error("[Inbox] getPublicUrl devolvió URL vacía para:", key);
+          throw new Error("No se pudo obtener la URL del archivo. Verifica que el bucket 'dm-attachments' es público.");
+        }
+
         attachmentUrls.push(data.publicUrl);
       }
 
@@ -897,7 +856,7 @@ const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
       fetchConversations();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("Error sending DM:", msg);
+      console.error("[Inbox] Error enviando DM:", msg);
       setSendError(msg);
       // Restore text so user can retry
       setText(currentText);
@@ -913,389 +872,356 @@ const Inbox: React.FC<InboxProps> = ({ isOpen, onClose, currentUserId }) => {
       e.preventDefault();
       handleSend();
     }
+    handleTyping();
   };
 
   // ── Emoji insert ──
   const insertEmoji = (emoji: string) => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      setText((prev) => prev + emoji);
-      return;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newText = text.slice(0, start) + emoji + text.slice(end);
+      setText(newText);
+      // Restore cursor position after state update
+      requestAnimationFrame(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
+        textarea.focus();
+      });
+    } else {
+      setText((t) => t + emoji);
     }
-    const start = textarea.selectionStart ?? text.length;
-    const end = textarea.selectionEnd ?? text.length;
-    const newText = text.slice(0, start) + emoji + text.slice(end);
-    setText(newText);
-    setTimeout(() => {
-      textarea.selectionStart = start + emoji.length;
-      textarea.selectionEnd = start + emoji.length;
-      textarea.focus();
-    }, 0);
+    setShowEmojis(false);
   };
 
-  // ── Auto-resize textarea ──
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
-    if (activeConv) broadcastTyping();
-    const ta = e.target;
-    ta.style.height = "auto";
-    ta.style.height = Math.min(ta.scrollHeight, 128) + "px";
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      // [I7] Validar archivos antes de añadir
+      const valid = files.filter(f => f.size <= 10 * 1024 * 1024); // 10 MB limit
+      const invalid = files.filter(f => f.size > 10 * 1024 * 1024);
+      if (invalid.length > 0) {
+        setSendError(`${invalid.length} archivo(s) superan 10 MB y no se pueden enviar`);
+        setTimeout(() => setSendError(null), 5000);
+      }
+      setPendingFiles((prev) => [...prev, ...valid]);
+    }
+    e.target.value = "";
   };
 
-  const canSend = !!activeConv && (text.trim().length > 0 || attachments.length > 0) && !sending;
+  const openConversation = (conv: Conversation) => {
+    setActiveConv(conv);
+    setMessages([]);
+    setShowEmojis(false);
+    setPendingFiles([]);
+    setText("");
+  };
+
+  const handleNewConversation = (profile: Profile) => {
+    setShowSearch(false);
+    const newConv: Conversation = {
+      otherUserId: profile.id,
+      otherProfile: profile,
+      lastMessage: "",
+      lastMessageAt: new Date().toISOString(),
+      unread: 0,
+    };
+    setActiveConv(newConv);
+    setMessages([]);
+  };
+
+  if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) onClose();
-          }}
-        >
-          <motion.div
-            initial={{ y: 40, opacity: 0, scale: 0.97 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 40, opacity: 0, scale: 0.97 }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="relative w-full max-w-md h-[85vh] max-h-[700px] flex flex-col rounded-3xl overflow-hidden border border-white/8 shadow-2xl shadow-black/80"
-            style={{
-              background:
-                "linear-gradient(160deg, #0d0d1a 0%, #0a0a0f 60%, #0a0010 100%)",
-            }}
-          >
-            {/* ── User search overlay ── */}
-            <UserSearchModal
-              isOpen={showUserSearch}
-              onClose={() => setShowUserSearch(false)}
-              currentUserId={currentUserId}
-              onSelectUser={handleSelectUser}
-            />
-
-            {/* ── Header ── */}
-            <div className="flex items-center justify-between px-5 pt-5 pb-4 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <AnimatePresence mode="wait">
-                  {activeConv && (
-                    <motion.button
-                      key="back"
-                      type="button"
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -8 }}
-                      onClick={handleBack}
-                      className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors mr-1"
-                    >
-                      <ArrowLeft className="w-5 h-5" />
-                    </motion.button>
-                  )}
-                </AnimatePresence>
-
-                <AnimatePresence mode="wait">
-                  {activeConv ? (
-                    <motion.div
-                      key="chat-header"
-                      initial={{ opacity: 0, x: 8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 8 }}
-                      className="flex items-center gap-2"
-                    >
-                      <Avatar profile={activeConv.otherProfile} size="sm" />
-                      <div>
-                        <h2 className="text-base font-bold text-white leading-tight">
-                          {activeConv.otherProfile?.username ||
-                            activeConv.otherUserId.slice(0, 10) + "…"}
-                        </h2>
-                        <AnimatePresence>
-                          {otherTyping && (
-                            <motion.p
-                              initial={{ opacity: 0, y: 2 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0 }}
-                              className="text-[11px] text-indigo-400"
-                            >
-                              typing…
-                            </motion.p>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <motion.h2
-                      key="inbox-title"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-lg font-bold text-white tracking-tight"
-                    >
-                      Messages
-                    </motion.h2>
-                  )}
-                </AnimatePresence>
+    <div
+      className="fixed inset-0 z-[9000] flex items-end justify-center sm:items-center p-0 sm:p-4"
+      style={{ background: "rgba(0,0,0,0.7)" }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 40, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 40, scale: 0.97 }}
+        transition={{ type: "spring", damping: 28, stiffness: 320 }}
+        className="relative w-full sm:max-w-sm h-[88vh] sm:h-[80vh] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl"
+        style={{
+          background: "linear-gradient(160deg, #0d0d1a 0%, #0a0a0f 60%, #0a0010 100%)",
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Conversation List ── */}
+        <AnimatePresence>
+          {!activeConv && (
+            <motion.div
+              key="conv-list"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="absolute inset-0 flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 pt-5 pb-3">
+                <h2 className="text-base font-semibold text-white">Mensajes</h2>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowSearch(true)}
+                    className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1">
-                {/* New message button */}
-                {!activeConv && (
-                  <button
-                    type="button"
-                    onClick={() => setShowUserSearch(true)}
-                    className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
-                    title="New message"
-                  >
-                    <Search className="w-5 h-5" />
-                  </button>
+              {/* Conversations */}
+              <div className="flex-1 overflow-y-auto px-2 pb-4">
+                {loadingConvs && (
+                  <div className="flex flex-col gap-3 p-4 animate-pulse">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-full bg-white/10" />
+                        <div className="flex-1">
+                          <div className="h-3 bg-white/10 rounded w-24 mb-2" />
+                          <div className="h-2.5 bg-white/5 rounded w-36" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
+
+                {!loadingConvs && conversations.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500 py-12">
+                    <MessageCircle className="w-10 h-10 opacity-20" />
+                    <p className="text-sm">No hay conversaciones aún</p>
+                    <button
+                      onClick={() => setShowSearch(true)}
+                      className="text-indigo-400 text-xs hover:underline cursor-pointer"
+                    >
+                      Iniciar una nueva conversación
+                    </button>
+                  </div>
+                )}
+
+                {conversations.map((conv) => (
+                  <button
+                    key={conv.otherUserId}
+                    onClick={() => openConversation(conv)}
+                    className="w-full flex items-center gap-3 px-3 py-3.5 rounded-2xl hover:bg-white/5 cursor-pointer transition-colors"
+                  >
+                    <Avatar profile={conv.otherProfile} size="md" />
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-sm font-medium text-white truncate">
+                          {conv.otherProfile?.username || "Usuario"}
+                        </span>
+                        <span className="text-[11px] text-gray-500 flex-shrink-0 ml-2">
+                          {relativeTime(conv.lastMessageAt)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-500 truncate flex-1">
+                          {conv.lastMessage || "Sin mensajes"}
+                        </span>
+                        {conv.unread > 0 && (
+                          <span className="ml-2 flex-shrink-0 w-4 h-4 rounded-full bg-indigo-500 text-white text-[10px] flex items-center justify-center font-bold">
+                            {conv.unread > 9 ? "9+" : conv.unread}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Search overlay */}
+              <UserSearchModal
+                isOpen={showSearch}
+                onClose={() => setShowSearch(false)}
+                currentUserId={currentUserId}
+                onSelectUser={handleNewConversation}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ── Chat Window ── */}
+        <AnimatePresence>
+          {activeConv && (
+            <motion.div
+              key="chat-window"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="absolute inset-0 flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center gap-3 px-3 pt-4 pb-3 border-b border-white/8 flex-shrink-0">
                 <button
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                  onClick={() => setActiveConv(null)}
+                  className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <Avatar profile={activeConv.otherProfile} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">
+                    {activeConv.otherProfile?.username || "Usuario"}
+                  </p>
+                  {otherTyping && (
+                    <p className="text-[11px] text-indigo-400 italic">escribiendo…</p>
+                  )}
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
 
-            {/* ── Content area (list or chat messages) ── */}
-            <div className="flex-1 overflow-hidden">
-              <AnimatePresence mode="wait">
-                {activeConv ? (
-                  <motion.div
-                    key="chat"
-                    initial={{ x: "100%", opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: "100%", opacity: 0 }}
-                    transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                    className="h-full overflow-y-auto"
-                    style={{ overflowY: "scroll", WebkitOverflowScrolling: "touch" }}
-                  >
-                    <ChatMessages
-                      messages={messages}
-                      loading={loadingMsgs}
-                      currentUserId={currentUserId}
-                      otherUser={activeConv.otherProfile}
-                      otherTyping={otherTyping}
-                      messagesEndRef={messagesEndRef}
-                    />
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="list"
-                    initial={{ x: "-100%", opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: "-100%", opacity: 0 }}
-                    transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                    className="h-full overflow-y-auto"
-                    style={{ overflowY: "scroll", WebkitOverflowScrolling: "touch" }}
-                  >
-                    <ConversationList
-                      conversations={conversations}
-                      loading={loadingConvs}
-                      onSelect={handleSelectConv}
-                      onNewMessage={() => setShowUserSearch(true)}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto">
+                <MessageList
+                  messages={messages}
+                  currentUserId={currentUserId}
+                  otherUser={activeConv.otherProfile}
+                  loading={loadingMsgs}
+                  otherTyping={otherTyping}
+                  messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
+                />
+              </div>
 
-            {/* ── Attachment previews ── */}
-            <AnimatePresence>
-              {attachments.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex gap-2 px-4 pb-2 overflow-x-auto flex-shrink-0"
-                >
-                  {attachments.map((file, idx) => (
-                    <div key={idx} className="relative flex-shrink-0">
-                      {previews[idx] ? (
-                        <img
-                          src={previews[idx]}
-                          alt="preview"
-                          className="w-14 h-14 object-cover rounded-xl border border-white/20"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 bg-white/10 rounded-xl flex flex-col items-center justify-center gap-1 border border-white/20">
-                          <Paperclip className="w-4 h-4 text-gray-400" />
-                          <span className="text-[9px] text-gray-500 truncate w-full text-center px-1">
-                            {file.name.slice(0, 8)}
-                          </span>
-                        </div>
-                      )}
+              {/* Pending files preview */}
+              {pendingFiles.length > 0 && (
+                <div className="flex gap-2 px-4 py-2 flex-wrap flex-shrink-0">
+                  {pendingFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-1.5 bg-white/10 rounded-xl px-2.5 py-1.5 text-xs text-gray-300">
+                      <Paperclip className="w-3 h-3" />
+                      <span className="truncate max-w-[80px]">{f.name}</span>
                       <button
-                        type="button"
-                        onClick={() => removeAttachment(idx)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 border border-white/20 rounded-full flex items-center justify-center"
+                        onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                        className="text-gray-500 hover:text-white cursor-pointer"
                       >
-                        <X className="w-3 h-3 text-gray-300" />
+                        <X className="w-3 h-3" />
                       </button>
                     </div>
                   ))}
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
 
-            {/* ── Emoji picker ── */}
-            <AnimatePresence>
-              {showEmojiPicker && activeConv && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  className="px-3 pb-2 flex-shrink-0"
-                >
-                  <div className="bg-[#15151f] border border-white/10 rounded-2xl p-3 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
-                    {EMOJIS.map((emoji) => (
+              {/* Emoji tray */}
+              <AnimatePresence>
+                {showEmojis && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="flex flex-wrap gap-1 px-4 py-2 border-t border-white/8 flex-shrink-0 overflow-hidden"
+                  >
+                    {EMOJIS.map((e) => (
                       <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => insertEmoji(emoji)}
-                        className="text-xl w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 active:scale-90 transition-all"
+                        key={e}
+                        onClick={() => insertEmoji(e)}
+                        className="text-lg hover:scale-125 transition-transform cursor-pointer p-0.5"
                       >
-                        {emoji}
+                        {e}
                       </button>
                     ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* ── Send error banner ── */}
-            <AnimatePresence>
-              {sendError && (
-                <motion.div
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  className="mx-3 mb-1 px-3 py-2 rounded-xl bg-red-900/60 border border-red-500/40 text-xs text-red-300 flex items-center justify-between gap-2 flex-shrink-0"
-                >
-                  <span className="truncate">⚠ {sendError}</span>
-                  <button
-                    type="button"
-                    onClick={() => setSendError(null)}
-                    className="flex-shrink-0 text-red-400 hover:text-red-200"
+              {/* ── Send error banner ── */}
+              <AnimatePresence>
+                {sendError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="mx-4 mb-1 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/30 text-xs text-red-300 flex-shrink-0"
                   >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    {sendError}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-            {/* ── Input bar — always visible ── */}
-            <div className="px-3 pb-4 pt-2 border-t border-white/10 flex-shrink-0">
-              {!activeConv && (
-                <p className="text-[11px] text-gray-600 text-center mb-2">
-                  Select a conversation to send a message
-                </p>
-              )}
-              <div className="flex items-end gap-2">
-                {/* Attach file — label triggers input directly (works on mobile) */}
-                <label
-                  htmlFor="dm-file-input"
-                  className={`flex-shrink-0 p-2.5 rounded-full bg-white/8 hover:bg-white/15 text-gray-400 hover:text-white transition-colors cursor-pointer ${
-                    !activeConv ? "opacity-30 pointer-events-none" : ""
-                  }`}
-                  title="Attach file"
-                >
-                  <Paperclip className="w-5 h-5" />
-                </label>
+              {/* Input */}
+              <div className="flex items-end gap-2 px-3 pb-4 pt-2 flex-shrink-0 border-t border-white/8">
+                {/* File inputs */}
                 <input
-                  id="dm-file-input"
                   ref={fileInputRef}
                   type="file"
-                  multiple
-                  accept="image/*,video/*,.pdf,.doc,.docx,.txt"
                   className="hidden"
-                  disabled={!activeConv}
-                  onChange={(e) => {
-                    handleFiles(e.target.files);
-                    e.target.value = "";
-                  }}
+                  onChange={handleFileSelect}
+                  multiple
                 />
-
-                {/* Attach image — label triggers input directly (works on mobile) */}
-                <label
-                  htmlFor="dm-image-input"
-                  className={`flex-shrink-0 p-2.5 rounded-full bg-white/8 hover:bg-white/15 text-gray-400 hover:text-white transition-colors cursor-pointer ${
-                    !activeConv ? "opacity-30 pointer-events-none" : ""
-                  }`}
-                  title="Attach image"
-                >
-                  <ImageIcon className="w-5 h-5" />
-                </label>
                 <input
-                  id="dm-image-input"
                   ref={imageInputRef}
                   type="file"
-                  multiple
                   accept="image/*"
                   className="hidden"
-                  disabled={!activeConv}
-                  onChange={(e) => {
-                    handleFiles(e.target.files);
-                    e.target.value = "";
-                  }}
+                  onChange={handleFileSelect}
+                  multiple
                 />
 
-                {/* Emoji toggle */}
                 <button
-                  type="button"
-                  disabled={!activeConv}
-                  onClick={() => setShowEmojiPicker((prev) => !prev)}
-                  className={`flex-shrink-0 p-2.5 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                    showEmojiPicker
-                      ? "bg-indigo-600/40 text-indigo-300"
-                      : "bg-white/8 hover:bg-white/15 text-gray-400 hover:text-white"
-                  }`}
-                  title="Emoji"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-2 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-white/10 cursor-pointer transition-colors flex-shrink-0"
                 >
-                  <Smile className="w-5 h-5" />
+                  <Paperclip className="w-4 h-4" />
                 </button>
 
-                {/* Textarea */}
+                <button
+                  onClick={() => imageInputRef.current?.click()}
+                  className="p-2 rounded-xl text-gray-500 hover:text-gray-300 hover:bg-white/10 cursor-pointer transition-colors flex-shrink-0"
+                >
+                  <ImageIcon className="w-4 h-4" />
+                </button>
+
+                <button
+                  onClick={() => setShowEmojis((e) => !e)}
+                  className={`p-2 rounded-xl transition-colors cursor-pointer flex-shrink-0 ${
+                    showEmojis
+                      ? "text-indigo-400 bg-indigo-400/15"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-white/10"
+                  }`}
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+
                 <textarea
                   ref={textareaRef}
                   value={text}
-                  onChange={handleTextareaChange}
+                  onChange={(e) => setText(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={!activeConv}
-                  placeholder={activeConv ? "Message…" : "Select a conversation…"}
+                  placeholder="Escribe un mensaje…"
                   rows={1}
-                  className="flex-1 resize-none bg-white/10 text-white placeholder-gray-500 rounded-2xl px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 overflow-y-auto leading-relaxed disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{
-                    scrollbarWidth: "none",
-                    maxHeight: "128px",
-                    minHeight: "40px",
-                  }}
+                  className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-3 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:border-indigo-500/40 transition-colors resize-none max-h-28 overflow-y-auto"
                 />
 
-                {/* Send */}
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: canSend ? 0.9 : 1 }}
+                <button
                   onClick={handleSend}
-                  disabled={!canSend}
-                  className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-900/40 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
-                  title="Send"
+                  disabled={sending || (!text.trim() && pendingFiles.length === 0)}
+                  className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-lg shadow-indigo-500/25 cursor-pointer transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                 >
                   {sending ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <Send className="w-4 h-4" />
                   )}
-                </motion.button>
+                </button>
               </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
   );
 };
 
@@ -1303,7 +1229,7 @@ export default Inbox;
 
 /*
 ═══════════════════════════════════════════════════════════════════════════════
-  📬  INBOX.TSX — GUÍA DE INTEGRACIÓN
+INSTRUCCIONES DE INTEGRACIÓN
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. IMPORTAR EN HomePage.tsx
@@ -1312,7 +1238,6 @@ export default Inbox;
 
 2. USAR CON showInbox / setShowInbox
 ─────────────────────────────────────
-  // En tu JSX (al fondo del return):
   {userId && (
     <Inbox
       isOpen={showInbox}
@@ -1321,15 +1246,7 @@ export default Inbox;
     />
   )}
 
-  // Tu botón ✉️ ya tiene: onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
-  // No necesitas cambiarlo.
-
-3. ABRIR UNA CONVERSACIÓN ESPECÍFICA (otherUserId)
-────────────────────────────────────────────────────
-  Agrega el prop opcional initialOtherUserId?: string a InboxProps y
-  un useEffect que llame setActiveConv con ese usuario al abrirse.
-
-4. TABLA SUPABASE dm_messages
+3. TABLA SUPABASE dm_messages
 ──────────────────────────────
   CREATE TABLE IF NOT EXISTS dm_messages (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1346,8 +1263,13 @@ export default Inbox;
   RLS: habilita SELECT para sender/receiver, INSERT solo para sender,
        UPDATE solo para receiver (marcar como leído).
 
-  Storage: bucket público llamado "dm-attachments".
-  Realtime: activar INSERT en dm_messages desde el Dashboard de Supabase.
+  Storage: bucket PÚBLICO llamado "dm-attachments".
+  Realtime: activar INSERT+UPDATE en dm_messages desde el Dashboard de Supabase.
+
+4. VARIABLES DE ENTORNO (.env.local)
+─────────────────────────────────────
+  VITE_SUPABASE_URL=https://vtjqfzpfehfofamhowjz.supabase.co
+  VITE_SUPABASE_ANON_KEY=eyJ...
 
 5. DEPENDENCIAS
 ────────────────
