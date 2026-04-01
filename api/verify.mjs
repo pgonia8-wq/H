@@ -8,6 +8,15 @@ const supabase = createClient(
 export default async function handler(req, res) {
   console.log("[BACKEND] Verificando World ID...");
 
+  // CORS: requerido para World App (WebView abre desde worldcoin.org)
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     console.log("[BACKEND] Método no permitido:", req.method);
     return res.status(405).json({ success: false, error: "Method not allowed" });
@@ -16,7 +25,13 @@ export default async function handler(req, res) {
   const body = req.body || {};
   const { payload } = body;
 
-  if (!payload || !payload.nullifier_hash || !payload.proof || !payload.merkle_root || !payload.verification_level) {
+  if (
+    !payload ||
+    !payload.nullifier_hash ||
+    !payload.proof ||
+    !payload.merkle_root ||
+    !payload.verification_level
+  ) {
     console.error("[BACKEND] Faltan campos en proof:", body);
     return res.status(400).json({ success: false, error: "Faltan campos en proof" });
   }
@@ -24,7 +39,6 @@ export default async function handler(req, res) {
   const nullifierHash = payload.nullifier_hash;
   console.log("[BACKEND] nullifier_hash recibido:", nullifierHash);
 
-  // Verificar en Worldcoin API (agregamos action requerido)
   let verifyData;
   try {
     const verifyResponse = await fetch(
@@ -33,7 +47,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "verify-user",  // ← CAMBIO CLAVE: campo requerido agregado
+          action: "verify-user",
           merkle_root: payload.merkle_root,
           proof: payload.proof,
           nullifier_hash: nullifierHash,
@@ -47,14 +61,16 @@ export default async function handler(req, res) {
 
     if (!verifyResponse.ok || !verifyData.success) {
       console.error("[BACKEND] Worldcoin rechazó:", verifyData);
-      return res.status(verifyResponse.status || 400).json({ success: false, error: verifyData.detail || "Verificación fallida en Worldcoin" });
+      return res.status(verifyResponse.status || 400).json({
+        success: false,
+        error: verifyData.detail || "Verificación fallida en Worldcoin",
+      });
     }
   } catch (err) {
     console.error("[BACKEND] Error al verificar con Worldcoin:", err);
     return res.status(500).json({ success: false, error: "Error al contactar Worldcoin" });
   }
 
-  // Guardar/actualizar en profiles (upsert)
   try {
     const { error: upsertError } = await supabase
       .from("profiles")
@@ -65,7 +81,7 @@ export default async function handler(req, res) {
           verified: true,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'id' }
+        { onConflict: "id" }
       );
 
     if (upsertError) {
@@ -80,4 +96,4 @@ export default async function handler(req, res) {
   }
 
   return res.status(200).json({ success: true, nullifier_hash: nullifierHash });
-                                 }
+}
