@@ -85,8 +85,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const { theme, username: globalUsername } = useContext(ThemeContext);
 
-  // CORRECCIÓN: isOwnProfile solo es true cuando el perfil visto es el del usuario actual
-  const isOwnProfile = !!currentUserId && id === currentUserId;
+  // isOwnProfile: true cuando id es null (propio perfil sin id explícito)
+  // o cuando id coincide con currentUserId
+  const isOwnProfile = !!currentUserId && (!id || id === currentUserId);
 
   const [showDashboard, setShowDashboard] = useState(false);
 
