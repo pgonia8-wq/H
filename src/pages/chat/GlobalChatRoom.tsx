@@ -1215,8 +1215,18 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
         description: "Suscripción Gold Chat",
       });
       if (payRes?.finalPayload?.status === "success") {
-        const { error: dbErr } = await supabase.from("subscriptions").upsert({ user_id: currentUserId, product: "chat_gold" });
-        if (dbErr) { console.error("[GlobalChat] Error guardando suscripción:", dbErr.message); return; }
+        const transactionId = payRes.finalPayload.transaction_id;
+        // Error #3 corregido: verificar pago en el backend antes de dar acceso Gold
+        const verifyRes = await fetch("/api/verifyPayment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionId, userId: currentUserId, action: "chat_gold" }),
+        });
+        if (!verifyRes.ok) {
+          const errData = await verifyRes.json().catch(() => ({}));
+          console.error("[GlobalChat] Backend rechazó suscripción Gold:", errData);
+          return;
+        }
         setHasGoldAccess(true); setHasClassicAccess(true);
         setShowGoldModal(false); setRoomType("gold");
         setSelectedRoomId("");
@@ -1237,6 +1247,18 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
       });
       if (payRes?.finalPayload?.status !== "success") {
         console.error("Pago de sala adicional fallido:", payRes);
+        return;
+      }
+      const transactionId = payRes.finalPayload.transaction_id;
+      // Error #3 corregido: verificar pago en el backend antes de crear la sala
+      const verifyRes = await fetch("/api/verifyPayment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId, userId: currentUserId, action: "extra_room" }),
+      });
+      if (!verifyRes.ok) {
+        const errData = await verifyRes.json().catch(() => ({}));
+        console.error("[GlobalChat] Backend rechazó pago sala extra:", errData);
         return;
       }
       await insertRoom(pendingRoomData);
