@@ -13,6 +13,11 @@
  *      - Usuarios Classic (hasClassicAccess && !hasGoldAccess) → máximo 2 salas
  *      - Usuarios Gold (hasGoldAccess) → máximo 5 salas
  *      Corregido handleCreateRoom para aplicar límites correctamente por tipo.
+ * [C5] Avatar en mensajes: al recibir eventos realtime (INSERT) el payload no incluye
+ *      el join con profiles. Se inyecta username y avatarUrl del propio usuario desde
+ *      myProfile para mensajes propios.
+ * [C6] Classic solo puede crear salas de tipo "classic"; Gold solo "gold". CreateRoomModal
+ *      fuerza el tipo según el tier del usuario y handleCreateRoom valida el tipo.
  * [F1] MiniKit.isInstalled() verificado antes de CADA llamada a commandsAsync.pay()
  * [F2] reference de pago generado con crypto.randomUUID() (formato UUID v4)
  * [F3] Feedback de error mostrado al usuario en los pagos
@@ -300,6 +305,7 @@ function MessageBubble({
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); setShowEmojis(false); }}
     >
+      {/* [C5] Avatar siempre visible con src del mensaje */}
       <Avatar src={message.avatarUrl} name={message.username} size="sm" ring gold={isGold} />
 
       <div className={cx("flex flex-col gap-1 max-w-[75%]", isOwn ? "items-end" : "items-start")}>
@@ -537,14 +543,18 @@ function ExtraRoomPayModal({ onClose, onPay, loading, amount, isGoldPrice }: {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATE ROOM MODAL
+// [C6] Classic solo puede crear salas "classic"; Gold solo "gold".
+//      El tipo se fuerza desde afuera y no se muestra el selector al otro tier.
 // ─────────────────────────────────────────────────────────────────────────────
-function CreateRoomModal({ onClose, onCreate, canCreateGold }: {
+function CreateRoomModal({ onClose, onCreate, canCreateGold, forcedType }: {
   onClose: () => void;
   onCreate: (data: Omit<ChatRoom, "id">) => void;
   canCreateGold: boolean;
+  forcedType: RoomType;
 }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<RoomType>("classic");
+  // [C6] El tipo queda fijo: Classic → "classic", Gold → "gold"
+  const type: RoomType = forcedType;
   const [isPrivate, setIsPrivate] = useState(false);
   const [description, setDescription] = useState("");
 
@@ -556,22 +566,17 @@ function CreateRoomModal({ onClose, onCreate, canCreateGold }: {
         <CloseBtn onClick={onClose} />
         <h2 className="text-base font-bold text-white mb-4">Crear sala</h2>
 
+        {/* [C6] Mostrar el tipo de sala sin permitir cambiarlo */}
         <div className="flex gap-2 mb-4">
-          {(["classic", "gold"] as RoomType[]).map((t) => {
-            const isG = t === "gold"; const active = type === t;
-            return (
-              <button key={t} onClick={() => { if (!isG || canCreateGold) setType(t); }}
-                disabled={isG && !canCreateGold}
-                className={cx("flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-semibold border cursor-pointer transition-all",
-                  active
-                    ? isG ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-300" : "bg-violet-400/20 border-violet-400/40 text-violet-300"
-                    : "border-white/10 text-white/40 hover:border-white/20 hover:text-white/60",
-                  isG && !canCreateGold && "opacity-30 cursor-not-allowed")}>
-                {isG ? <Crown className="h-3.5 w-3.5" /> : <Hash className="h-3.5 w-3.5" />}
-                {t === "classic" ? "Clásica" : "Gold"}
-              </button>
-            );
-          })}
+          <div className={cx(
+            "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-semibold border",
+            type === "gold"
+              ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-300"
+              : "bg-violet-400/20 border-violet-400/40 text-violet-300"
+          )}>
+            {type === "gold" ? <Crown className="h-3.5 w-3.5" /> : <Hash className="h-3.5 w-3.5" />}
+            {type === "classic" ? "Clásica" : "Gold"}
+          </div>
         </div>
 
         <ModalInput label="Nombre de sala" value={name} onChange={setName} placeholder="mi-sala-genial" maxLength={40} testId="input-room-name" />
@@ -642,7 +647,7 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
     e.target.value = "";
   };
 
-  // Solo Gold puede grabar audio; Classic siempre ve toast (botón nunca disabled)
+  // [C6] Solo Gold puede grabar audio; Classic siempre ve toast (botón nunca disabled)
   const toggleRecord = async () => {
     if (!hasGoldAccess) {
       onShowToast("¡Hazte Gold para enviar audios! 🎙️");
@@ -825,6 +830,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   const [hasClassicAccess, setHasClassicAccess] = useState(false);
   const [hasGoldAccess,    setHasGoldAccess]    = useState(false);
   const [myUsername,       setMyUsername]        = useState<string>("");
+  // [C5] avatar del usuario propio para inyectar en mensajes de realtime
+  const [myAvatarUrl,      setMyAvatarUrl]      = useState<string | undefined>(undefined);
   const [showGoldModal,    setShowGoldModal]    = useState(false);
   const [goldLoading,      setGoldLoading]      = useState(false);
   const [showCreateRoom,   setShowCreateRoom]   = useState(false);
@@ -902,14 +909,19 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     checkSubscriptions();
   }, [currentUserId, isOpen]);
 
-  // ── Fetch my profile ──
+  // ── Fetch my profile (username + avatar) ──
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
     const fetchProfile = async () => {
       try {
-        const { data, error } = await supabase.from("profiles").select("tier, username").eq("id", currentUserId).maybeSingle();
+        // [C5] Obtener avatar_url además de username para inyectarlo en mensajes propios
+        const { data, error } = await supabase.from("profiles")
+          .select("tier, username, avatar_url")
+          .eq("id", currentUserId)
+          .maybeSingle();
         if (error) { console.error("[GlobalChat] Error cargando perfil:", error.message); return; }
         if (data?.username) setMyUsername(String(data.username));
+        if (data?.avatar_url) setMyAvatarUrl(String(data.avatar_url));
       } catch (e) {
         console.error("[GlobalChat] Error inesperado fetchProfile:", e);
       }
@@ -938,7 +950,6 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
             description: inserted.description ? String(inserted.description) : undefined,
             createdBy:   inserted.created_by  ? String(inserted.created_by)  : undefined,
           };
-          // Classic General va primero; Gold General al frente de las Gold
           result = type === "classic" ? [newRoom, ...result] : [newRoom, ...result];
         }
       } catch (e) {
@@ -949,8 +960,6 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   }, [currentUserId]);
 
   // ── Fetch rooms ──
-  // IMPORTANTE: selectedRoomId NO está en las deps para evitar el loop
-  // que causaba que cambiar de sala re-lanzara fetchRooms infinitamente.
   const fetchRooms = useCallback(async () => {
     try {
       const { data, error } = await supabase.from("chat_rooms")
@@ -971,11 +980,9 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
       setRooms(parsed);
 
-      // [C1] Solo seleccionar sala si aún no hay ninguna seleccionada (update funcional
-      // para leer el valor más reciente sin añadir selectedRoomId a las deps)
+      // [C1] Solo seleccionar sala si aún no hay ninguna seleccionada
       setSelectedRoomId((currentId) => {
-        if (currentId) return currentId; // no pisar selección existente
-        // Buscar sala del tipo activo; NUNCA cruzar a otro tipo
+        if (currentId) return currentId;
         const defaultRoom = parsed.find(r => r.type === roomType);
         return defaultRoom?.id || "";
       });
@@ -1042,7 +1049,16 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
         filter: `room_id=eq.${selectedRoomId}`
       },
         (payload) => {
-          const newMsg = rowToMessage(payload.new as Record<string, unknown>);
+          const rawMsg = rowToMessage(payload.new as Record<string, unknown>);
+          // [C5] Inyectar avatar/username del usuario propio cuando el payload no trae profiles
+          const newMsg: ChatMessage = rawMsg.userId === currentUserId
+            ? {
+                ...rawMsg,
+                username: rawMsg.username.startsWith("@") ? (myUsername || rawMsg.username) : rawMsg.username,
+                avatarUrl: rawMsg.avatarUrl ?? myAvatarUrl,
+              }
+            : rawMsg;
+
           setMessages((prev) => {
             const existing = prev[selectedRoomId] ?? [];
             const tempIdx = existing.findIndex(
@@ -1175,14 +1191,11 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   }, []);
 
-  // [C1] Al cambiar de tipo, resetear sala → fetchRooms (que depende de roomType)
-  // se re-ejecuta y selecciona la primera sala del nuevo tipo correctamente.
+  // [C1] Al cambiar de tipo, resetear sala → fetchRooms se re-ejecuta y selecciona
+  // la primera sala del nuevo tipo correctamente.
   const handleSwitchType = (type: RoomType) => {
     if (type === "gold" && !canUseGold) { setShowGoldModal(true); return; }
     if (type === "classic" && !hasClassicAccess) { return; }
-    // Resetear selectedRoomId ANTES de cambiar roomType para que fetchRooms,
-    // cuando se dispare por el cambio de roomType, encuentre currentId="" y pueda
-    // seleccionar la sala correcta del nuevo tipo.
     setSelectedRoomId("");
     setRoomType(type);
     setSearchQuery(""); setShowSearch(false); setReplyTo(null); setEditingId(null);
@@ -1333,16 +1346,20 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   };
 
-  // [C4] handleCreateRoom con límites correctos:
-  //   Classic → máx 2 salas propias (excluyendo sala General del sistema)
-  //   Gold    → máx 5 salas propias; si supera, pago extra
+  // [C4][C6] handleCreateRoom con límites y tipo forzado:
+  //   Classic → máx 2 salas propias de tipo "classic" (excluye sala General)
+  //   Gold    → máx 5 salas propias de tipo "gold"; si supera, pago extra
   const handleCreateRoom = async (data: Omit<ChatRoom, "id">) => {
     try {
+      // [C6] Forzar el tipo según tier — Classic no puede crear salas "gold"
+      const enforcedType: RoomType = hasGoldAccess ? "gold" : "classic";
+      const roomData: Omit<ChatRoom, "id"> = { ...data, type: enforcedType };
+
       // Contar salas del usuario de este tipo (excluir sala General del sistema)
       const { count, error: countError } = await supabase.from("chat_rooms")
         .select("*", { count: "exact", head: true })
         .eq("created_by", currentUserId)
-        .eq("type", data.type)
+        .eq("type", enforcedType)
         .neq("name", DEFAULT_ROOM_NAME);
       if (countError) { console.error("[GlobalChat] Error contando rooms:", countError.message); }
       const userCount = count ?? 0;
@@ -1350,15 +1367,15 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
       if (hasGoldAccess) {
         // Gold: hasta 5 salas; si supera → modal de pago extra
         if (userCount < 5) {
-          await insertRoom(data);
+          await insertRoom(roomData);
         } else {
-          setPendingRoomData(data);
+          setPendingRoomData(roomData);
           setShowExtraRoomModal(true);
         }
       } else {
         // Classic: hasta 2 salas; si supera → toast informativo
         if (userCount < 2) {
-          await insertRoom(data);
+          await insertRoom(roomData);
         } else {
           showError("¡Hazte Gold para crear más salas! Con Gold puedes tener hasta 5 salas. ✨");
         }
@@ -1405,6 +1422,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     const tempId = `temp-${Date.now()}`;
     const optimistic: ChatMessage = {
       id: tempId, roomId: selectedRoomId, userId: currentUserId, username,
+      // [C5] Incluir avatar del usuario propio en el mensaje optimista
+      avatarUrl: myAvatarUrl,
       content: content.trim() || undefined, fileUrl, fileName, fileType, audioUrl,
       replyToId: replyMsg?.id, replyToContent: replyMsg?.content, replyToUsername: replyMsg?.username,
       ephemeral: ephemeral ?? false, createdAt: new Date().toISOString(),
@@ -1587,7 +1606,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                 })}
               </div>
 
-              {/* Room list — TODAS las salas del tipo activo, scroll horizontal */}
+              {/* Room list */}
               <div className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-none min-w-0">
                 {filteredRooms.map((r) => (
                   <button key={r.id} onClick={() => switchRoom(r.id)}
@@ -1609,7 +1628,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                     showSearch ? "text-violet-300 bg-violet-400/15" : "text-white/30 hover:text-white/60 hover:bg-white/8")}>
                   <Search className="h-3.5 w-3.5" />
                 </button>
-                {/* Botón crear sala — visible para Classic Y Gold */}
+                {/* Botón crear sala */}
                 <button
                   onClick={() => {
                     if (!hasClassicAccess && !hasGoldAccess) {
@@ -1694,40 +1713,50 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
               <div ref={bottomRef} />
             </div>
 
-            {/* ══ INPUT ══ */}
-            {isGold && (
-              <div className="flex items-center gap-1.5 px-4 pt-1 flex-shrink-0">
-                <Crown className="h-3 w-3 text-yellow-400" />
-                <span className="text-[10px] text-yellow-400/70 font-semibold tracking-wide">Gold Room</span>
-              </div>
-            )}
-            <ChatInput
-              onSend={handleSend} onTyping={handleTyping} isGold={isGold}
-              hasGoldAccess={hasGoldAccess}
-              disabled={noAccess} replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
-              onShowToast={showError}
-            />
-
-            {/* ══ ERROR TOAST ══ */}
+            {/* Error toast */}
             <AnimatePresence>
               {errorToast && (
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-red-600/90 text-white text-xs font-medium shadow-xl max-w-[85%] text-center"
-                >
-                  {errorToast}
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                  className="absolute bottom-20 left-3 right-3 z-40 px-4 py-2.5 rounded-2xl bg-red-900/90 border border-red-500/30 text-xs text-red-200 shadow-xl backdrop-blur-sm flex items-center justify-between gap-2">
+                  <span>⚠ {errorToast}</span>
+                  <button onClick={() => setErrorToast(null)} className="text-red-400 hover:text-red-200 flex-shrink-0 cursor-pointer"><X className="h-3 w-3" /></button>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* ══ MODALES ══ */}
+            {/* ══ INPUT ══ */}
+            {!noAccess && (
+              <ChatInput
+                onSend={handleSend}
+                onTyping={handleTyping}
+                isGold={isGold}
+                hasGoldAccess={hasGoldAccess}
+                disabled={!selectedRoomId}
+                replyTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
+                onShowToast={showError}
+              />
+            )}
+
+            {/* Modals */}
             <AnimatePresence>
-              {showGoldModal  && <GoldSubscribeModal onClose={() => setShowGoldModal(false)} onSubscribe={handleGoldSubscribe} loading={goldLoading} />}
-              {showCreateRoom && <CreateRoomModal onClose={() => setShowCreateRoom(false)} onCreate={handleCreateRoom} canCreateGold={canUseGold} />}
-              {shareMsg       && <ShareModal message={shareMsg} onClose={() => setShareMsg(null)} />}
-              {showExtraRoomModal && pendingRoomData && (
+              {showGoldModal && (
+                <GoldSubscribeModal
+                  onClose={() => setShowGoldModal(false)}
+                  onSubscribe={handleGoldSubscribe}
+                  loading={goldLoading}
+                />
+              )}
+              {showCreateRoom && (
+                <CreateRoomModal
+                  onClose={() => setShowCreateRoom(false)}
+                  onCreate={handleCreateRoom}
+                  canCreateGold={hasGoldAccess}
+                  forcedType={hasGoldAccess ? "gold" : "classic"}
+                />
+              )}
+              {showExtraRoomModal && (
                 <ExtraRoomPayModal
                   onClose={() => { setShowExtraRoomModal(false); setPendingRoomData(null); }}
                   onPay={() => handlePayForExtraRoom(extraRoomPrice, hasGoldAccess)}
@@ -1736,8 +1765,10 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                   isGoldPrice={hasGoldAccess}
                 />
               )}
+              {shareMsg && (
+                <ShareModal message={shareMsg} onClose={() => setShareMsg(null)} />
+              )}
             </AnimatePresence>
-
           </motion.div>
         </motion.div>
       )}
