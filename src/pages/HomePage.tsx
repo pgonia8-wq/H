@@ -121,14 +121,13 @@ const HomePage: React.FC<HomePageProps> = ({
     [notifications],
   );
   const mergedPosts = useMemo(() => {
-  const map = new Map();
+    const map = new Map();
+    [...optimisticPosts, ...globalPosts].forEach((p) => {
+      map.set(p.id, p);
+    });
+    return Array.from(map.values());
+  }, [optimisticPosts, globalPosts]);
 
-  [...optimisticPosts, ...globalPosts].forEach((p) => {
-    map.set(p.id, p);
-  });
-
-  return Array.from(map.values());
-}, [optimisticPosts, globalPosts]);
   const { theme, toggleTheme, username } = useContext(ThemeContext);
   const { language, setLanguage, t } = useContext(LanguageContext);
   const isDark = theme === "dark";
@@ -140,13 +139,11 @@ const HomePage: React.FC<HomePageProps> = ({
 
   // ─────────────────────────────────────────────
   // PERFIL: SELECT primero, upsert solo si no existe
-  // Evita escritura en cada carga (300-500ms de overhead)
   // ─────────────────────────────────────────────
   const fetchOrUpsertProfile = useCallback(async () => {
     if (!userId) return;
     setProfileLoading(true);
     try {
-      // Solo columnas necesarias (no SELECT *)
       const { data: existing } = await supabase
         .from("profiles")
         .select("id, username, avatar_url, verified, tier, wallet")
@@ -158,7 +155,6 @@ const HomePage: React.FC<HomePageProps> = ({
         return;
       }
 
-      // Solo para usuarios nuevos
       const { data, error: upsertError } = await supabase
         .from("profiles")
         .upsert(
@@ -169,7 +165,7 @@ const HomePage: React.FC<HomePageProps> = ({
             verified,
             verified_at: new Date().toISOString(),
           },
-          { onConflict: "id" }, // string, no array
+          { onConflict: "id" },
         )
         .select("id, username, avatar_url, verified, tier, wallet")
         .maybeSingle();
@@ -184,7 +180,7 @@ const HomePage: React.FC<HomePageProps> = ({
   }, [userId, username, wallet, verified]);
 
   // ─────────────────────────────────────────────
-  // NOTIFICACIONES: solo columnas necesarias, limit 30
+  // NOTIFICACIONES
   // ─────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
@@ -194,7 +190,7 @@ const HomePage: React.FC<HomePageProps> = ({
         .select("id, type, user, avatar, message, time, read")
         .eq("receiver_id", userId)
         .order("created_at", { ascending: false })
-        .limit(30); // 50 era innecesario, 30 es suficiente para UX
+        .limit(30);
       if (data) setNotifications(data as Notification[]);
     } catch (err) {
       console.error("[HOME] Error fetching notifications:", err);
@@ -202,7 +198,7 @@ const HomePage: React.FC<HomePageProps> = ({
   }, [userId]);
 
   // ─────────────────────────────────────────────
-  // MENSAJES NO LEÍDOS: limit para evitar traer miles de filas
+  // MENSAJES NO LEÍDOS
   // ─────────────────────────────────────────────
   const loadUnread = useCallback(async () => {
     if (!userId) return;
@@ -210,81 +206,79 @@ const HomePage: React.FC<HomePageProps> = ({
       .from("conversation_unread_counts")
       .select("unread")
       .eq("receiver_id", userId)
-      .limit(200); // evita traer todo sin límite
+      .limit(200);
 
     const total = data?.reduce((sum: number, r: any) => sum + (r.unread || 0), 0) || 0;
     setUnreadMessages(total);
     setUnreadTotal(total);
   }, [userId]);
 
-    const globalCursor = useRef<string | null>(null);
-const globalFetching = useRef(false);
-const [globalHasMore, setGlobalHasMore] = useState(true);
+  const globalCursor = useRef<string | null>(null);
+  const globalFetching = useRef(false);
+  const [globalHasMore, setGlobalHasMore] = useState(true);
 
-const fetchGlobalPosts = useCallback(async (reset = false) => {
-  if (globalFetching.current) return;
-  if (!globalHasMore && !reset) return;
+  const fetchGlobalPosts = useCallback(async (reset = false) => {
+    if (globalFetching.current) return;
+    if (!globalHasMore && !reset) return;
 
-  globalFetching.current = true;
+    globalFetching.current = true;
 
-  if (reset) {
-    globalCursor.current = null;
-    setGlobalPosts([]);
-    setGlobalHasMore(true);
-  }
-
-  setGlobalLoading(true);
-
-  try {
-    let query = supabase
-      .from("posts")
-      .select("*")
-      .order("timestamp", { ascending: false })
-      .limit(10);
-
-    if (globalCursor.current) {
-      query = query.lt("timestamp", globalCursor.current);
+    if (reset) {
+      globalCursor.current = null;
+      setGlobalPosts([]);
+      setGlobalHasMore(true);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    setGlobalLoading(true);
 
-    const newPosts = data || [];
+    try {
+      let query = supabase
+        .from("posts")
+        .select("*")
+        .order("timestamp", { ascending: false })
+        .limit(10);
 
-    setGlobalPosts((prev) =>
-      reset ? newPosts : [...prev, ...newPosts]
-    );
+      if (globalCursor.current) {
+        query = query.lt("timestamp", globalCursor.current);
+      }
 
-    setGlobalHasMore(newPosts.length === 10);
+      const { data, error } = await query;
+      if (error) throw error;
 
-    if (newPosts.length > 0) {
-      globalCursor.current =
-        newPosts[newPosts.length - 1].timestamp;
+      const newPosts = data || [];
+
+      setGlobalPosts((prev) =>
+        reset ? newPosts : [...prev, ...newPosts]
+      );
+
+      setGlobalHasMore(newPosts.length === 10);
+
+      if (newPosts.length > 0) {
+        globalCursor.current = newPosts[newPosts.length - 1].timestamp;
+      }
+    } catch (err) {
+      console.error("[HOME] Global fetch error:", err);
+    } finally {
+      setGlobalLoading(false);
+      globalFetching.current = false;
     }
-  } catch (err) {
-    console.error("[HOME] Global fetch error:", err);
-  } finally {
-    setGlobalLoading(false);
-    globalFetching.current = false;
-  }
-}, [globalHasMore]);
+  }, [globalHasMore]);
+
   // ─────────────────────────────────────────────
   // INICIALIZACIÓN al tener userId
   // ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
-    // Paralelo: no bloquear uno con el otro
     fetchOrUpsertProfile();
     fetchNotifications();
     loadUnread();
     setTimeout(() => {
-  fetchGlobalPosts();
-}, 10000); // 10 segundos
+      fetchGlobalPosts();
+    }, 10000);
   }, [userId]);
 
   // ─────────────────────────────────────────────
   // REALTIME: mensajes no leídos
-  // Solo se abre cuando hay userId (no en primer render)
   // ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
@@ -307,7 +301,16 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
   }, [userId]);
 
   // ─────────────────────────────────────────────
-  // CREAR POST con optimistic UI + rollback
+  // CREAR POST — FIX MÓVIL
+  //
+  // Problema: en móvil, supabase.functions.invoke puede fallar si el token de
+  // autenticación no está disponible inmediatamente o la Edge Function no existe.
+  // Solución: intentar primero con Edge Function. Si falla, hacer INSERT directo
+  // respetando exactamente las columnas de la tabla posts:
+  //   id, user_id, content, timestamp, deleted_flag, visibility_score, likes,
+  //   comments, reposts, boosted_until, tags, tips_total, boost_score, views,
+  //   created_at, likes_count, replies_count, image_url, reposted_post_id,
+  //   is_ad, monetized, is_boosted, campaign_id
   // ─────────────────────────────────────────────
   const handleCreatePost = async () => {
     if (isPosting) return;
@@ -331,15 +334,18 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
-          .upload(fileName, newPostImage);
+          .upload(fileName, newPostImage, {
+            cacheControl: "3600",
+            contentType: newPostImage.type || `image/${fileExt}`,
+          });
 
         if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage
+        const { data: urlData } = supabase.storage
           .from("post-images")
           .getPublicUrl(fileName);
 
-        imageUrl = data.publicUrl;
+        imageUrl = urlData.publicUrl;
       }
 
       // 2. Optimistic UI (se muestra inmediatamente)
@@ -358,20 +364,54 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
 
       setOptimisticPosts((prev) => [tempPost, ...prev]);
 
-      // 3. Backend via Edge Function
-      const { error: fnError } = await supabase.functions.invoke("publish-post-user", {
-        body: { content: newPostContent, image_url: imageUrl },
-      });
+      // 3. Intentar Edge Function primero
+      let posted = false;
+      try {
+        const { error: fnError } = await supabase.functions.invoke("publish-post-user", {
+          body: { content: newPostContent, image_url: imageUrl },
+        });
+        if (!fnError) {
+          posted = true;
+        } else {
+          console.warn("[HOME] Edge Function falló, usando INSERT directo:", fnError.message);
+        }
+      } catch (fnErr: any) {
+        console.warn("[HOME] Edge Function no disponible, usando INSERT directo:", fnErr?.message);
+      }
 
-      if (fnError) throw fnError;
+      // 4. Fallback: INSERT directo si la Edge Function falló
+      //    Solo columnas existentes en la tabla posts
+      if (!posted) {
+        const now = new Date().toISOString();
+        const { error: insertError } = await supabase.from("posts").insert({
+          user_id: userId,
+          content: newPostContent,
+          image_url: imageUrl,
+          timestamp: now,
+          created_at: now,
+          deleted_flag: false,
+          visibility_score: 0,
+          likes: 0,
+          comments: 0,
+          reposts: 0,
+          tips_total: 0,
+          boost_score: 0,
+          views: 0,
+          likes_count: 0,
+          replies_count: 0,
+          is_ad: false,
+          monetized: false,
+          is_boosted: false,
+        });
+        if (insertError) throw insertError;
+      }
 
-      // 4. Limpiar UI
+      // 5. Limpiar UI
       setShowNewPostModal(false);
       setNewPostContent("");
       setNewPostImage(null);
       setImagePreview(null);
 
-      // El realtime en FeedPage reemplazará el optimistic automáticamente
     } catch (err: any) {
       console.error("[HOME] Error creando post:", err);
       setPostError(err.message || "Error al publicar");
@@ -577,18 +617,18 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
         </motion.div>
       </header>
 
-      {/* ── FEED con tabs (Global / Siguiendo / Mis posts) ── */}
+      {/* ── FEED ── */}
       <main className="w-full px-2 pt-20 pb-6 flex justify-center">
         <FeedPage
-  posts={mergedPosts}        // 🔥 FIX REAL
-  loading={globalLoading}
-  error={error}
-  currentUserId={userId}
-  userTier={profile?.tier || "free"}
-  onUpgradeSuccess={fetchOrUpsertProfile}
-  onLoadMoreGlobal={fetchGlobalPosts}
-  globalHasMore={globalHasMore} 
-          />
+          posts={mergedPosts}
+          loading={globalLoading}
+          error={error}
+          currentUserId={userId}
+          userTier={profile?.tier || "free"}
+          onUpgradeSuccess={fetchOrUpsertProfile}
+          onLoadMoreGlobal={fetchGlobalPosts}
+          globalHasMore={globalHasMore}
+        />
       </main>
 
       {/* ── MODALES ── */}
@@ -652,6 +692,7 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
                     className={`w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400"}`}
                     placeholder={t("whats_happening")}
                     maxLength={maxChars}
+                    autoFocus
                   />
                   <div className={`absolute bottom-3 right-3 text-xs font-medium tabular-nums ${newPostContent.length > maxChars * 0.85 ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"}`}>
                     {newPostContent.length}/{maxChars}
@@ -696,10 +737,13 @@ const fetchGlobalPosts = useCallback(async (reset = false) => {
                     accept="image/*"
                     className="hidden"
                     onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        setNewPostImage(e.target.files[0]);
-                        setImagePreview(URL.createObjectURL(e.target.files[0]));
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setNewPostImage(file);
+                        setImagePreview(URL.createObjectURL(file));
                       }
+                      // Reset el input para poder volver a seleccionar el mismo archivo
+                      e.target.value = "";
                     }}
                   />
                   <ImageIcon size={16} />
