@@ -80,6 +80,22 @@ const translations: Record<Language, Translations> = {
     mensajes: "Mensajes",
     buscar_seguidores: "Buscar seguidores...",
     cargando: "Cargando...",
+
+    // --- HomePage / FeedPage (CORRECCIÓN F3: claves faltantes) ---
+    create_post: "Crear publicación",
+    whats_happening: "¿Qué está pasando?",
+    write_before_posting: "Escribe algo antes de publicar",
+    procesando: "Procesando...",
+    add_image: "Imagen",
+    publish: "Publicar",
+    post: "Post",
+    notifications: "Notificaciones",
+    no_tips_para_free: "Solo usuarios verificados pueden recibir tips",
+    escribe_tu_mensaje: "Escribe tu mensaje aquí...",
+    enviando: "Enviando...",
+    cancel: "Cancelar",
+    avatar: "Avatar de usuario",
+    ahora_mismo: "ahora mismo",
   },
   en: {
     // --- PostCard / Feed ---
@@ -147,6 +163,22 @@ const translations: Record<Language, Translations> = {
     mensajes: "Messages",
     buscar_seguidores: "Search followers...",
     cargando: "Loading...",
+
+    // --- HomePage / FeedPage (CORRECCIÓN F3: claves faltantes) ---
+    create_post: "Create post",
+    whats_happening: "What's happening?",
+    write_before_posting: "Write something before posting",
+    procesando: "Processing...",
+    add_image: "Image",
+    publish: "Publish",
+    post: "Post",
+    notifications: "Notifications",
+    no_tips_para_free: "Only verified users can receive tips",
+    escribe_tu_mensaje: "Write your message here...",
+    enviando: "Sending...",
+    cancel: "Cancel",
+    avatar: "User avatar",
+    ahora_mismo: "just now",
   },
 };
 
