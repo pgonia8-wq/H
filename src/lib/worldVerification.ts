@@ -10,9 +10,11 @@ export async function verifyWorldIDProof(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        action: "verify-user",
         proof: proofData.proof,
         nullifier_hash: proofData.nullifier_hash,
         merkle_root: proofData.merkle_root,
+        verification_level: proofData.verification_level,
         walletAddress,
       }),
     }
@@ -26,4 +28,4 @@ export async function verifyWorldIDProof(
   }
 
   return result;
-    }
+}
