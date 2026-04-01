@@ -84,7 +84,10 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [sendingComplaint, setSendingComplaint] = useState(false);
 
   const { theme, username: globalUsername } = useContext(ThemeContext);
-  const isOwnProfile = !!currentUserId;
+
+  // CORRECCIÓN: isOwnProfile solo es true cuando el perfil visto es el del usuario actual
+  const isOwnProfile = !!currentUserId && id === currentUserId;
+
   const [showDashboard, setShowDashboard] = useState(false);
 
   const countries = Country.getAllCountries();
@@ -172,19 +175,29 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
+  // CORRECCIÓN: accept explícito con los formatos permitidos (PNG, JPG, JPEG, GIF, WebP)
+  const AVATAR_ACCEPT = "image/png,image/jpeg,image/jpg,image/gif,image/webp";
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setPreviewAvatar(URL.createObjectURL(file));
+    if (!file) return;
+
+    // Validar tipo de archivo explícitamente
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setToast({ message: t("formato_no_soportado") || "Formato no soportado. Usa PNG, JPG, JPEG, GIF o WebP.", type: "error" });
+      return;
     }
+
+    setSelectedFile(file);
+    setPreviewAvatar(URL.createObjectURL(file));
   };
 
   const handleUploadAvatar = async () => {
     if (!selectedFile || !currentUserId || !isOwnProfile) return;
     setUploadingAvatar(true);
     try {
-      const fileExt = selectedFile.name.split(".").pop() || "jpg";
+      const fileExt = selectedFile.name.split(".").pop()?.toLowerCase() || "jpg";
       const fileName = `${currentUserId}-${Date.now()}.${fileExt}`;
 
       const img = document.createElement("img");
@@ -207,16 +220,22 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       const ctx = canvas.getContext("2d");
       ctx?.drawImage(img, 0, 0, width, height);
 
-      const compressedBlob: Blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(blob => {
-          if (blob) resolve(blob);
-          else reject(new Error("Error comprimiendo imagen"));
-        }, "image/jpeg", 0.8);
-      });
+      // Para GIFs, subir el archivo original sin comprimir
+      let uploadBlob: Blob;
+      if (selectedFile.type === "image/gif") {
+        uploadBlob = selectedFile;
+      } else {
+        uploadBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(blob => {
+            if (blob) resolve(blob);
+            else reject(new Error("Error comprimiendo imagen"));
+          }, "image/jpeg", 0.8);
+        });
+      }
 
       const { error: uploadError } = await supabase.storage
         .from("avatars")
-        .upload(fileName, compressedBlob, { upsert: true });
+        .upload(fileName, uploadBlob, { upsert: true });
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
@@ -240,7 +259,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   const handleSave = async () => {
-    if (!currentUserId) {
+    if (!currentUserId || !isOwnProfile) {
       setToast({ message: "No se encontró userId", type: "error" });
       return;
     }
@@ -401,6 +420,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     className="w-full h-full object-cover"
                   />
                 </div>
+                {/* CORRECCIÓN: el botón de editar avatar solo aparece en perfil propio */}
                 {isOwnProfile && (
                   <div className="absolute bottom-0 right-0 w-7 h-7 z-10">
                     <div className="bg-purple-600 rounded-full w-7 h-7 flex items-center justify-center shadow-md pointer-events-none">
@@ -408,7 +428,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     </div>
                     <input
                       type="file"
-                      accept="image/*"
+                      accept={AVATAR_ACCEPT}
                       onChange={handleAvatarChange}
                       disabled={uploadingAvatar}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -470,206 +490,241 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex border-b border-white/10 mb-5">
-                  <button
-                    className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "info" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
-                    onClick={() => setActiveTab("info")}
-                  >
-                    {t("informacion") || "Información"}
-                  </button>
-                  <button
-                    className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "location" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
-                    onClick={() => setActiveTab("location")}
-                  >
-                    {t("ubicacion") || "Ubicación"}
-                  </button>
-                </div>
-
-                {activeTab === "info" && (
-                  <div className="space-y-4 pb-2">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</label>
-                      <input
-                        type="text"
-                        value={profile.name}
-                        onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))}
-                        className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder={t("tu_nombre") || "Tu nombre"}
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <label className="text-xs text-gray-500">{t("biografia") || "Biografía"}</label>
-                        <span className="text-xs text-gray-600">{bioLength}/160</span>
+                {/* CORRECCIÓN: si NO es perfil propio, mostrar solo lectura sin tabs editables */}
+                {!isOwnProfile ? (
+                  <div className="space-y-3 pb-5">
+                    {profile.name && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</p>
+                        <p className="text-white text-sm px-3 py-2 bg-gray-900/50 rounded-xl">{profile.name}</p>
                       </div>
-                      <textarea
-                        value={profile.bio}
-                        onChange={e => {
-                          if (e.target.value.length <= 160) {
-                            setProfile(prev => ({ ...prev, bio: e.target.value }));
-                            setBioLength(e.target.value.length);
-                          }
-                        }}
-                        className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none h-20"
-                        placeholder={t("cuentanos_sobre_ti") || "Cuéntanos sobre ti..."}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t("fecha_nacimiento")}</label>
-                      <input
-                        type="date"
-                        value={profile.birthdate}
-                        onChange={e => setProfile(prev => ({ ...prev, birthdate: e.target.value }))}
-                        className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between bg-gray-900 border border-white/10 rounded-xl px-4 py-3">
-                      <label className="text-sm text-gray-300">{t("perfil_visible") || "Perfil visible"}</label>
+                    )}
+                    {profile.bio && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">{t("biografia") || "Biografía"}</p>
+                        <p className="text-gray-300 text-sm px-3 py-2 bg-gray-900/50 rounded-xl">{profile.bio}</p>
+                      </div>
+                    )}
+                    {onOpenChat && currentUserId && (
                       <button
-                        onClick={toggleProfileVisibility}
-                        className={`relative w-11 h-6 rounded-full transition-colors ${profile.profile_visible ? "bg-purple-600" : "bg-gray-700"}`}
+                        onClick={() => { onOpenChat(profile.id); onClose(); }}
+                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm transition"
                       >
-                        <span
-                          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${profile.profile_visible ? "translate-x-5" : "translate-x-0"}`}
-                        />
+                        {t("enviar_mensaje") || "Enviar mensaje"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowComplaintModal(true)}
+                      className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-white/10 text-gray-300 hover:text-white rounded-2xl text-sm transition flex items-center justify-center gap-2"
+                    >
+                      <span>💬</span>
+                      <span>{t("contacto") || "Contacto"}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex border-b border-white/10 mb-5">
+                      <button
+                        className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "info" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
+                        onClick={() => setActiveTab("info")}
+                      >
+                        {t("informacion") || "Información"}
+                      </button>
+                      <button
+                        className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "location" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
+                        onClick={() => setActiveTab("location")}
+                      >
+                        {t("ubicacion") || "Ubicación"}
                       </button>
                     </div>
-                  </div>
-                )}
 
-                {activeTab === "location" && (
-                  <div className="space-y-4 pb-2">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t("ubicacion_texto") || "Descripción de ubicación"}</label>
-                      <input
-                        type="text"
-                        value={profile.location_text}
-                        onChange={e => setProfile(prev => ({ ...prev, location_text: e.target.value }))}
-                        className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                        placeholder={t("ej_ciudad_creativa") || "ej. Ciudad de México, CDMX"}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">{t("pais") || "País"}</label>
-                      {isCountryLocked() ? (
-                        <div className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-gray-400 text-sm flex items-center justify-between">
-                          <span>{selectedCountryObj?.name || profile.country}</span>
-                          <span className="text-xs text-orange-400 ml-2">
-                            🔒 {countryLockDaysLeft()} {t("dias_restantes") || "días restantes"}
-                          </span>
+                    {activeTab === "info" && (
+                      <div className="space-y-4 pb-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</label>
+                          <input
+                            type="text"
+                            value={profile.name}
+                            onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            placeholder={t("tu_nombre") || "Tu nombre"}
+                          />
                         </div>
-                      ) : (
-                        <select
-                          value={profile.country}
-                          onChange={e => setProfile(prev => ({
-                            ...prev,
-                            country: e.target.value,
-                            state: "",
-                            city: "",
-                          }))}
-                          className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+
+                        <div>
+                          <div className="flex justify-between mb-1">
+                            <label className="text-xs text-gray-500">{t("biografia") || "Biografía"}</label>
+                            <span className="text-xs text-gray-600">{bioLength}/160</span>
+                          </div>
+                          <textarea
+                            value={profile.bio}
+                            onChange={e => {
+                              if (e.target.value.length <= 160) {
+                                setProfile(prev => ({ ...prev, bio: e.target.value }));
+                                setBioLength(e.target.value.length);
+                              }
+                            }}
+                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none h-20"
+                            placeholder={t("cuentanos_sobre_ti") || "Cuéntanos sobre ti..."}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">{t("fecha_nacimiento")}</label>
+                          <input
+                            type="date"
+                            value={profile.birthdate}
+                            onChange={e => setProfile(prev => ({ ...prev, birthdate: e.target.value }))}
+                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between bg-gray-900 border border-white/10 rounded-xl px-4 py-3">
+                          <label className="text-sm text-gray-300">{t("perfil_visible") || "Perfil visible"}</label>
+                          <button
+                            onClick={toggleProfileVisibility}
+                            className={`relative w-11 h-6 rounded-full transition-colors ${profile.profile_visible ? "bg-purple-600" : "bg-gray-700"}`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${profile.profile_visible ? "translate-x-5" : "translate-x-0"}`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === "location" && (
+                      <div className="space-y-4 pb-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">{t("ubicacion_texto") || "Descripción de ubicación"}</label>
+                          <input
+                            type="text"
+                            value={profile.location_text}
+                            onChange={e => setProfile(prev => ({ ...prev, location_text: e.target.value }))}
+                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            placeholder={t("ej_ciudad_creativa") || "ej. Ciudad de México, CDMX"}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">{t("pais") || "País"}</label>
+                          {isCountryLocked() ? (
+                            <div className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-gray-400 text-sm flex items-center justify-between">
+                              <span>{selectedCountryObj?.name || profile.country}</span>
+                              <span className="text-xs text-orange-400 ml-2">
+                                🔒 {countryLockDaysLeft()} {t("dias_restantes") || "días restantes"}
+                              </span>
+                            </div>
+                          ) : (
+                            <select
+                              value={profile.country}
+                              onChange={e => setProfile(prev => ({
+                                ...prev,
+                                country: e.target.value,
+                                state: "",
+                                city: "",
+                              }))}
+                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                            >
+                              <option value="">{t("seleccionar_pais") || "Seleccionar país"}</option>
+                              {countries.map(c => (
+                                <option key={c.isoCode} value={c.isoCode}>
+                                  {c.flag} {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {!isCountryLocked() && profile.country && (
+                            <p className="text-xs text-orange-400 mt-1">
+                              ⚠️ {t("aviso_pais_lock") || "Una vez guardado, no podrás cambiar el país durante 1 año."}
+                            </p>
+                          )}
+                        </div>
+
+                        {profile.country && states.length > 0 && (
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t("estado") || "Estado / Provincia"}</label>
+                            <select
+                              value={profile.state}
+                              onChange={e => setProfile(prev => ({
+                                ...prev,
+                                state: e.target.value,
+                                city: "",
+                              }))}
+                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                            >
+                              <option value="">{t("seleccionar_estado") || "Seleccionar estado"}</option>
+                              {states.map(s => (
+                                <option key={s.isoCode} value={s.isoCode}>{s.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {profile.state && cities.length > 0 && (
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t("ciudad") || "Ciudad"}</label>
+                            <select
+                              value={profile.city}
+                              onChange={e => setProfile(prev => ({ ...prev, city: e.target.value }))}
+                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                            >
+                              <option value="">{t("seleccionar_ciudad") || "Seleccionar ciudad"}</option>
+                              {cities.map(c => (
+                                <option key={c.name} value={c.name}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDashboard(true);
+                      }}
+                      className="mt-4 w-full bg-purple-600 text-white py-2 rounded-xl font-semibold"
+                    >
+                      Creator Dashboard
+                    </button>
+
+                    <div className="space-y-3 mt-5 pb-5">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={handleSave}
+                          disabled={saving}
+                          className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
                         >
-                          <option value="">{t("seleccionar_pais") || "Seleccionar país"}</option>
-                          {countries.map(c => (
-                            <option key={c.isoCode} value={c.isoCode}>
-                              {c.flag} {c.name}
-                            </option>
-                          ))}
-                        </select>
+                          {saving ? t("guardando") : t("guardar")}
+                        </button>
+                        <button
+                          onClick={onClose}
+                          className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl text-sm transition"
+                        >
+                          {t("cancelar")}
+                        </button>
+                      </div>
+
+                      {showUpgradeButton && (
+                        <button
+                          onClick={handlePremiumChat}
+                          className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl font-semibold text-sm transition"
+                        >
+                          {t("suscribirse_chat_premium", { amount: 5 })}
+                        </button>
                       )}
-                      {!isCountryLocked() && profile.country && (
-                        <p className="text-xs text-orange-400 mt-1">
-                          ⚠️ {t("aviso_pais_lock") || "Una vez guardado, no podrás cambiar el país durante 1 año."}
-                        </p>
-                      )}
+
+                      <button
+                        onClick={() => setShowComplaintModal(true)}
+                        className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-white/10 text-gray-300 hover:text-white rounded-2xl text-sm transition flex items-center justify-center gap-2"
+                      >
+                        <span>💬</span>
+                        <span>{t("contacto") || "Contacto"}</span>
+                      </button>
                     </div>
-
-                    {profile.country && states.length > 0 && (
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t("estado") || "Estado / Provincia"}</label>
-                        <select
-                          value={profile.state}
-                          onChange={e => setProfile(prev => ({
-                            ...prev,
-                            state: e.target.value,
-                            city: "",
-                          }))}
-                          className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
-                        >
-                          <option value="">{t("seleccionar_estado") || "Seleccionar estado"}</option>
-                          {states.map(s => (
-                            <option key={s.isoCode} value={s.isoCode}>{s.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {profile.state && cities.length > 0 && (
-                      <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t("ciudad") || "Ciudad"}</label>
-                        <select
-                          value={profile.city}
-                          onChange={e => setProfile(prev => ({ ...prev, city: e.target.value }))}
-                          className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
-                        >
-                          <option value="">{t("seleccionar_ciudad") || "Seleccionar ciudad"}</option>
-                          {cities.map(c => (
-                            <option key={c.name} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
+                  </>
                 )}
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowDashboard(true);
-                  }}
-                  className="mt-4 w-full bg-purple-600 text-white py-2 rounded-xl font-semibold"
-                >
-                  Creator Dashboard
-                </button>
-
-                <div className="space-y-3 mt-5 pb-5">
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
-                    >
-                      {saving ? t("guardando") : t("guardar")}
-                    </button>
-                    <button
-                      onClick={onClose}
-                      className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl text-sm transition"
-                    >
-                      {t("cancelar")}
-                    </button>
-                  </div>
-
-                  {showUpgradeButton && (
-                    <button
-                      onClick={handlePremiumChat}
-                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl font-semibold text-sm transition"
-                    >
-                      {t("suscribirse_chat_premium", { amount: 5 })}
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => setShowComplaintModal(true)}
-                    className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-white/10 text-gray-300 hover:text-white rounded-2xl text-sm transition flex items-center justify-center gap-2"
-                  >
-                    <span>💬</span>
-                    <span>{t("contacto") || "Contacto"}</span>
-                  </button>
-                </div>
               </>
             )}
           </div>
