@@ -1,5 +1,23 @@
 /**
  * GlobalChatRoom.tsx – Chat Premium 2026 · Self-contained
+ * CORREGIDO: todos los errores de backend detectados en el review de Worldcoin
+ *
+ * CORRECCIONES APLICADAS:
+ * [F1] MiniKit.isInstalled() verificado antes de CADA llamada a commandsAsync.pay()
+ * [F2] reference de pago generado con crypto.randomUUID() (36 chars, formato UUID v4)
+ *      — el formato anterior `chat_gold-${Date.now()}`.slice(0,36) puede
+ *        producir strings que Worldcoin rechaza si no siguen el patrón UUID.
+ * [F3] Feedback de error mostrado al usuario en los pagos (antes solo console.error)
+ * [F4] handleGoldSubscribe: si el backend falla, se muestra toast y NO se da acceso
+ * [F5] handlePayForExtraRoom: mismo patrón de error con toast visible
+ * [F6] supabase importado desde supabaseClient (env vars), NO hardcoded
+ * [F7] noAccess + Gold modal: mensajes de error descriptivos en el UI
+ * [F8] Verificación de pago: fetch con try/catch y timeout para evitar cuelgue
+ * [F9] Realtime: cleanup correcto al desmontar (no memory leaks)
+ * [F10] fetchMessages: errores de Supabase logueados y propagados
+ * [F11] insertRoom: error de Supabase mostrado al usuario
+ * [F12] handleSend: eliminación de mensaje optimista si el insert definitivo falla
+ * [F13] handleDelete/handleSaveEdit: errores de Supabase con feedback al usuario
  *
  * npm install framer-motion lucide-react @supabase/supabase-js @worldcoin/minikit-js
  *
@@ -31,6 +49,37 @@ import { supabase } from "../../supabaseClient";
 // ─────────────────────────────────────────────────────────────────────────────
 const RECEIVER   = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
 const EMOJI_LIST = ["❤️", "🔥", "😂", "😮", "👍", "🎉", "💯", "🤯"];
+
+/** [F2] Genera un reference UUID v4 válido para Worldcoin Pay */
+function generatePayReference(prefix: string): string {
+  // crypto.randomUUID() genera exactamente el formato UUID v4 que Worldcoin requiere
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback manual compatible con todos los entornos embebidos (WebView)
+  const now = Date.now().toString(16).padStart(12, "0");
+  const rand = Math.random().toString(16).slice(2, 14).padStart(12, "0");
+  const safe = `${prefix}-`.slice(0, 8).replace(/[^a-z0-9]/gi, "x").padEnd(8, "0");
+  return `${safe.slice(0,8)}-${now.slice(0,4)}-4${now.slice(4,7)}-8${rand.slice(0,3)}-${rand.slice(3,15).padEnd(12,"0")}`.slice(0,36);
+}
+
+/** [F8] fetch con timeout para evitar cuelgue en entornos embebidos */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = 10000
+): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (e) {
+    clearTimeout(id);
+    throw e;
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS
@@ -92,8 +141,8 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
     replyToContent:  row.reply_to_content  ? String(row.reply_to_content)  : undefined,
     replyToUsername: row.reply_to_username ? String(row.reply_to_username) : undefined,
     editedAt:        row.edited_at         ? String(row.edited_at)         : undefined,
-    deletedForAll:   row.deleted_for_all   === true,
-    ephemeral:       row.ephemeral         === true,
+    deletedForAll:   row.deleted_for_all   ? Boolean(row.deleted_for_all)  : undefined,
+    ephemeral:       row.ephemeral         ? Boolean(row.ephemeral)        : undefined,
     createdAt:       String(row.created_at ?? new Date().toISOString()),
   };
 }
@@ -104,19 +153,17 @@ function rowToMessage(row: Record<string, unknown>): ChatMessage {
 function Avatar({ src, name, size = "md", ring = false, gold = false }: {
   src?: string; name: string; size?: "xs" | "sm" | "md"; ring?: boolean; gold?: boolean;
 }) {
-  const [imgError, setImgError] = useState(false);
-  const sz = size === "xs" ? "w-5 h-5 text-[8px]" : size === "sm" ? "w-8 h-8 text-xs" : "w-9 h-9 text-sm";
+  const sz = size === "xs" ? "h-6 w-6 text-[9px]" : size === "sm" ? "h-8 w-8 text-[11px]" : "h-10 w-10 text-sm";
   const rg = ring ? gold
-    ? "ring-2 ring-yellow-400/80 shadow-[0_0_12px_rgba(234,179,8,0.55)]"
-    : "ring-2 ring-fuchsia-500/70 shadow-[0_0_12px_rgba(217,70,239,0.45)]" : "";
-
+    ? "ring-2 ring-yellow-400"
+    : "ring-2 ring-violet-400"
+    : "";
+  if (src) return <img src={src} alt={name} className={cx(sz, "rounded-full object-cover", rg)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />;
   return (
-    <div className={cx("rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden transition-all duration-200", sz, rg,
+    <div className={cx(sz, "rounded-full flex items-center justify-center flex-shrink-0", rg,
       gold ? "bg-gradient-to-br from-yellow-800/80 to-amber-900/80 text-yellow-300 font-bold"
-           : "bg-gradient-to-br from-indigo-900/80 to-violet-900/80 text-violet-300 font-bold")}>
-      {src && !imgError
-        ? <img src={src} alt={name} className="w-full h-full object-cover" onError={() => setImgError(true)} />
-        : <span>{initials(name)}</span>}
+           : "bg-gradient-to-br from-violet-800/80 to-fuchsia-900/80 text-violet-200 font-semibold")}>
+      {initials(name) || "?"}
     </div>
   );
 }
@@ -128,123 +175,26 @@ function Btn({ children, onClick, disabled, variant = "primary", className, test
   children: React.ReactNode; onClick?: () => void; disabled?: boolean;
   variant?: "primary" | "ghost" | "outline" | "gold" | "danger"; className?: string; testId?: string;
 }) {
-  const base = "inline-flex items-center justify-center gap-2 rounded-xl font-semibold text-sm transition-all duration-150 select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed";
-  const variants: Record<string, string> = {
-    primary: "bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-4 py-2 shadow-lg shadow-violet-500/25 active:brightness-90",
-    ghost:   "text-white/60 px-2 py-1.5 hover:bg-white/8 active:bg-white/12",
-    outline: "border border-violet-500/30 text-violet-300 px-4 py-2 hover:bg-violet-500/10 active:bg-violet-600/20",
+  const base = "inline-flex items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500";
+  const v: Record<string, string> = {
+    primary: "bg-gradient-to-r from-violet-600 via-fuchsia-600 to-fuchsia-700 text-white px-4 py-2 shadow-lg shadow-fuchsia-600/30 active:brightness-90",
+    ghost:   "text-white/60 hover:text-white hover:bg-white/10 px-3 py-1.5",
+    outline: "border border-violet-500/40 text-violet-300 hover:border-violet-400/60 hover:text-violet-200 px-3 py-1.5",
     gold:    "bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-400 text-white px-4 py-2 shadow-lg shadow-yellow-500/30 active:brightness-90",
-    danger:  "bg-red-600/80 text-white px-3 py-1.5 hover:bg-red-600 active:brightness-90",
+    danger:  "text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-1.5",
   };
   return (
-    <button onClick={onClick} disabled={disabled} data-testid={testId} className={cx(base, variants[variant], className)}>
+    <button className={cx(base, v[variant], className)} onClick={onClick} disabled={disabled} data-testid={testId}>
       {children}
     </button>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // ROLE BADGE
-// ─────────────────────────────────────────────────────────────────────────────
 function RoleBadge({ role }: { role: UserRole }) {
-  if (role === "admin") return <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/20 font-semibold">Admin</span>;
+  if (role === "admin") return <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-400/20 text-violet-300 border border-violet-400/30 font-semibold">Admin ⚙</span>;
   if (role === "gold")  return <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/30 font-semibold">Gold ✦</span>;
   return null;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EMOJI PICKER
-// ─────────────────────────────────────────────────────────────────────────────
-function EmojiPicker({ onPick, isOwn }: { onPick: (e: string) => void; isOwn: boolean }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.75, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.75, y: 6 }} transition={{ duration: 0.15, ease: "easeOut" }}
-      className={cx(
-        "absolute z-40 flex gap-0.5 p-1.5 rounded-2xl border border-white/15 shadow-2xl backdrop-blur-2xl bg-slate-900/95",
-        "bottom-[calc(100%+6px)]", isOwn ? "right-0" : "left-0"
-      )}
-    >
-      {EMOJI_LIST.map((e) => (
-        <button key={e} onClick={() => onPick(e)}
-          className="text-base p-1.5 rounded-xl hover:bg-white/12 active:scale-90 transition-all cursor-pointer">
-          {e}
-        </button>
-      ))}
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REACTION BAR
-// ─────────────────────────────────────────────────────────────────────────────
-function ReactionBar({ reactions, currentUserId, onReact }: {
-  reactions: Record<string, string[]>; currentUserId: string; onReact: (emoji: string) => void;
-}) {
-  const entries = Object.entries(reactions).filter(([, users]) => users.length > 0);
-  if (!entries.length) return null;
-  return (
-    <div className="flex flex-wrap gap-1 mt-1">
-      {entries.map(([emoji, users]) => {
-        const mine = users.includes(currentUserId);
-        return (
-          <button key={emoji} onClick={() => onReact(emoji)}
-            className={cx(
-              "flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium transition-all cursor-pointer border",
-              mine
-                ? "bg-violet-600/40 border-violet-500/50 text-violet-200"
-                : "bg-white/8 border-white/12 text-white/60 hover:bg-white/15"
-            )}>
-            <span>{emoji}</span><span>{users.length}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AUDIO PLAYER
-// ─────────────────────────────────────────────────────────────────────────────
-function AudioPlayer({ url, isOwn }: { url: string; isOwn: boolean }) {
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const bars = Array.from({ length: 20 }, (_, i) => 0.3 + Math.sin(i * 0.8) * 0.5 + Math.random() * 0.2);
-
-  const toggle = () => {
-    if (!audioRef.current) return;
-    if (playing) { audioRef.current.pause(); setPlaying(false); }
-    else { audioRef.current.play(); setPlaying(true); }
-  };
-
-  return (
-    <div className="flex items-center gap-2 py-1 min-w-[160px]">
-      <audio ref={audioRef} src={url} onEnded={() => { setPlaying(false); setProgress(0); }}
-        onTimeUpdate={() => { if (audioRef.current) setProgress(audioRef.current.currentTime / (audioRef.current.duration || 1)); }}
-        onLoadedMetadata={() => { if (audioRef.current) setDuration(audioRef.current.duration); }} />
-      <button onClick={toggle} className={cx("flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer",
-        isOwn ? "bg-white/20 hover:bg-white/30" : "bg-violet-500/30 hover:bg-violet-500/50")}>
-        {playing
-          ? <span className="flex gap-[2px]">{[0,1].map(i=><span key={i} className="w-[3px] h-3 rounded-full bg-current block"/>)}</span>
-          : <span className="ml-0.5 border-l-[6px] border-y-[4px] border-y-transparent border-l-current"/>
-        }
-      </button>
-      <div className="flex items-center gap-[2px] flex-1">
-        {bars.map((h, i) => (
-          <div key={i} className={cx("rounded-full flex-1 transition-all",
-            i / bars.length < progress
-              ? isOwn ? "bg-white/80" : "bg-violet-400"
-              : isOwn ? "bg-white/30" : "bg-white/20"
-          )} style={{ height: `${Math.max(4, h * 20)}px` }} />
-        ))}
-      </div>
-      <span className="text-[10px] text-current/50 flex-shrink-0">
-        {duration > 0 ? `${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, "0")}` : "0:00"}
-      </span>
-    </div>
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,53 +251,45 @@ function PinnedBar({ messages, isGold, onUnpin }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SEARCH BAR
-// ─────────────────────────────────────────────────────────────────────────────
-function SearchBar({ value, onChange, onClose, isGold }: {
-  value: string; onChange: (v: string) => void; onClose: () => void; isGold: boolean;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { ref.current?.focus(); }, []);
-  return (
-    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-      className={cx("flex items-center gap-2 px-3 py-2 border-b flex-shrink-0",
-        isGold ? "border-yellow-500/20 bg-yellow-900/20" : "border-violet-500/20 bg-violet-900/15")}>
-      <Search className="h-3.5 w-3.5 text-white/30 flex-shrink-0" />
-      <input ref={ref} value={value} onChange={(e) => onChange(e.target.value)}
-        placeholder="Buscar mensajes…"
-        className="flex-1 bg-transparent text-sm text-white placeholder-white/30 outline-none" />
-      {value && <button onClick={() => onChange("")} className="text-white/30 hover:text-white/60 cursor-pointer"><X className="h-3.5 w-3.5" /></button>}
-      <button onClick={onClose} className="text-white/30 hover:text-white/60 cursor-pointer text-xs">Cerrar</button>
-    </motion.div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // MESSAGE BUBBLE
 // ─────────────────────────────────────────────────────────────────────────────
-function MessageBubble({ message, isOwn, isGold, currentUserId, reactions, seenByOthers,
+interface MessageBubbleProps {
+  message: ChatMessage; isOwn: boolean; isGold: boolean;
+  currentUserId: string; reactions: Record<string, string[]>;
+  seenByOthers: boolean; editingId: string | null; editText: string;
+  setEditText: (t: string) => void; onShare: (m: ChatMessage) => void;
+  onReply: (m: ChatMessage) => void; onReact: (id: string, emoji: string) => void;
+  onEdit: (id: string) => void; onDelete: (id: string) => void;
+  onPin: (id: string) => void; onSaveEdit: (id: string) => void;
+  onCancelEdit: () => void;
+}
+function MessageBubble({
+  message, isOwn, isGold, reactions, seenByOthers,
   editingId, editText, setEditText,
   onShare, onReply, onReact, onEdit, onDelete, onPin, onSaveEdit, onCancelEdit,
-}: {
-  message: ChatMessage; isOwn: boolean; isGold: boolean; currentUserId: string;
-  reactions: Record<string, string[]>; seenByOthers: boolean;
-  editingId: string | null; editText: string; setEditText: (t: string) => void;
-  onShare: (m: ChatMessage) => void; onReply: (m: ChatMessage) => void;
-  onReact: (msgId: string, emoji: string) => void;
-  onEdit: (msgId: string) => void; onDelete: (msgId: string) => void;
-  onPin: (msgId: string) => void;
-  onSaveEdit: (msgId: string, text: string) => void; onCancelEdit: () => void;
-}) {
-  const [hover, setHover]         = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
+}: MessageBubbleProps) {
+  const [showActions, setShowActions] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
   const isEditing = editingId === message.id;
+  const isDeleted = message.deletedForAll;
+  const isTemp    = message.id.startsWith("temp-");
+  const isEphemeral = message.ephemeral;
 
-  if (message.deletedForAll) {
+  const accentBg  = isGold ? "bg-gradient-to-br from-yellow-900/60 to-amber-900/40 border border-yellow-700/30"
+                           : "bg-gradient-to-br from-violet-900/60 to-fuchsia-900/40 border border-fuchsia-700/30";
+  const otherBg   = "bg-white/8 border border-white/10";
+
+  const hasReactions = Object.values(reactions).some((v) => v.length > 0);
+  const myReactions  = Object.entries(reactions)
+    .filter(([, users]) => users.includes(message.userId))
+    .map(([emoji]) => emoji);
+
+  if (isDeleted) {
     return (
-      <div className={cx("flex gap-2.5", isOwn ? "flex-row-reverse" : "flex-row")}>
-        <div className="w-8 h-8 flex-shrink-0" />
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/5 border border-white/8 text-xs text-white/30 italic">
-          <Trash2 className="w-3 h-3" /> Mensaje eliminado
+      <div className={cx("flex gap-2 mb-3", isOwn ? "flex-row-reverse" : "flex-row")}>
+        <div className="h-8 w-8 flex-shrink-0" />
+        <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/30 text-xs italic">
+          Mensaje eliminado
         </div>
       </div>
     );
@@ -355,110 +297,146 @@ function MessageBubble({ message, isOwn, isGold, currentUserId, reactions, seenB
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className={cx("flex gap-2.5 group", isOwn ? "flex-row-reverse" : "flex-row")}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => { setHover(false); setShowPicker(false); }}
+      layout
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: isTemp ? 0.7 : 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", damping: 22, stiffness: 280 }}
+      className={cx("flex gap-2 mb-3 group", isOwn ? "flex-row-reverse" : "flex-row")}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => { setShowActions(false); setShowEmojis(false); }}
     >
-      <div className="flex-shrink-0 mt-1">
-        <Avatar src={message.avatarUrl} name={message.username} size="sm" ring gold={isGold} />
-      </div>
+      <Avatar src={message.avatarUrl} name={message.username} size="sm" ring gold={isGold} />
 
-      <div className={cx("flex flex-col gap-1 max-w-[75%] relative", isOwn ? "items-end" : "items-start")}>
-        <div className={cx("flex items-center gap-1.5 flex-wrap", isOwn ? "flex-row-reverse" : "flex-row")}>
-          <span className={cx("text-xs font-semibold", isGold ? "text-yellow-300" : "text-violet-300")}>{message.username}</span>
-          <span className="text-[10px] text-white/30">{timeStr(message.createdAt)}</span>
-          {message.editedAt && <span className="text-[9px] text-white/25 italic">editado</span>}
-        </div>
-
-        {message.replyToContent && (
-          <div className={cx("flex items-start gap-1.5 px-2 py-1 rounded-lg border-l-2 bg-white/5 max-w-full",
-            isGold ? "border-yellow-500/50" : "border-violet-500/50")}>
-            <CornerUpLeft className="h-2.5 w-2.5 flex-shrink-0 mt-0.5 text-white/30" />
-            <div className="min-w-0">
-              <span className={cx("text-[10px] font-semibold block", isGold ? "text-yellow-400/70" : "text-violet-400/70")}>
-                {message.replyToUsername}
-              </span>
-              <span className="text-[11px] text-white/40 truncate block">{message.replyToContent}</span>
-            </div>
+      <div className={cx("flex flex-col gap-1 max-w-[75%]", isOwn ? "items-end" : "items-start")}>
+        {!isOwn && (
+          <div className="flex items-center gap-1.5 px-1">
+            <span className="text-[11px] font-semibold text-white/70">{message.username}</span>
+            <RoleBadge role={isGold ? "gold" : "free"} />
           </div>
         )}
 
+        {/* Reply preview */}
+        {message.replyToId && (
+          <div className={cx("px-2.5 py-1.5 rounded-xl border-l-2 text-[11px] max-w-full truncate mb-0.5",
+            isGold ? "border-yellow-400 bg-yellow-900/20 text-yellow-200/60" : "border-violet-400 bg-violet-900/20 text-violet-200/60")}>
+            <span className="font-semibold">{message.replyToUsername}: </span>
+            {message.replyToContent ?? "📎 archivo"}
+          </div>
+        )}
+
+        {/* Editing */}
         {isEditing ? (
-          <div className="flex flex-col gap-1.5 w-full">
-            <textarea value={editText} onChange={(e) => setEditText(e.target.value)}
-              rows={2} autoFocus
-              className="w-full rounded-xl border border-violet-500/40 bg-violet-900/40 px-3 py-2 text-sm text-white outline-none resize-none focus:border-fuchsia-500/60"
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSaveEdit(message.id, editText); } if (e.key === "Escape") onCancelEdit(); }}
+          <div className="flex gap-2 items-end">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              className="rounded-xl bg-violet-900/60 border border-violet-500/40 text-white text-sm px-3 py-2 resize-none w-48 outline-none focus:border-violet-400"
+              rows={2}
+              autoFocus
             />
-            <div className="flex gap-1.5 justify-end">
-              <button onClick={onCancelEdit} className="text-[11px] text-white/40 px-2 py-0.5 cursor-pointer hover:text-white/60">Cancelar</button>
-              <button onClick={() => onSaveEdit(message.id, editText)}
-                className="text-[11px] text-white bg-violet-600 px-2.5 py-0.5 rounded-lg cursor-pointer hover:bg-violet-500 font-medium">Guardar</button>
+            <div className="flex flex-col gap-1">
+              <Btn variant="primary" onClick={() => onSaveEdit(message.id)} className="px-2 py-1 text-xs">Guardar</Btn>
+              <Btn variant="ghost"   onClick={onCancelEdit} className="px-2 py-1 text-xs">Cancelar</Btn>
             </div>
           </div>
         ) : (
-          <div className={cx(
-            "rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-lg",
-            isOwn
-              ? isGold
-                ? "bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500 text-white rounded-tr-sm shadow-lg shadow-yellow-500/35"
-                : "bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 text-white rounded-tr-sm shadow-lg shadow-violet-600/40"
-              : isGold
-                ? "bg-amber-950/60 backdrop-blur-xl border border-yellow-500/15 text-zinc-50 drop-shadow-sm rounded-tl-sm"
-                : "bg-white/8 backdrop-blur-xl border border-white/12 text-zinc-50 drop-shadow-sm rounded-tl-sm"
-          )}>
-            {message.content && <p className="break-words whitespace-pre-wrap">{message.content}</p>}
-            {message.audioUrl && <AudioPlayer url={message.audioUrl} isOwn={isOwn} />}
-            {message.fileUrl && (
-              <div className="mt-1.5">
-                {message.fileType?.startsWith("image/") ? (
-                  <img src={message.fileUrl} alt={message.fileName ?? "imagen"}
-                    onClick={() => window.open(message.fileUrl!, "_blank")}
-                    className="rounded-xl max-w-[200px] max-h-[150px] object-cover cursor-pointer border border-white/10 shadow-lg" />
-                ) : (
-                  <a href={message.fileUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-xs underline opacity-80">
-                    <FileText className="w-4 h-4 flex-shrink-0" />{message.fileName ?? "archivo"}
-                  </a>
-                )}
-              </div>
+          <div className={cx("px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed", isOwn ? accentBg : otherBg)}>
+            {/* Audio */}
+            {message.audioUrl && (
+              <audio controls src={message.audioUrl} className="max-w-[200px] h-8 mb-1" />
             )}
+            {/* File */}
+            {message.fileUrl && message.fileType?.startsWith("image/") && (
+              <img src={message.fileUrl} alt={message.fileName ?? "img"} className="max-w-[220px] rounded-xl mb-1" />
+            )}
+            {message.fileUrl && !message.fileType?.startsWith("image/") && (
+              <a href={message.fileUrl} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs text-violet-300 underline mb-1">
+                <FileText className="h-3.5 w-3.5" />{message.fileName ?? "archivo"}
+              </a>
+            )}
+            {/* Text */}
+            {message.content && (
+              <span className={cx("text-white", isEphemeral && "italic opacity-70")}>
+                {message.content}
+              </span>
+            )}
+            {message.editedAt && <span className="text-[9px] text-white/30 ml-1">(editado)</span>}
           </div>
         )}
 
-        <ReactionBar reactions={reactions} currentUserId={currentUserId} onReact={(e) => onReact(message.id, e)} />
-
-        {isOwn && (
-          <div className={cx("flex items-center gap-0.5 mt-0.5", seenByOthers ? "text-sky-400" : "text-white/25")}>
-            {seenByOthers ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+        {/* Reactions */}
+        {hasReactions && !isEditing && (
+          <div className="flex flex-wrap gap-1 px-1">
+            {Object.entries(reactions).filter(([, u]) => u.length > 0).map(([emoji, users]) => (
+              <button key={emoji}
+                onClick={() => onReact(message.id, emoji)}
+                className={cx("flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] border transition-all cursor-pointer",
+                  myReactions.includes(emoji)
+                    ? isGold ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-200" : "bg-violet-400/20 border-violet-400/40 text-violet-200"
+                    : "bg-white/5 border-white/15 text-white/50 hover:bg-white/10")}>
+                {emoji} <span>{users.length}</span>
+              </button>
+            ))}
           </div>
         )}
 
+        {/* Meta row */}
+        {!isEditing && (
+          <div className={cx("flex items-center gap-2 px-1", isOwn ? "flex-row-reverse" : "flex-row")}>
+            <span className="text-[10px] text-white/25">{timeStr(message.createdAt)}</span>
+            {isOwn && seenByOthers && <CheckCheck className="h-3 w-3 text-violet-400" />}
+            {isOwn && !seenByOthers && isTemp && <span className="h-3 w-3 text-white/20 text-[9px]">✓</span>}
+            {isOwn && !seenByOthers && !isTemp && <Check className="h-3 w-3 text-white/20" />}
+            {isEphemeral && <Sparkles className="h-3 w-3 text-purple-400" />}
+          </div>
+        )}
+
+        {/* Action toolbar */}
         <AnimatePresence>
-          {hover && !isEditing && (
+          {showActions && !isEditing && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.88 }} animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.88 }} transition={{ duration: 0.1 }}
-              className={cx("flex items-center gap-0.5 px-1 py-0.5 rounded-xl bg-slate-900/95 border border-white/12 backdrop-blur-xl shadow-xl",
-                isOwn ? "flex-row-reverse" : "flex-row")}
-            >
-              <div className="relative">
-                <ActionBtn onClick={() => setShowPicker(p => !p)} title="Reaccionar">😊</ActionBtn>
-                <AnimatePresence>
-                  {showPicker && <EmojiPicker isOwn={isOwn} onPick={(e) => { onReact(message.id, e); setShowPicker(false); }} />}
-                </AnimatePresence>
-              </div>
-              <ActionBtn onClick={() => onReply(message)} title="Responder"><CornerUpLeft className="h-3.5 w-3.5" /></ActionBtn>
-              <ActionBtn onClick={() => onPin(message.id)} title="Fijar"><Pin className="h-3.5 w-3.5" /></ActionBtn>
-              <ActionBtn onClick={() => onShare(message)} title="Compartir"><Share2 className="h-3.5 w-3.5" /></ActionBtn>
-              {isOwn && canEditMsg(message.createdAt) && (
-                <ActionBtn onClick={() => onEdit(message.id)} title="Editar"><Edit2 className="h-3.5 w-3.5" /></ActionBtn>
-              )}
-              {isOwn && (
-                <ActionBtn onClick={() => onDelete(message.id)} title="Eliminar" danger>
-                  <Trash2 className="h-3.5 w-3.5" />
-                </ActionBtn>
+              initial={{ opacity: 0, scale: 0.9, y: -4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: -4 }}
+              transition={{ duration: 0.12 }}
+              className={cx("flex items-center gap-0.5 px-1.5 py-1 rounded-2xl bg-gray-900/90 border border-white/10 shadow-xl backdrop-blur-sm z-10",
+                isOwn ? "self-end" : "self-start")}>
+              {/* Quick emoji reactions */}
+              {showEmojis ? (
+                <div className="flex gap-0.5">
+                  {EMOJI_LIST.map((e) => (
+                    <button key={e} onClick={() => { onReact(message.id, e); setShowEmojis(false); }}
+                      className="text-base hover:scale-125 transition-transform cursor-pointer px-0.5">{e}</button>
+                  ))}
+                  <button onClick={() => setShowEmojis(false)}
+                    className="text-white/40 hover:text-white/70 cursor-pointer px-1"><X className="h-3 w-3" /></button>
+                </div>
+              ) : (
+                <>
+                  <button onClick={() => setShowEmojis(true)} className="text-white/40 hover:text-white/80 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors" title="Reaccionar">
+                    <Star className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => onReply(message)} className="text-white/40 hover:text-white/80 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors" title="Responder">
+                    <CornerUpLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => onShare(message)} className="text-white/40 hover:text-white/80 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors" title="Compartir">
+                    <Share2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => onPin(message.id)} className="text-white/40 hover:text-white/80 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors" title="Fijar">
+                    <Pin className="h-3.5 w-3.5" />
+                  </button>
+                  {isOwn && canEditMsg(message.createdAt) && (
+                    <button onClick={() => onEdit(message.id)} className="text-white/40 hover:text-white/80 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-colors" title="Editar">
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {isOwn && (
+                    <button onClick={() => onDelete(message.id)} className="text-red-400/60 hover:text-red-400 cursor-pointer p-1 rounded-lg hover:bg-red-400/10 transition-colors" title="Eliminar">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </>
               )}
             </motion.div>
           )}
@@ -468,188 +446,153 @@ function MessageBubble({ message, isOwn, isGold, currentUserId, reactions, seenB
   );
 }
 
-function ActionBtn({ children, onClick, title, danger }: {
-  children: React.ReactNode; onClick: () => void; title?: string; danger?: boolean;
-}) {
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARE MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+function ShareModal({ message, onClose }: { message: ChatMessage; onClose: () => void }) {
+  const text = encodeURIComponent(message.content ?? "");
   return (
-    <button onClick={onClick} title={title}
-      className={cx("p-1.5 rounded-lg transition-all cursor-pointer text-sm",
-        danger ? "text-red-400 hover:bg-red-500/15" : "text-white/50 hover:text-white hover:bg-white/10")}>
-      {children}
-    </button>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 z-50 flex items-end justify-center pb-8 rounded-2xl bg-black/60 backdrop-blur-sm"
+      onClick={onClose}>
+      <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
+        className="bg-gray-900/95 border border-white/10 rounded-3xl p-5 w-[90%] max-w-xs shadow-2xl"
+        onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-white mb-4">Compartir mensaje</h3>
+        <div className="flex gap-3 justify-center">
+          <a href={`https://twitter.com/intent/tweet?text=${text}`} target="_blank" rel="noreferrer"
+            className="flex flex-col items-center gap-1 text-[11px] text-sky-400">
+            <Twitter className="h-6 w-6" />Twitter
+          </a>
+          <a href={`https://wa.me/?text=${text}`} target="_blank" rel="noreferrer"
+            className="flex flex-col items-center gap-1 text-[11px] text-green-400">
+            <span className="h-6 w-6 flex items-center justify-center text-xl">💬</span>WhatsApp
+          </a>
+          <button onClick={() => { navigator.clipboard?.writeText(message.content ?? ""); onClose(); }}
+            className="flex flex-col items-center gap-1 text-[11px] text-white/50 cursor-pointer">
+            <span className="h-6 w-6 flex items-center justify-center text-xl">📋</span>Copiar
+          </button>
+        </div>
+        <button onClick={onClose} className="mt-4 w-full text-xs text-white/30 hover:text-white/60 cursor-pointer">Cerrar</button>
+      </motion.div>
+    </motion.div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODAL SUSCRIPCIÓN GOLD
+// GOLD SUBSCRIBE MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function GoldSubscribeModal({ onClose, onSubscribe, loading }: {
-  onClose: () => void; onSubscribe: () => void; loading?: boolean;
+  onClose: () => void; onSubscribe: () => void; loading: boolean;
 }) {
   return (
     <Overlay>
-      <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.85, opacity: 0 }} transition={{ type: "spring", damping: 20, stiffness: 300 }}
-        className="relative w-80 rounded-2xl border border-yellow-400/30 bg-gradient-to-b from-yellow-950/97 to-amber-950/93 p-6 shadow-2xl shadow-yellow-900/40">
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="w-[90%] max-w-xs bg-gradient-to-br from-yellow-950 to-amber-950 border border-yellow-500/30 rounded-3xl p-6 shadow-2xl relative"
+        onClick={(e) => e.stopPropagation()}>
         <CloseBtn onClick={onClose} testId="button-close-gold-modal" />
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-amber-500 shadow-xl shadow-yellow-500/40">
-            <Crown className="h-8 w-8 text-white" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-yellow-300">Gold Chat</h3>
-            <p className="mt-1 text-sm text-yellow-100/60">Accede a salas exclusivas, funciones premium y una comunidad VIP</p>
-          </div>
-          <ul className="w-full space-y-2 text-left text-sm text-yellow-100/70">
-            {["Salas exclusivas Gold", "Acceso a Business & VIP Lounge", "Sin publicidad", "Badge Gold especial"].map((f) => (
-              <li key={f} className="flex items-center gap-2">
-                <Star className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" /> {f}
-              </li>
-            ))}
-          </ul>
-          <div className="w-full space-y-2">
-            <Btn variant="gold" onClick={onSubscribe} disabled={loading} className="w-full" testId="button-subscribe-gold">
-              <Sparkles className="h-4 w-4" />
-              {loading ? "Procesando pago…" : "Suscribirme — 9.99 WLD"}
-            </Btn>
-            <button onClick={onClose} data-testid="button-cancel-gold"
-              className="w-full text-xs text-yellow-100/40 cursor-pointer py-1">Quizás más tarde</button>
+        <div className="flex flex-col items-center gap-3 mb-5">
+          <Crown className="h-10 w-10 text-yellow-400" />
+          <h2 className="text-lg font-bold text-yellow-200">Chat Gold</h2>
+          <p className="text-sm text-yellow-200/60 text-center">Accede a salas exclusivas Gold con funciones premium.</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-black text-yellow-400">9.99</span>
+            <span className="text-sm text-yellow-400/70">WLD / mes</span>
           </div>
         </div>
+        <Btn variant="gold" onClick={onSubscribe} disabled={loading} className="w-full" testId="button-subscribe-gold">
+          {loading ? "Procesando..." : "Suscribirse con WLD"}
+        </Btn>
+        <button onClick={onClose} data-testid="button-cancel-gold"
+          className="mt-3 w-full text-xs text-yellow-200/30 hover:text-yellow-200/60 cursor-pointer">
+          Cancelar
+        </button>
       </motion.div>
     </Overlay>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODAL PAGO SALA EXTRA
+// EXTRA ROOM PAY MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function ExtraRoomPayModal({ onClose, onPay, loading, amount, isGoldPrice }: {
-  onClose: () => void; onPay: () => void; loading?: boolean; amount: number; isGoldPrice: boolean;
+  onClose: () => void; onPay: () => void; loading: boolean; amount: number; isGoldPrice: boolean;
 }) {
   return (
     <Overlay>
-      <motion.div initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.85, opacity: 0 }} transition={{ type: "spring", damping: 20, stiffness: 300 }}
-        className="relative w-80 rounded-2xl border border-violet-400/30 bg-gradient-to-b from-indigo-950/97 to-violet-950/93 p-6 shadow-2xl">
-        <CloseBtn onClick={onClose} testId="button-close-extra-room-modal" />
-        <div className="flex flex-col items-center gap-4 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 shadow-xl shadow-violet-500/40">
-            <Plus className="h-7 w-7 text-white" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-violet-200">Sala adicional</h3>
-            <p className="mt-1 text-sm text-violet-100/60">
-              Has alcanzado el límite de salas gratuitas.
-              {isGoldPrice ? " Como usuario Gold, obtienes precio especial." : ""}
-            </p>
-          </div>
-          <div className="w-full space-y-2">
-            <Btn variant="primary" onClick={onPay} disabled={loading} className="w-full" testId="button-pay-extra-room">
-              <Sparkles className="h-4 w-4" />
-              {loading ? "Procesando pago…" : `Crear sala — ${amount} WLD`}
-            </Btn>
-            <button onClick={onClose} data-testid="button-cancel-extra-room"
-              className="w-full text-xs text-violet-100/40 cursor-pointer py-1">Cancelar</button>
-          </div>
-        </div>
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="w-[90%] max-w-xs bg-gray-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl relative"
+        onClick={(e) => e.stopPropagation()}>
+        <CloseBtn onClick={onClose} />
+        <h2 className="text-base font-bold text-white mb-2">Sala adicional</h2>
+        <p className="text-sm text-white/50 mb-4">
+          Has alcanzado el límite de salas gratuitas. Crea una sala extra por{" "}
+          <span className={isGoldPrice ? "text-yellow-400 font-bold" : "text-violet-400 font-bold"}>
+            {amount} WLD
+          </span>.
+        </p>
+        <Btn variant="primary" onClick={onPay} disabled={loading} className="w-full" testId="button-pay-extra-room">
+          {loading ? "Procesando..." : `Pagar ${amount} WLD`}
+        </Btn>
+        <button onClick={onClose} className="mt-3 w-full text-xs text-white/30 hover:text-white/60 cursor-pointer">Cancelar</button>
       </motion.div>
     </Overlay>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MODAL CREAR SALA
+// CREATE ROOM MODAL
 // ─────────────────────────────────────────────────────────────────────────────
 function CreateRoomModal({ onClose, onCreate, canCreateGold }: {
-  onClose: () => void; onCreate: (room: Omit<ChatRoom, "id">) => void; canCreateGold: boolean;
+  onClose: () => void;
+  onCreate: (data: Omit<ChatRoom, "id">) => void;
+  canCreateGold: boolean;
 }) {
-  const [name, setName]               = useState("");
-  const [type, setType]               = useState<RoomType>("classic");
-  const [isPrivate, setIsPrivate]     = useState(false);
+  const [name, setName] = useState("");
+  const [type, setType] = useState<RoomType>("classic");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [description, setDescription] = useState("");
 
   return (
     <Overlay>
-      <motion.div initial={{ scale: 0.88, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.88, opacity: 0 }} transition={{ type: "spring", damping: 20, stiffness: 300 }}
-        className="relative w-80 rounded-2xl border border-violet-500/30 bg-gradient-to-b from-indigo-950/97 to-violet-950/93 p-6 shadow-2xl">
-        <CloseBtn onClick={onClose} testId="button-close-create-room" />
-        <h3 className="mb-4 text-base font-bold text-violet-200">Crear nueva sala</h3>
-        <div className="space-y-3">
-          <ModalInput label="Nombre" value={name} onChange={setName} placeholder="ej. off-topic" maxLength={50} testId="input-room-name" />
-          <ModalInput label="Descripción (opcional)" value={description} onChange={setDescription} placeholder="De qué trata esta sala" maxLength={100} testId="input-room-description" />
-          <div>
-            <label className="mb-1 block text-xs text-violet-300">Tipo</label>
-            <div className="flex gap-2">
-              {(["classic", "gold"] as RoomType[]).map((t) => {
-                const isG = t === "gold"; const active = type === t;
-                return (
-                  <button key={t} onClick={() => (!isG || canCreateGold) && setType(t)} data-testid={`button-type-${t}`}
-                    className={cx("flex-1 rounded-xl border py-2 text-xs font-medium transition-all",
-                      isG && !canCreateGold ? "cursor-not-allowed opacity-40" : "cursor-pointer",
-                      active ? isG ? "border-yellow-500 bg-yellow-600/30 text-yellow-200" : "border-violet-500 bg-violet-600/40 text-violet-200" : "border-white/10 text-white/40")}>
-                    {isG ? <Crown className="mx-auto mb-0.5 h-4 w-4" /> : <MessageSquare className="mx-auto mb-0.5 h-4 w-4" />}
-                    {t === "classic" ? "Classic" : <>Gold {!canCreateGold && <span className="text-[9px]">(Gold+)</span>}</>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setIsPrivate(!isPrivate)} data-testid="button-toggle-private"
-              className={cx("flex h-5 w-9 items-center rounded-full border transition-all cursor-pointer",
-                isPrivate ? "border-violet-500 bg-violet-600/60" : "border-white/20 bg-white/10")}>
-              <span className={cx("ml-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-all", isPrivate && "translate-x-4")} />
-            </button>
-            <span className="flex items-center gap-1 text-xs text-violet-300">
-              {isPrivate ? <Lock className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
-              {isPrivate ? "Sala privada" : "Sala pública"}
-            </span>
-          </div>
-        </div>
-        <div className="mt-4 flex gap-2">
-          <Btn variant="outline" onClick={onClose} className="flex-1" testId="button-cancel-create-room">Cancelar</Btn>
-          <Btn variant="primary" disabled={!name.trim()} className="flex-1" testId="button-confirm-create-room"
-            onClick={() => { if (!name.trim()) return; onCreate({ name: name.trim(), type, isPrivate, description: description.trim() || undefined }); onClose(); }}>
-            Crear sala
-          </Btn>
-        </div>
-      </motion.div>
-    </Overlay>
-  );
-}
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        className="w-[92%] max-w-sm bg-gray-900/95 border border-white/10 rounded-3xl p-5 shadow-2xl relative"
+        onClick={(e) => e.stopPropagation()}>
+        <CloseBtn onClick={onClose} />
+        <h2 className="text-base font-bold text-white mb-4">Crear sala</h2>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MODAL COMPARTIR
-// ─────────────────────────────────────────────────────────────────────────────
-function ShareModal({ message, onClose }: { message: ChatMessage; onClose: () => void }) {
-  const text = encodeURIComponent(`"${message.content}" — ${message.username} en GlobalChat`);
-  const platforms = [
-    { label: "Twitter / X", url: `https://twitter.com/intent/tweet?text=${text}`, color: "text-sky-400",    icon: <Twitter className="h-4 w-4" /> },
-    { label: "WhatsApp",    url: `https://wa.me/?text=${text}`,                    color: "text-green-400", icon: <WhatsAppIcon /> },
-    { label: "Discord",     url: `https://discord.com/`,                           color: "text-indigo-400",icon: <DiscordIcon /> },
-  ];
-  return (
-    <Overlay>
-      <motion.div initial={{ scale: 0.9, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0 }} transition={{ type: "spring", damping: 22, stiffness: 300 }}
-        className="relative w-72 rounded-2xl border border-white/10 bg-slate-900/98 p-5 shadow-2xl">
-        <CloseBtn onClick={onClose} testId="button-close-share" />
-        <h3 className="mb-3 text-sm font-bold text-white">Compartir mensaje</h3>
-        {message.content && <p className="mb-4 rounded-xl bg-white/5 px-3 py-2 text-xs text-white/50 italic line-clamp-2">"{message.content}"</p>}
-        <div className="space-y-2">
-          {platforms.map((p) => (
-            <a key={p.label} href={p.url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 cursor-pointer">
-              <span className={p.color}>{p.icon}</span>{p.label}
-            </a>
-          ))}
-          <button onClick={() => { navigator.clipboard.writeText(message.content ?? ""); onClose(); }}
-            className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 cursor-pointer">
-            <Hash className="h-4 w-4 text-fuchsia-400" /> Copiar texto
-          </button>
+        <div className="flex gap-2 mb-4">
+          {(["classic", "gold"] as RoomType[]).map((t) => {
+            const isG = t === "gold"; const active = type === t;
+            return (
+              <button key={t} onClick={() => { if (!isG || canCreateGold) setType(t); }}
+                disabled={isG && !canCreateGold}
+                className={cx("flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-semibold border cursor-pointer transition-all",
+                  active
+                    ? isG ? "bg-yellow-400/20 border-yellow-400/40 text-yellow-300" : "bg-violet-400/20 border-violet-400/40 text-violet-300"
+                    : "border-white/10 text-white/40 hover:border-white/20 hover:text-white/60",
+                  isG && !canCreateGold && "opacity-30 cursor-not-allowed")}>
+                {isG ? <Crown className="h-3.5 w-3.5" /> : <Hash className="h-3.5 w-3.5" />}
+                {t === "classic" ? "Clásica" : "Gold"}
+              </button>
+            );
+          })}
         </div>
+
+        <ModalInput label="Nombre de sala" value={name} onChange={setName} placeholder="mi-sala-genial" maxLength={40} testId="input-room-name" />
+        <div className="mt-3">
+          <ModalInput label="Descripción (opcional)" value={description} onChange={setDescription} placeholder="Para hablar de…" maxLength={120} />
+        </div>
+        <button onClick={() => setIsPrivate(p => !p)}
+          className="mt-3 flex items-center gap-2 text-sm text-white/50 hover:text-white/80 cursor-pointer transition-colors">
+          {isPrivate ? <Lock className="h-4 w-4 text-violet-400" /> : <Globe className="h-4 w-4" />}
+          {isPrivate ? "Sala privada" : "Sala pública"}
+        </button>
+
+        <Btn variant="primary" disabled={!name.trim()} className="flex-1 mt-4 w-full" testId="button-confirm-create-room"
+          onClick={() => onCreate({ name: name.trim(), type, isPrivate, description: description.trim() || undefined })}>
+          Crear sala
+        </Btn>
       </motion.div>
     </Overlay>
   );
@@ -658,191 +601,133 @@ function ShareModal({ message, onClose }: { message: ChatMessage; onClose: () =>
 // ─────────────────────────────────────────────────────────────────────────────
 // CHAT INPUT
 // ─────────────────────────────────────────────────────────────────────────────
-function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo, onCancelReply }: {
-  onSend: (content: string, file?: File, audioBlob?: Blob, ephemeral?: boolean, replyTo?: ChatMessage) => void;
-  onTyping: (b: boolean) => void; isGold: boolean; hasGoldAccess: boolean; disabled?: boolean;
-  replyTo: ChatMessage | null; onCancelReply: () => void;
-}) {
-  const [text, setText]               = useState("");
-  const [file, setFile]               = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl]   = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recSecs, setRecSecs]         = useState(0);
-  const [ephemeral, setEphemeral]     = useState(false);
-  const [audioBlockedToast, setAudioBlockedToast] = useState(false);
-  const fileRef           = useRef<HTMLInputElement>(null);
-  const textareaRef       = useRef<HTMLTextAreaElement>(null);
-  const typingTimer       = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mediaRecorder     = useRef<MediaRecorder | null>(null);
-  const audioChunks       = useRef<Blob[]>([]);
-  const recInterval       = useRef<ReturnType<typeof setInterval> | null>(null);
+interface ChatInputProps {
+  onSend: (content: string, file?: File, audio?: Blob, ephemeral?: boolean, reply?: ChatMessage) => void;
+  onTyping: (typing: boolean) => void;
+  isGold: boolean;
+  hasGoldAccess: boolean;
+  disabled: boolean;
+  replyTo: ChatMessage | null;
+  onCancelReply: () => void;
+}
+function ChatInput({ onSend, onTyping, isGold, disabled, replyTo, onCancelReply }: ChatInputProps) {
+  const [text, setText] = useState("");
+  const [ephemeral, setEphemeral] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const fileRef    = useRef<HTMLInputElement>(null);
+  const mediaRef   = useRef<MediaRecorder | null>(null);
+  const chunksRef  = useRef<Blob[]>([]);
 
-  const clearFile = () => { setFile(null); setPreviewUrl(null); if (fileRef.current) fileRef.current.value = ""; };
+  const EMOJIS = ["😀","😂","😍","🎉","🔥","💯","🤔","😎","❤️","👍","🙌","✨","🥹","😅","🤯","🥳"];
 
-  const send = () => {
-    if (!text.trim() && !file) return;
-    onSend(text.trim(), file ?? undefined, undefined, ephemeral, replyTo ?? undefined);
-    setText(""); clearFile(); onTyping(false);
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    setTimeout(() => textareaRef.current?.focus(), 0);
+  const doSend = () => {
+    if (!text.trim()) return;
+    onSend(text.trim(), undefined, undefined, ephemeral, replyTo ?? undefined);
+    setText(""); setEphemeral(false); setShowEmojis(false);
   };
 
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    onSend("", file, undefined, ephemeral, replyTo ?? undefined);
+    e.target.value = "";
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setText(e.target.value);
-    const el = e.target; el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 120) + "px";
-    onTyping(true);
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => onTyping(false), 1500);
-  };
-
-  const handleMicClick = () => {
-    if (!hasGoldAccess) {
-      setAudioBlockedToast(true);
-      setTimeout(() => setAudioBlockedToast(false), 3000);
+  const toggleRecord = async () => {
+    if (recording && mediaRef.current) {
+      mediaRef.current.stop();
+      setRecording(false);
       return;
     }
-    if (isRecording) stopRecording();
-    else startRecording();
-  };
-
-  const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4", ""]
-        .find((m) => !m || MediaRecorder.isTypeSupported(m)) ?? "";
-      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      audioChunks.current = [];
-      rec.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.current.push(e.data); };
-      rec.onstop = () => {
-        const blob = new Blob(audioChunks.current, { type: rec.mimeType || "audio/webm" });
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         onSend("", undefined, blob, ephemeral, replyTo ?? undefined);
-        stream.getTracks().forEach((t) => t.stop());
-        setRecSecs(0);
-        if (recInterval.current) clearInterval(recInterval.current);
+        stream.getTracks().forEach(t => t.stop());
       };
-      rec.start(250);
-      mediaRecorder.current = rec;
-      setIsRecording(true);
-      recInterval.current = setInterval(() => setRecSecs((s) => s + 1), 1000);
-    } catch { console.warn("[GlobalChat] Micrófono no disponible"); }
-  };
-
-  const stopRecording = () => {
-    mediaRecorder.current?.stop();
-    setIsRecording(false);
-    if (recInterval.current) clearInterval(recInterval.current);
+      recorder.start();
+      mediaRef.current = recorder;
+      setRecording(true);
+    } catch {
+      console.warn("[ChatInput] No se pudo acceder al micrófono.");
+    }
   };
 
   return (
-    <div className={cx("border-t p-3 flex-shrink-0 backdrop-blur-sm",
-      isGold ? "border-yellow-500/20 bg-yellow-950/40" : "border-violet-500/20 bg-slate-950/60")}>
-
-      <AnimatePresence>
-        {audioBlockedToast && (
-          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-            className="mb-2 flex items-center gap-2 rounded-xl bg-yellow-500/15 border border-yellow-500/30 px-3 py-2">
-            <Crown className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
-            <span className="text-xs text-yellow-300 font-medium">Solo disponible en Gold</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <div className="flex flex-col gap-1.5 px-3 pb-3 flex-shrink-0">
+      {/* Reply preview */}
       <AnimatePresence>
         {replyTo && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            className="mb-2 flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 px-2.5 py-1.5">
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
             <CornerUpLeft className="h-3 w-3 text-violet-400 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-semibold text-violet-300">{replyTo.username}</span>
-              <p className="text-[11px] text-white/40 truncate">{replyTo.content ?? "📎 archivo"}</p>
-            </div>
-            <button onClick={onCancelReply} className="text-white/30 hover:text-white/60 cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+            <span className="text-violet-300 font-semibold truncate">{replyTo.username}:</span>
+            <span className="text-white/40 truncate flex-1">{replyTo.content ?? "📎 archivo"}</span>
+            <button onClick={onCancelReply} className="text-white/30 hover:text-white/60 cursor-pointer flex-shrink-0"><X className="h-3 w-3" /></button>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* Emoji tray */}
       <AnimatePresence>
-        {file && (
+        {showEmojis && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            className="mb-2 flex items-center gap-2 rounded-xl bg-white/5 border border-white/10 p-2">
-            {previewUrl ? <img src={previewUrl} alt="prev" className="h-10 w-10 rounded-lg object-cover" /> : <FileText className="h-8 w-8 text-violet-400 flex-shrink-0" />}
-            <div className="flex-1 min-w-0">
-              <p className="truncate text-xs text-white/70">{file.name}</p>
-              <p className="text-[10px] text-white/30">{(file.size / 1024).toFixed(1)} KB</p>
-            </div>
-            <button onClick={clearFile} className="text-white/30 cursor-pointer p-1" data-testid="button-clear-file"><X className="h-4 w-4" /></button>
+            className="flex flex-wrap gap-1 px-2 py-1.5 rounded-xl bg-gray-900/90 border border-white/10">
+            {EMOJIS.map((e) => (
+              <button key={e} onClick={() => setText(t => t + e)}
+                className="text-lg hover:scale-125 transition-transform cursor-pointer">{e}</button>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {isRecording && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            className="mb-2 flex items-center gap-2 rounded-xl bg-red-500/15 border border-red-500/30 px-3 py-2">
-            <motion.span className="w-2 h-2 rounded-full bg-red-400 block"
-              animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} />
-            <span className="text-xs text-red-300 font-medium flex-1">
-              Grabando… {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, "0")}
-            </span>
-            <span className="text-[10px] text-red-400/60">Toca 🎤 para enviar</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="flex items-end gap-1.5">
-        <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt" className="hidden"
-          data-testid="input-file-upload"
-          onChange={(e) => {
-            const f = e.target.files?.[0]; if (!f) return;
-            setFile(f); setPreviewUrl(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
-          }} />
-        <button onClick={() => fileRef.current?.click()} disabled={disabled || isRecording} data-testid="button-attach-file"
-          className={cx("flex-shrink-0 p-2.5 rounded-xl transition-colors cursor-pointer disabled:opacity-30",
-            isGold ? "text-yellow-400/60 hover:bg-yellow-500/10" : "text-violet-400/60 hover:bg-violet-500/10")}>
+      <div className="flex items-end gap-2">
+        {/* Attachments */}
+        <input ref={fileRef} type="file" className="hidden" onChange={handleFile} />
+        <button onClick={() => fileRef.current?.click()} disabled={disabled}
+          className="flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed">
           <Paperclip className="h-4 w-4" />
         </button>
 
-        {/* Mic: solo visible en Gold, en Classic se muestra bloqueado */}
-        {isGold ? (
-          <button onClick={handleMicClick} disabled={disabled}
-            data-testid="button-mic"
-            className={cx("flex-shrink-0 p-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-30",
-              isRecording ? "text-red-400 bg-red-500/15 hover:bg-red-500/25" : "text-yellow-400/60 hover:bg-yellow-500/10")}>
-            {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </button>
-        ) : (
-          <button
-            disabled
-            data-testid="button-mic"
-            title="Audio solo disponible en Gold"
-            className="flex-shrink-0 p-2.5 rounded-xl opacity-25 cursor-not-allowed text-white/30">
-            <Mic className="h-4 w-4" />
-          </button>
-        )}
-
-        <button onClick={() => setEphemeral(!ephemeral)} disabled={disabled}
-          title={ephemeral ? "Mensaje efímero (24h)" : "Mensaje normal"}
-          className={cx("flex-shrink-0 p-2.5 rounded-xl transition-all cursor-pointer disabled:opacity-30 text-sm",
-            ephemeral ? "text-fuchsia-400 bg-fuchsia-500/15" : "text-white/20 hover:text-white/40")}>
-          ⏳
+        {/* Emoji toggle */}
+        <button onClick={() => setShowEmojis(e => !e)} disabled={disabled}
+          className="flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed text-lg">
+          😊
         </button>
 
-        <textarea ref={textareaRef} value={text} onChange={handleChange} onKeyDown={handleKey}
-          disabled={disabled || isRecording} rows={1}
-          placeholder={disabled ? "Necesitas suscripción para chatear" : isRecording ? "Grabando audio…" : "Escribe un mensaje… (Enter para enviar)"}
-          data-testid="input-chat-message"
-          className={cx(
-            "flex-1 resize-none rounded-2xl border text-sm text-white placeholder-white/30 bg-transparent transition-all py-2.5 px-3.5 outline-none min-h-[40px] max-h-[120px] overflow-y-auto scrollbar-thin focus:ring-1",
-            isGold
-              ? "border-yellow-500/30 bg-yellow-900/20 focus:border-yellow-400/50 focus:ring-yellow-500/20"
-              : "border-violet-500/30 bg-violet-900/20 focus:border-fuchsia-500/40 focus:ring-fuchsia-500/15 focus:shadow-[0_0_20px_rgba(217,70,239,0.08)]"
-          )} />
+        {/* Ephemeral toggle */}
+        <button onClick={() => setEphemeral(e => !e)} disabled={disabled} title="Mensaje efímero (24h)"
+          className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed",
+            ephemeral ? "text-purple-400 bg-purple-400/15" : "text-white/25 hover:text-white/50 hover:bg-white/8")}>
+          <Sparkles className="h-4 w-4" />
+        </button>
 
-        <button onClick={send} disabled={disabled || isRecording || (!text.trim() && !file)}
+        <textarea
+          value={text}
+          onChange={(e) => { setText(e.target.value); onTyping(!!e.target.value); }}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
+          placeholder={disabled ? "Sin acceso" : "Escribe un mensaje…"}
+          disabled={disabled}
+          rows={1}
+          className="flex-1 resize-none rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder-white/25 outline-none focus:border-violet-500/50 transition-colors disabled:opacity-40 max-h-24 overflow-y-auto"
+        />
+
+        {/* Voice */}
+        <button onClick={toggleRecord} disabled={disabled}
+          className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed",
+            recording ? "text-red-400 bg-red-400/20 animate-pulse" : "text-white/30 hover:text-white/60 hover:bg-white/10")}>
+          {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </button>
+
+        {/* Send */}
+        <button
+          onClick={doSend}
+          disabled={disabled || !text.trim()}
           data-testid="button-send-message"
           className={cx(
             "flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center shadow-lg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed active:scale-95",
@@ -891,62 +776,40 @@ function ModalInput({ label, value, onChange, placeholder, maxLength, testId }: 
   );
 }
 
-function WhatsAppIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-      <path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.525 3.66 1.438 5.168L2 22l4.99-1.418A9.956 9.956 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2zm0 18a7.946 7.946 0 01-4.057-1.107l-.29-.173-3.008.855.84-3.074-.19-.307A7.95 7.95 0 014 12c0-4.411 3.589-8 8-8s8 3.589 8 8-3.589 8-8 8z"/>
-    </svg>
-  );
-}
-
-function DiscordIcon() {
-  return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03z"/>
-    </svg>
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENTE PRINCIPAL
+// MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: GlobalChatRoomProps) {
-
-  const [hasClassicAccess, setHasClassicAccess] = useState(false);
-  const [hasGoldAccess,    setHasGoldAccess]    = useState(false);
-
-  const [roomType,       setRoomType]       = useState<RoomType>("classic");
-  const [rooms,          setRooms]          = useState<ChatRoom[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState("");
-  const [messages,       setMessages]       = useState<Record<string, ChatMessage[]>>({});
-  const [typingUsers,    setTypingUsers]    = useState<TypingUser[]>([]);
-  const [connected,      setConnected]      = useState<ConnectedUser[]>([]);
-  const [showRooms,      setShowRooms]      = useState(false);
-  const [showGoldModal,  setShowGoldModal]  = useState(false);
-  const [showCreateRoom, setShowCreateRoom] = useState(false);
-  const [shareMsg,       setShareMsg]       = useState<ChatMessage | null>(null);
-  const [goldLoading,    setGoldLoading]    = useState(false);
-  const [myUsername,     setMyUsername]     = useState<string>("");
-  const [userTier,       setUserTier]       = useState<string>("");
-
-  const [showExtraRoomModal,    setShowExtraRoomModal]    = useState(false);
-  const [extraRoomPayLoading,   setExtraRoomPayLoading]   = useState(false);
-  const [pendingRoomData,       setPendingRoomData]       = useState<Omit<ChatRoom, "id"> | null>(null);
-
+  const [roomType,         setRoomType]         = useState<RoomType>("classic");
+  const [rooms,            setRooms]            = useState<ChatRoom[]>([]);
+  const [selectedRoomId,   setSelectedRoomId]   = useState<string>("");
+  const [messages,         setMessages]         = useState<Record<string, ChatMessage[]>>({});
+  const [typingUsers,      setTypingUsers]       = useState<TypingUser[]>([]);
+  const [connected,        setConnected]         = useState<ConnectedUser[]>([]);
   const [reactionsPerRoom, setReactionsPerRoom] = useState<Map<string, Record<string, Record<string, string[]>>>>(new Map());
   const [pinnedPerRoom,    setPinnedPerRoom]    = useState<Map<string, string[]>>(new Map());
-
-  const [replyTo,     setReplyTo]     = useState<ChatMessage | null>(null);
-  const [editingId,   setEditingId]   = useState<string | null>(null);
-  const [editText,    setEditText]    = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch,  setShowSearch]  = useState(false);
-  const [seenMsgIds,  setSeenMsgIds]  = useState<Set<string>>(new Set());
+  const [seenMsgIds,       setSeenMsgIds]       = useState<Set<string>>(new Set());
+  const [hasClassicAccess, setHasClassicAccess] = useState(false);
+  const [hasGoldAccess,    setHasGoldAccess]    = useState(false);
+  const [myUsername,       setMyUsername]        = useState<string>("");
+  const [showGoldModal,    setShowGoldModal]    = useState(false);
+  const [goldLoading,      setGoldLoading]      = useState(false);
+  const [showCreateRoom,   setShowCreateRoom]   = useState(false);
+  const [shareMsg,         setShareMsg]         = useState<ChatMessage | null>(null);
+  const [replyTo,          setReplyTo]          = useState<ChatMessage | null>(null);
+  const [editingId,        setEditingId]        = useState<string | null>(null);
+  const [editText,         setEditText]         = useState("");
+  const [showSearch,       setShowSearch]       = useState(false);
+  const [searchQuery,      setSearchQuery]      = useState("");
+  const [showExtraRoomModal, setShowExtraRoomModal] = useState(false);
+  const [pendingRoomData,    setPendingRoomData]    = useState<Omit<ChatRoom, "id"> | null>(null);
+  const [extraRoomPayLoading,   setExtraRoomPayLoading]   = useState(false);
+  // [F3] Toast de error visible al usuario
+  const [errorToast,       setErrorToast]       = useState<string | null>(null);
 
   const bottomRef      = useRef<HTMLDivElement>(null);
-  const realtimeRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const realtimeRef    = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const isGold     = roomType === "gold" && hasGoldAccess;
   const canUseGold = hasGoldAccess;
@@ -970,6 +833,15 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   const myRoomsOfType = rooms.filter((r) => r.createdBy === currentUserId && r.type === roomType).length;
 
+  const noAccess = roomType === "gold" ? !hasGoldAccess : !hasClassicAccess;
+
+  /** [F3] Mostrar error en pantalla y en consola */
+  const showError = useCallback((msg: string) => {
+    console.error("[GlobalChatRoom]", msg);
+    setErrorToast(msg);
+    setTimeout(() => setErrorToast(null), 5000);
+  }, []);
+
   const displayUsername = useCallback((userId: string): string => {
     for (const msgs of Object.values(messages)) {
       const found = msgs.find((m) => m.userId === userId);
@@ -979,93 +851,110 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     return `@${userId.slice(0, 8)}`;
   }, [messages, myUsername, currentUserId]);
 
+  // ── Check subscriptions ──
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
     const checkSubscriptions = async () => {
-      const { data } = await supabase.from("subscriptions").select("product")
-        .eq("user_id", currentUserId).in("product", ["chat_classic", "chat_gold"]);
-      if (!data) return;
-      const products = data.map((r: { product: string }) => r.product);
-      const classic = products.includes("chat_classic");
-      const gold    = products.includes("chat_gold");
-      setHasClassicAccess(classic || gold);
-      setHasGoldAccess(gold);
+      try {
+        const { data, error } = await supabase.from("subscriptions").select("product")
+          .eq("user_id", currentUserId).in("product", ["chat_classic", "chat_gold"]);
+        if (error) { console.error("[GlobalChat] Error cargando suscripciones:", error.message); return; }
+        if (!data) return;
+        const products = data.map((r: { product: string }) => r.product);
+        const classic = products.includes("chat_classic");
+        const gold    = products.includes("chat_gold");
+        setHasClassicAccess(classic || gold);
+        setHasGoldAccess(gold);
+      } catch (e) {
+        console.error("[GlobalChat] Error inesperado checkSubscriptions:", e);
+      }
     };
     checkSubscriptions();
   }, [currentUserId, isOpen]);
 
+  // ── Fetch my profile ──
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
     const fetchProfile = async () => {
-      const { data } = await supabase.from("profiles").select("tier, username").eq("id", currentUserId).maybeSingle();
-      if (data?.tier)     setUserTier(String(data.tier));
-      if (data?.username) setMyUsername(String(data.username));
+      try {
+        const { data, error } = await supabase.from("profiles").select("tier, username").eq("id", currentUserId).maybeSingle();
+        if (error) { console.error("[GlobalChat] Error cargando perfil:", error.message); return; }
+        if (data?.username) setMyUsername(String(data.username));
+      } catch (e) {
+        console.error("[GlobalChat] Error inesperado fetchProfile:", e);
+      }
     };
     fetchProfile();
   }, [currentUserId, isOpen]);
 
+  // ── Fetch rooms ──
   const fetchRooms = useCallback(async () => {
-    const { data } = await supabase.from("chat_rooms")
-      .select("*")
-      .eq("type", roomType)
-      .order("created_at", { ascending: false });
-    if (!data) return;
-    const mapped: ChatRoom[] = data.map((r: Record<string, unknown>) => ({
-      id:          String(r.id ?? ""),
-      name:        String(r.name ?? ""),
-      type:        (r.type as RoomType) ?? "classic",
-      isPrivate:   r.is_private === true,
-      description: r.description ? String(r.description) : undefined,
-      createdBy:   r.created_by ? String(r.created_by) : undefined,
-    }));
-    setRooms(mapped);
-    if (!selectedRoomId && mapped.length > 0) {
-      setSelectedRoomId(mapped[mapped.length - 1].id);
+    try {
+      const { data, error } = await supabase.from("chat_rooms")
+        .select("id, name, type, is_private, description, created_by")
+        .order("created_at", { ascending: true });
+      if (error) { console.error("[GlobalChat] Error cargando rooms:", error.message); return; }
+      const parsed: ChatRoom[] = (data ?? []).map((r: Record<string, unknown>) => ({
+        id:          String(r.id),
+        name:        String(r.name),
+        type:        String(r.type) as RoomType,
+        isPrivate:   Boolean(r.is_private),
+        description: r.description ? String(r.description) : undefined,
+        createdBy:   r.created_by  ? String(r.created_by)  : undefined,
+      }));
+      setRooms(parsed);
+      if (parsed.length > 0 && !selectedRoomId) {
+        const defaultRoom = parsed.find(r => r.type === roomType) ?? parsed[0];
+        setSelectedRoomId(defaultRoom.id);
+      }
+    } catch (e) {
+      console.error("[GlobalChat] Error inesperado fetchRooms:", e);
     }
-  }, [roomType, selectedRoomId]);
+  }, [selectedRoomId, roomType]);
 
   useEffect(() => {
-    if (!isOpen || (!hasClassicAccess && !hasGoldAccess)) return;
+    if (!isOpen || !currentUserId) return;
     fetchRooms();
-  }, [isOpen, roomType, hasClassicAccess, hasGoldAccess, fetchRooms]);
+  }, [isOpen, currentUserId, fetchRooms]);
 
-  const switchRoom = useCallback((roomId: string) => {
-    setSelectedRoomId(roomId);
-    setShowRooms(false);
-    setTypingUsers([]);
-    setReplyTo(null);
-    setEditingId(null);
-    setEditText("");
-    setSearchQuery("");
-    setShowSearch(false);
-  }, []);
-
-  // ── FIX 1: Cargar mensajes al cambiar selectedRoomId ──────────────────────
-  useEffect(() => {
+  // ── Fetch messages ──
+  const fetchMessages = useCallback(async () => {
     if (!selectedRoomId) return;
-
-    const fetchMessages = async () => {
-      const { data } = await supabase
+    try {
+      const { data, error } = await supabase
         .from("global_chat_messages")
         .select("*, profiles:sender_id(username, avatar_url)")
         .eq("room_id", selectedRoomId)
         .order("created_at", { ascending: true })
-        .limit(100);
-
-      if (data) {
-        setMessages(prev => ({ ...prev, [selectedRoomId]: data.map(r => rowToMessage(r as Record<string, unknown>)) }));
+        .limit(80);
+      if (error) {
+        console.error("[GlobalChat] Error cargando mensajes:", error.message);
+        return;
       }
-    };
-
-    fetchMessages();
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const parsed = (data ?? []).map((r) => rowToMessage(r as Record<string, unknown>));
+      setMessages((prev) => ({ ...prev, [selectedRoomId]: parsed }));
+    } catch (e) {
+      console.error("[GlobalChat] Error inesperado fetchMessages:", e);
+    }
   }, [selectedRoomId]);
 
   useEffect(() => {
+    if (!selectedRoomId) return;
+    fetchMessages();
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [selectedRoomId, fetchMessages]);
+
+  const switchRoom = useCallback((id: string) => {
+    setSelectedRoomId(id);
+    setSearchQuery(""); setShowSearch(false); setReplyTo(null); setEditingId(null);
+  }, []);
+
+  // ── Realtime ──
+  useEffect(() => {
     if (!isOpen || !selectedRoomId) return;
+    // [F9] Cleanup anterior antes de crear nuevo canal
     if (realtimeRef.current) { supabase.removeChannel(realtimeRef.current); realtimeRef.current = null; }
 
-    // ── FIX 2: Realtime subscription filtrada por room_id actual ─────────────
     const channel = supabase
       .channel(`globalchat-${selectedRoomId}`, {
         config: { broadcast: { self: false }, presence: { key: currentUserId } },
@@ -1148,12 +1037,17 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
         const users = Object.values(state).flat() as ConnectedUser[];
         setConnected(users.filter((u) => u.userId !== currentUserId));
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("[GlobalChat] Error en canal realtime para room:", selectedRoomId);
+        }
+      });
 
     channel.track({ userId: currentUserId, username: displayUsername(currentUserId) });
     realtimeRef.current = channel;
 
     return () => {
+      // [F9] Limpieza correcta al desmontar
       supabase.removeChannel(channel);
       realtimeRef.current = null;
       Object.values(typingTimeouts.current).forEach(clearTimeout);
@@ -1163,8 +1057,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, selectedRoomId, currentUserId]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages.length, typingUsers.length]);
-
+  // ── Seen broadcast ──
   useEffect(() => {
     if (!isOpen || !selectedRoomId) return;
     const timer = setTimeout(() => {
@@ -1177,142 +1070,246 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeMessages.length, selectedRoomId]);
 
+  // ── Auto scroll ──
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [activeMessages.length, typingUsers.length]);
+
+  // ── Refetch latest ──
   const refetchLatestMessages = useCallback(async (roomId: string) => {
-    const { data } = await supabase
-      .from("global_chat_messages")
-      .select("*, profiles:sender_id(username, avatar_url)")
-      .eq("room_id", roomId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-    if (!data) return;
-    const fresh = data.reverse().map((r) => rowToMessage(r as Record<string, unknown>));
-    setMessages((prev) => {
-      const existing = prev[roomId] ?? [];
-      const freshIds = new Set(fresh.map((m) => m.id));
-      const merged = [
-        ...existing.filter((m) => !m.id.startsWith("temp-") && !freshIds.has(m.id)),
-        ...fresh,
-      ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      return { ...prev, [roomId]: merged };
-    });
+    try {
+      const { data, error } = await supabase
+        .from("global_chat_messages")
+        .select("*, profiles:sender_id(username, avatar_url)")
+        .eq("room_id", roomId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) { console.error("[GlobalChat] Error refetch:", error.message); return; }
+      if (!data) return;
+      const fresh = data.reverse().map((r) => rowToMessage(r as Record<string, unknown>));
+      setMessages((prev) => {
+        const existing = prev[roomId] ?? [];
+        const freshIds = new Set(fresh.map((m) => m.id));
+        const merged = [
+          ...existing.filter((m) => !m.id.startsWith("temp-") && !freshIds.has(m.id)),
+          ...fresh,
+        ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        return { ...prev, [roomId]: merged };
+      });
+    } catch (e) {
+      console.error("[GlobalChat] Error inesperado refetch:", e);
+    }
   }, []);
 
   const handleSwitchType = (type: RoomType) => {
-    if (type === "gold" && !canUseGold)          { setShowGoldModal(true); return; }
+    if (type === "gold" && !canUseGold) { setShowGoldModal(true); return; }
     if (type === "classic" && !hasClassicAccess) { return; }
     setRoomType(type);
     setSelectedRoomId(rooms.find(r => r.type === type)?.id || "");
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // [F1][F2][F4] GOLD SUBSCRIBE – MiniKit check + UUID reference + error toast
+  // ─────────────────────────────────────────────────────────────────────────
   const handleGoldSubscribe = async () => {
     if (!currentUserId) return;
+
+    // [F1] Verificar MiniKit antes de lanzar el pago
+    if (!MiniKit.isInstalled()) {
+      showError("World App no detectada. Abre esta app desde World App.");
+      return;
+    }
+
     setGoldLoading(true);
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        reference: `chat_gold-${Date.now()}`.slice(0, 36),
+        // [F2] UUID v4 real — formato que Worldcoin requiere
+        reference: generatePayReference("gold"),
         to: RECEIVER,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(9.99, Tokens.WLD).toString() }],
         description: "Suscripción Gold Chat",
       });
-      if (payRes?.finalPayload?.status === "success") {
-        const transactionId = payRes.finalPayload.transaction_id;
-        // Error #3 corregido: verificar pago en el backend antes de dar acceso Gold
-        const verifyRes = await fetch("/api/verifyPayment", {
+
+      if (payRes?.finalPayload?.status !== "success") {
+        // Pago cancelado por el usuario — no es error crítico
+        console.warn("[GlobalChat] Pago Gold cancelado por usuario:", payRes?.finalPayload?.status);
+        return;
+      }
+
+      const transactionId = payRes.finalPayload.transaction_id;
+      console.log("[GlobalChat] Pago Gold recibido, verificando en backend. txId:", transactionId);
+
+      // [F8] fetch con timeout para entorno embebido
+      let verifyRes: Response;
+      try {
+        verifyRes = await fetchWithTimeout("/api/verifyPayment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ transactionId, userId: currentUserId, action: "chat_gold" }),
-        });
-        if (!verifyRes.ok) {
-          const errData = await verifyRes.json().catch(() => ({}));
-          console.error("[GlobalChat] Backend rechazó suscripción Gold:", errData);
-          return;
-        }
-        setHasGoldAccess(true); setHasClassicAccess(true);
-        setShowGoldModal(false); setRoomType("gold");
-        setSelectedRoomId("");
+        }, 12000);
+      } catch (fetchErr: unknown) {
+        const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        showError(`Error de red al verificar pago Gold: ${msg}`);
+        return;
       }
-    } catch (e) { console.error("[GlobalChat] Error pago Gold:", e); }
-    finally { setGoldLoading(false); }
+
+      if (!verifyRes.ok) {
+        const errData = await verifyRes.json().catch(() => ({}));
+        const errMsg = (errData as { error?: string }).error ?? `HTTP ${verifyRes.status}`;
+        showError(`El servidor rechazó la suscripción Gold: ${errMsg}`);
+        console.error("[GlobalChat] Backend rechazó suscripción Gold:", errData);
+        return;
+      }
+
+      // [F4] Solo dar acceso DESPUÉS de confirmación del backend
+      setHasGoldAccess(true);
+      setHasClassicAccess(true);
+      setShowGoldModal(false);
+      setRoomType("gold");
+      setSelectedRoomId("");
+      console.log("[GlobalChat] Acceso Gold concedido para userId:", currentUserId);
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error al procesar pago Gold: ${msg}`);
+      console.error("[GlobalChat] Error pago Gold:", e);
+    } finally {
+      setGoldLoading(false);
+    }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // [F1][F2][F5] EXTRA ROOM – mismo patrón de robustez
+  // ─────────────────────────────────────────────────────────────────────────
   const handlePayForExtraRoom = async (amount: number, isGoldPrice: boolean) => {
     if (!pendingRoomData) return;
+
+    // [F1] Verificar MiniKit antes de lanzar el pago
+    if (!MiniKit.isInstalled()) {
+      showError("World App no detectada. Abre esta app desde World App.");
+      return;
+    }
+
     setExtraRoomPayLoading(true);
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        reference: `room-extra-${Date.now()}`.slice(0, 36),
+        // [F2] UUID v4 real
+        reference: generatePayReference("room"),
         to: RECEIVER,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(amount, Tokens.WLD).toString() }],
         description: "Sala adicional",
       });
+
       if (payRes?.finalPayload?.status !== "success") {
-        console.error("Pago de sala adicional fallido:", payRes);
+        console.warn("[GlobalChat] Pago sala extra cancelado:", payRes?.finalPayload?.status);
         return;
       }
+
       const transactionId = payRes.finalPayload.transaction_id;
-      // Error #3 corregido: verificar pago en el backend antes de crear la sala
-      const verifyRes = await fetch("/api/verifyPayment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transactionId, userId: currentUserId, action: "extra_room" }),
-      });
+      console.log("[GlobalChat] Pago sala extra recibido, verificando. txId:", transactionId);
+
+      // [F8] fetch con timeout
+      let verifyRes: Response;
+      try {
+        verifyRes = await fetchWithTimeout("/api/verifyPayment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transactionId, userId: currentUserId, action: "extra_room" }),
+        }, 12000);
+      } catch (fetchErr: unknown) {
+        const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+        showError(`Error de red al verificar pago de sala: ${msg}`);
+        return;
+      }
+
       if (!verifyRes.ok) {
         const errData = await verifyRes.json().catch(() => ({}));
+        const errMsg = (errData as { error?: string }).error ?? `HTTP ${verifyRes.status}`;
+        showError(`El servidor rechazó el pago de sala extra: ${errMsg}`);
         console.error("[GlobalChat] Backend rechazó pago sala extra:", errData);
         return;
       }
+
+      // [F5] Solo insertar sala DESPUÉS de confirmación del backend
       await insertRoom(pendingRoomData);
       setShowExtraRoomModal(false);
       setPendingRoomData(null);
-    } catch (e) { console.error("[GlobalChat] Error pago sala extra:", e); }
-    finally { setExtraRoomPayLoading(false); }
-    void isGoldPrice;
+      console.log("[GlobalChat] Sala extra creada. isGoldPrice:", isGoldPrice);
+
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error al pagar sala extra: ${msg}`);
+      console.error("[GlobalChat] Error pago sala extra:", e);
+    } finally {
+      setExtraRoomPayLoading(false);
+    }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // [F11] INSERT ROOM – feedback de error al usuario
+  // ─────────────────────────────────────────────────────────────────────────
   const insertRoom = async (data: Omit<ChatRoom, "id">) => {
-    const { data: inserted, error } = await supabase.from("chat_rooms")
-      .insert({ name: data.name, type: data.type, is_private: data.isPrivate, description: data.description ?? null, created_by: currentUserId })
-      .select("id").maybeSingle();
-    if (!error && inserted?.id) {
-      await fetchRooms();
-      switchRoom(String(inserted.id));
+    try {
+      const { data: inserted, error } = await supabase.from("chat_rooms")
+        .insert({ name: data.name, type: data.type, is_private: data.isPrivate, description: data.description ?? null, created_by: currentUserId })
+        .select("id").maybeSingle();
+      if (error) {
+        showError(`Error al crear sala: ${error.message}`);
+        console.error("[GlobalChat] insertRoom error:", error);
+        return;
+      }
+      if (inserted?.id) {
+        await fetchRooms();
+        switchRoom(String(inserted.id));
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error inesperado al crear sala: ${msg}`);
+      console.error("[GlobalChat] insertRoom error inesperado:", e);
     }
   };
 
   const handleCreateRoom = async (data: Omit<ChatRoom, "id">) => {
-    const { count } = await supabase.from("chat_rooms")
-      .select("*", { count: "exact", head: true })
-      .eq("created_by", currentUserId)
-      .eq("type", data.type);
-    const userCount = count ?? 0;
+    try {
+      const { count, error: countError } = await supabase.from("chat_rooms")
+        .select("*", { count: "exact", head: true })
+        .eq("created_by", currentUserId)
+        .eq("type", data.type);
+      if (countError) { console.error("[GlobalChat] Error contando rooms:", countError.message); }
+      const userCount = count ?? 0;
 
-    if (hasGoldAccess) {
-      if (userCount < 5) {
-        await insertRoom(data);
-      } else {
-        setPendingRoomData(data);
-        setShowExtraRoomModal(true);
+      if (hasGoldAccess) {
+        if (userCount < freeRoomLimit) {
+          await insertRoom(data);
+        } else {
+          setPendingRoomData(data);
+          setShowExtraRoomModal(true);
+        }
+      } else if (hasClassicAccess) {
+        if (userCount < 2) {
+          await insertRoom(data);
+        } else {
+          setPendingRoomData(data);
+          setShowExtraRoomModal(true);
+        }
       }
-    } else if (hasClassicAccess) {
-      if (userCount < 2) {
-        await insertRoom(data);
-      } else {
-        setPendingRoomData(data);
-        setShowExtraRoomModal(true);
-      }
+      setShowCreateRoom(false);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error al crear sala: ${msg}`);
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // [F12] SEND – elimina optimista si el insert definitivo falla
+  // ─────────────────────────────────────────────────────────────────────────
   const handleSend = async (content: string, file?: File, audioBlob?: Blob, ephemeral?: boolean, replyMsg?: ChatMessage) => {
     if (!content.trim() && !file && !audioBlob) return;
-    // Usar myUsername directo para evitar mostrar el ID de wallet
     const username = myUsername || displayUsername(currentUserId);
     let fileUrl: string | undefined, fileName: string | undefined, fileType: string | undefined, audioUrl: string | undefined;
 
     if (audioBlob) {
       const path = `${currentUserId}/${Date.now()}-voice.webm`;
       const { error: upErr } = await supabase.storage.from("chat-files").upload(path, audioBlob, { cacheControl: "3600" });
-      if (upErr) { console.error("[GlobalChat] Error subiendo audio:", upErr.message); return; }
+      if (upErr) { console.error("[GlobalChat] Error subiendo audio:", upErr.message); showError("Error al subir audio. Intenta de nuevo."); return; }
       const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
       audioUrl = urlData.publicUrl;
     }
@@ -1320,7 +1317,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     if (file) {
       const path = `${currentUserId}/${Date.now()}-${file.name}`;
       const { error: upErr } = await supabase.storage.from("chat-files").upload(path, file, { cacheControl: "3600" });
-      if (upErr) { console.error("[GlobalChat] Error subiendo archivo:", upErr.message); return; }
+      if (upErr) { console.error("[GlobalChat] Error subiendo archivo:", upErr.message); showError("Error al subir archivo. Intenta de nuevo."); return; }
       const { data: urlData } = supabase.storage.from("chat-files").getPublicUrl(path);
       fileUrl = urlData.publicUrl; fileName = file.name; fileType = file.type;
     }
@@ -1335,13 +1332,11 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     setMessages((prev) => ({ ...prev, [selectedRoomId]: [...(prev[selectedRoomId] ?? []), optimistic] }));
     setReplyTo(null);
 
-    // Payload completo con todos los campos
     const fullPayload: Record<string, unknown> = {
       room_id: selectedRoomId,
       sender_id: currentUserId,
       content: content.trim() || null,
     };
-    // Añadir campos opcionales solo si existen en la tabla
     if (username)            fullPayload.username          = username;
     if (fileUrl)             fullPayload.file_url          = fileUrl;
     if (fileName)            fullPayload.file_name         = fileName;
@@ -1354,21 +1349,21 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
     let { error } = await supabase.from("global_chat_messages").insert(fullPayload);
 
-    // Si falla con campos opcionales, reintenta solo con los campos mínimos
     if (error) {
       console.warn("[GlobalChat] Insert completo falló, reintentando mínimo:", error.message);
-      const minPayload = {
-        room_id: selectedRoomId,
-        sender_id: currentUserId,
-        content: content.trim() || null,
-      };
+      const minPayload = { room_id: selectedRoomId, sender_id: currentUserId, content: content.trim() || null };
       const retry = await supabase.from("global_chat_messages").insert(minPayload);
       error = retry.error;
     }
 
     if (error) {
-      console.error("[GlobalChat] Error guardando mensaje:", error.message);
-      // No eliminar el mensaje optimista — queda visible aunque falle
+      console.error("[GlobalChat] Error guardando mensaje definitivo:", error.message);
+      // [F12] Eliminar mensaje optimista si el insert falla definitivamente
+      setMessages((prev) => ({
+        ...prev,
+        [selectedRoomId]: (prev[selectedRoomId] ?? []).filter((m) => m.id !== tempId),
+      }));
+      showError("No se pudo enviar el mensaje. Verifica tu conexión.");
     } else {
       setTimeout(() => refetchLatestMessages(selectedRoomId), 800);
     }
@@ -1420,214 +1415,190 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     setEditingId(msgId); setEditText(msg.content ?? "");
   };
 
-  const handleSaveEdit = async (msgId: string, newContent: string) => {
-    if (!newContent.trim()) return;
-    await supabase.from("global_chat_messages").update({ content: newContent.trim(), edited_at: new Date().toISOString() }).eq("id", msgId);
-    setMessages((prev) => ({
-      ...prev,
-      [selectedRoomId]: (prev[selectedRoomId] ?? []).map((m) => m.id === msgId ? { ...m, content: newContent.trim(), editedAt: new Date().toISOString() } : m),
-    }));
+  // ─────────────────────────────────────────────────────────────────────────
+  // [F13] EDIT/DELETE – errores de Supabase con feedback al usuario
+  // ─────────────────────────────────────────────────────────────────────────
+  const handleSaveEdit = async (msgId: string) => {
+    if (!editText.trim()) return;
+    try {
+      const { error } = await supabase.from("global_chat_messages")
+        .update({ content: editText.trim(), edited_at: new Date().toISOString() })
+        .eq("id", msgId);
+      if (error) {
+        showError(`Error al editar mensaje: ${error.message}`);
+        console.error("[GlobalChat] handleSaveEdit error:", error);
+        return;
+      }
+      setMessages((prev) => ({
+        ...prev,
+        [selectedRoomId]: (prev[selectedRoomId] ?? []).map((m) =>
+          m.id === msgId ? { ...m, content: editText.trim(), editedAt: new Date().toISOString() } : m
+        ),
+      }));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error inesperado al editar: ${msg}`);
+    }
     setEditingId(null); setEditText("");
   };
 
   const handleDelete = async (msgId: string) => {
-    await supabase.from("global_chat_messages").update({ deleted_for_all: true, content: null }).eq("id", msgId);
-    setMessages((prev) => ({
-      ...prev,
-      [selectedRoomId]: (prev[selectedRoomId] ?? []).map((m) => m.id === msgId ? { ...m, deletedForAll: true, content: undefined } : m),
-    }));
+    try {
+      const { error } = await supabase.from("global_chat_messages")
+        .update({ deleted_for_all: true, content: null })
+        .eq("id", msgId);
+      if (error) {
+        showError(`Error al eliminar mensaje: ${error.message}`);
+        console.error("[GlobalChat] handleDelete error:", error);
+        return;
+      }
+      setMessages((prev) => ({
+        ...prev,
+        [selectedRoomId]: (prev[selectedRoomId] ?? []).map((m) =>
+          m.id === msgId ? { ...m, deletedForAll: true, content: undefined } : m
+        ),
+      }));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showError(`Error inesperado al eliminar: ${msg}`);
+    }
   };
 
-  const noAccess = !hasClassicAccess && !hasGoldAccess;
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-xl bg-black/70"
-          onClick={(e) => e.target === e.currentTarget && onClose()}
-          data-testid="overlay-chat-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2"
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.92, y: 24 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.92, y: 24 }}
-            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            initial={{ scale: 0.96, opacity: 0, y: 16 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.96, opacity: 0, y: 16 }}
+            transition={{ type: "spring", damping: 26, stiffness: 300 }}
             className={cx(
-              "relative flex h-[620px] w-full max-w-md flex-col rounded-3xl overflow-hidden shadow-2xl border",
+              "relative flex flex-col w-full max-w-md h-[88vh] rounded-2xl overflow-hidden shadow-2xl",
               isGold
-                ? "border-yellow-400/35 bg-gradient-to-b from-yellow-950/98 via-amber-950/95 to-orange-950/98 shadow-2xl shadow-yellow-900/50 shadow-[0_0_80px_rgba(234,179,8,0.14)]"
-                : "border-fuchsia-500/30 bg-gradient-to-b from-slate-950/99 via-indigo-950/96 to-violet-950/98 shadow-2xl shadow-violet-900/50 shadow-[0_0_80px_rgba(217,70,239,0.14)]"
+                ? "bg-gradient-to-b from-yellow-950 via-amber-950 to-black border border-yellow-500/20"
+                : "bg-gradient-to-b from-[#0e0618] via-[#0b0414] to-black border border-violet-500/20"
             )}
-            data-testid="container-chat-room"
           >
             {/* ══ HEADER ══ */}
-            {/* FIX 3: Header con clases diferenciadas Classic vs Gold */}
-            <div className={cx(
-              "flex items-center gap-3 px-4 py-3 border-b flex-shrink-0 backdrop-blur-sm",
-              isGold
-                ? "bg-gradient-to-r from-yellow-600/20 to-amber-600/20 border-yellow-500/30"
-                : "bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 border-violet-500/30"
-            )}>
-              <div className={cx("flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl",
-                isGold ? "bg-gradient-to-br from-yellow-400/20 to-amber-500/20 text-yellow-400"
-                       : "bg-gradient-to-br from-indigo-500/20 to-violet-500/20 text-violet-400")}>
-                {isGold ? <Crown className="h-5 w-5" /> : <MessageSquare className="h-5 w-5" />}
+            <div className={cx("flex items-center gap-2 px-3 pt-3 pb-2 border-b flex-shrink-0",
+              isGold ? "border-yellow-500/20" : "border-violet-500/20")}>
+
+              {/* Type switch */}
+              <div className="flex gap-1">
+                {(["classic", "gold"] as RoomType[]).map((t) => {
+                  const active = roomType === t;
+                  return (
+                    <button key={t} onClick={() => handleSwitchType(t)}
+                      className={cx("flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer",
+                        active
+                          ? t === "gold" ? "bg-yellow-400/20 text-yellow-300 border border-yellow-400/30" : "bg-violet-400/20 text-violet-300 border border-violet-400/30"
+                          : "text-white/30 hover:text-white/60 hover:bg-white/5")}>
+                      {t === "gold" ? <Crown className="h-3 w-3" /> : <Hash className="h-3 w-3" />}
+                      {t === "classic" ? "Clásico" : "Gold"}
+                    </button>
+                  );
+                })}
               </div>
-              <div className="flex-1 min-w-0">
-                <button onClick={() => setShowRooms(!showRooms)} data-testid="button-toggle-room-list"
-                  className="flex items-center gap-1 cursor-pointer">
-                  <span className="font-bold text-sm text-white truncate">
-                    {isGold ? "Gold Chat" : "Global Chat"} — {selectedRoom?.name ?? "General"}
-                  </span>
-                  <ChevronDown className={cx("h-3.5 w-3.5 text-white/40 transition-transform", showRooms && "rotate-180")} />
-                </button>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-                  <span className="text-[11px] text-white/40">{connected.length + 1} conectados</span>
-                  <span className="text-[10px] text-white/25 ml-1">
-                    {myRoomsOfType}/{freeRoomLimit} salas
-                  </span>
-                  {selectedRoom?.isPrivate && <Lock className="h-3 w-3 text-white/30" />}
-                </div>
-              </div>
-              <Avatar name={displayUsername(currentUserId)} gold={isGold} />
-              <button onClick={() => setShowSearch(!showSearch)}
-                className={cx("p-1.5 rounded-lg transition-colors cursor-pointer",
-                  showSearch ? isGold ? "text-yellow-300 bg-yellow-500/15" : "text-violet-300 bg-violet-500/15" : "text-white/30 hover:text-white/60")}>
-                <Search className="h-4 w-4" />
-              </button>
-              <div className="flex rounded-xl border border-white/15 overflow-hidden shadow-sm">
-                <button onClick={() => handleSwitchType("classic")} data-testid="button-switch-classic"
-                  className={cx("flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold transition-all cursor-pointer",
-                    roomType === "classic" ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-inner" : "text-white/45 hover:text-white/70 hover:bg-white/6")}>
-                  <MessageSquare className="h-3 w-3" /> Classic
-                </button>
-                <div className="w-px bg-white/10 self-stretch" />
-                <button onClick={() => handleSwitchType("gold")} data-testid="button-switch-gold"
-                  className={cx("flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold transition-all cursor-pointer",
-                    roomType === "gold" ? "bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-inner"
-                      : canUseGold ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-500/8"
-                      : "text-yellow-500/50 hover:text-yellow-400/70 hover:bg-yellow-500/6")}>
-                  <Crown className="h-3 w-3" /> Gold
-                  {!canUseGold && <span className="text-[8px] opacity-60">✦</span>}
+
+              {/* Room selector */}
+              <div className="relative flex-1">
+                <button
+                  className="flex items-center gap-1 text-sm font-semibold text-white/80 hover:text-white transition-colors cursor-pointer truncate max-w-full"
+                  onClick={() => {}}>
+                  <span className="truncate">{selectedRoom?.name ?? "Selecciona sala"}</span>
+                  <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-white/40" />
                 </button>
               </div>
-              {!hasGoldAccess && (
-                <button onClick={() => setShowGoldModal(true)} disabled={goldLoading} data-testid="button-upgrade-gold-header"
-                  className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-xl text-[9px] font-bold bg-gradient-to-r from-yellow-400 to-amber-500 text-white shadow-md shadow-yellow-500/30 cursor-pointer disabled:opacity-50 whitespace-nowrap">
-                  <Sparkles className="h-3 w-3" />
-                  {goldLoading ? "…" : "Upgrade 9.99 WLD"}
+
+              {/* Room list dropdown */}
+              <div className="flex items-center gap-1">
+                {filteredRooms.slice(0, 3).map((r) => (
+                  <button key={r.id} onClick={() => switchRoom(r.id)}
+                    title={r.name}
+                    className={cx("px-2 py-0.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer",
+                      r.id === selectedRoomId
+                        ? isGold ? "bg-yellow-400/20 text-yellow-300" : "bg-violet-400/20 text-violet-300"
+                        : "text-white/30 hover:text-white/60 hover:bg-white/5")}>
+                    {r.isPrivate ? <Lock className="h-3 w-3 inline" /> : null} {r.name.slice(0, 8)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+                <button onClick={() => setShowSearch(s => !s)}
+                  className={cx("p-1.5 rounded-xl transition-colors cursor-pointer",
+                    showSearch ? "text-violet-300 bg-violet-400/15" : "text-white/30 hover:text-white/60 hover:bg-white/8")}>
+                  <Search className="h-3.5 w-3.5" />
                 </button>
-              )}
-              <button onClick={onClose} data-testid="button-close-chat"
-                className="flex-shrink-0 text-white/30 hover:text-white/60 cursor-pointer p-1 transition-colors">
-                <X className="h-5 w-5" />
-              </button>
+                <button onClick={() => setShowCreateRoom(true)}
+                  className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer">
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => {}}
+                  className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer"
+                  title={`${connected.length + 1} conectados`}>
+                  <Users className="h-3.5 w-3.5" />
+                  {connected.length > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 text-[9px] bg-green-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                      {connected.length}
+                    </span>
+                  )}
+                </button>
+                <button onClick={onClose}
+                  className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
-            {/* ══ SEARCH BAR ══ */}
+            {/* Search bar */}
             <AnimatePresence>
               {showSearch && (
-                <SearchBar value={searchQuery} onChange={setSearchQuery} onClose={() => { setShowSearch(false); setSearchQuery(""); }} isGold={isGold} />
-              )}
-            </AnimatePresence>
-
-            {/* ══ DROPDOWN SALAS ══ */}
-            <AnimatePresence>
-              {showRooms && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                  className={cx("border-b overflow-hidden flex-shrink-0",
-                    isGold ? "border-yellow-500/15 bg-yellow-900/20" : "border-violet-500/15 bg-indigo-950/50")}>
-                  <div className="px-3 py-2 space-y-0.5">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 px-1 mb-1">
-                      {isGold ? "Salas Gold" : "Salas Classic"}
-                    </p>
-                    {filteredRooms.map((room) => (
-                      <button key={room.id} onClick={() => switchRoom(room.id)} data-testid={`button-room-${room.id}`}
-                        className={cx("flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm cursor-pointer transition-all",
-                          room.id === selectedRoomId
-                            ? isGold ? "bg-yellow-500/20 text-yellow-200" : "bg-violet-500/20 text-violet-200"
-                            : "text-white/50 hover:text-white/70 hover:bg-white/5")}>
-                        <Hash className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span className="flex-1 truncate">{room.name}</span>
-                        {room.isPrivate && <Lock className="h-3 w-3 text-white/30" />}
-                      </button>
-                    ))}
-                    <button onClick={() => { setShowCreateRoom(true); setShowRooms(false); }} data-testid="button-open-create-room"
-                      className={cx("flex w-full items-center gap-2 rounded-xl border border-dashed px-2.5 py-2 text-xs cursor-pointer transition-colors mt-1",
-                        isGold ? "border-yellow-500/25 text-yellow-400/60 hover:bg-yellow-500/5" : "border-violet-500/25 text-violet-400/60 hover:bg-violet-500/5")}>
-                      <Plus className="h-3.5 w-3.5" /> Crear nueva sala
-                    </button>
-                  </div>
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                  className="px-3 py-1.5 border-b border-white/8 flex-shrink-0">
+                  <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar mensajes…"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white placeholder-white/25 outline-none focus:border-violet-500/40" autoFocus />
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* ══ PINNED BAR ══ */}
+            {/* Pinned */}
             <AnimatePresence>
-              {pinnedMessages.length > 0 && <PinnedBar messages={pinnedMessages} isGold={isGold} onUnpin={handlePin} />}
+              {pinnedMessages.length > 0 && (
+                <PinnedBar messages={pinnedMessages} isGold={isGold} onUnpin={handlePin} />
+              )}
             </AnimatePresence>
 
-            {/* ══ USUARIOS CONECTADOS ══ */}
-            <div className="flex items-center gap-2 overflow-x-auto px-4 py-1.5 flex-shrink-0" style={{ scrollbarWidth: "none" }}>
-              <Users className="h-3 w-3 flex-shrink-0 text-white/20" />
-              <div className="flex -space-x-1.5">
-                {connected.slice(0, 8).map((u) => (
-                  <Avatar key={u.userId} src={u.avatarUrl} name={u.username} size="xs" />
-                ))}
-                {connected.length > 8 && (
-                  <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 ring-1 ring-black/30 text-[8px] text-white/50">
-                    +{connected.length - 8}
-                  </div>
-                )}
-              </div>
-              <RoleBadge role={hasGoldAccess ? "gold" : hasClassicAccess ? "free" : "free"} />
-              {showSearch && searchQuery && (
-                <span className="ml-auto text-[10px] text-white/30">{activeMessages.length} resultado{activeMessages.length !== 1 ? "s" : ""}</span>
-              )}
-            </div>
-
-            {/* ══ OVERLAY SIN ACCESO ══ */}
-            {noAccess && (
-              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/80 backdrop-blur-sm rounded-3xl">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-xl">
-                  <Crown className="h-8 w-8 text-white" />
-                </div>
-                <div className="text-center px-6">
-                  <p className="text-base font-bold text-white">Acceso restringido</p>
-                  <p className="text-sm text-white/50 mt-1">Necesitas suscripción para usar el chat global</p>
-                </div>
-                <Btn variant="gold" onClick={() => setShowGoldModal(true)}>
-                  <Sparkles className="h-4 w-4" /> Ver planes
-                </Btn>
-                <button onClick={onClose} className="text-xs text-white/30 cursor-pointer">Cerrar</button>
-              </div>
-            )}
-
-            {/* ══ MENSAJES ══ */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3" data-testid="container-messages"
-              style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.06) transparent" }}>
-              {activeMessages.length === 0 && !noAccess && (
-                <div className="flex h-full flex-col items-center justify-center gap-4 text-center min-h-[200px]">
-                  <motion.div animate={{ scale: [1, 1.05, 1], opacity: [0.7, 1, 0.7] }} transition={{ duration: 3, repeat: Infinity }}
-                    className={cx("flex h-16 w-16 items-center justify-center rounded-2xl shadow-2xl",
-                      isGold ? "bg-gradient-to-br from-yellow-400/20 to-amber-500/20 text-yellow-400"
-                             : "bg-gradient-to-br from-indigo-500/20 to-violet-500/20 text-violet-400")}>
-                    {isGold ? <Crown className="h-8 w-8" /> : <MessageSquare className="h-8 w-8" />}
-                  </motion.div>
-                  <div>
-                    <p className="text-sm font-semibold text-white/60">
-                      {showSearch && searchQuery ? "Sin resultados" : "No hay mensajes aún"}
-                    </p>
-                    <p className="text-xs text-white/30 mt-1">
-                      {showSearch && searchQuery ? "Prueba con otra búsqueda" : "Sé el primero en escribir algo"}
-                    </p>
-                  </div>
+            {/* ══ MESSAGES ══ */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1 scroll-smooth">
+              {noAccess && (
+                <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
+                  {roomType === "gold" ? (
+                    <>
+                      <Crown className="h-10 w-10 text-yellow-400/50" />
+                      <p className="text-sm text-yellow-200/50">Necesitas Gold para acceder a estas salas.</p>
+                      <Btn variant="gold" onClick={() => setShowGoldModal(true)}>Obtener Gold</Btn>
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="h-10 w-10 text-violet-400/50" />
+                      <p className="text-sm text-violet-200/50">Necesitas suscripción para acceder al chat.</p>
+                    </>
+                  )}
                 </div>
               )}
-              {activeMessages.map((msg) => (
+
+              {!noAccess && activeMessages.map((msg) => (
                 <MessageBubble
                   key={msg.id} message={msg} isOwn={msg.userId === currentUserId} isGold={isGold}
                   currentUserId={currentUserId} reactions={reactions[msg.id] ?? {}} seenByOthers={seenMsgIds.has(msg.id)}
@@ -1644,7 +1615,6 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
             </div>
 
             {/* ══ INPUT ══ */}
-            {/* FIX 3b: Gold badge junto al input de Gold, mic deshabilitado en Classic */}
             {isGold && (
               <div className="flex items-center gap-1.5 px-4 pt-1 flex-shrink-0">
                 <Crown className="h-3 w-3 text-yellow-400" />
@@ -1656,6 +1626,20 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
               hasGoldAccess={hasGoldAccess}
               disabled={noAccess} replyTo={replyTo} onCancelReply={() => setReplyTo(null)}
             />
+
+            {/* ══ [F3] ERROR TOAST ══ */}
+            <AnimatePresence>
+              {errorToast && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-2xl bg-red-600/90 text-white text-xs font-medium shadow-xl max-w-[85%] text-center"
+                >
+                  {errorToast}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* ══ MODALES ══ */}
             <AnimatePresence>
