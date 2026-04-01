@@ -1,22 +1,22 @@
-import { supabase } from '../supabaseClient'
+// usePayments.ts
+// CORRECCIÓN F6: Este hook NO procesa pagos reales.
+// Todos los pagos deben hacerse vía MiniKit.commandsAsync.pay() y luego
+// verificarse con /api/verifyPayment en el backend.
+// Este hook queda como utilidad de registro auxiliar SOLO si el pago
+// ya fue verificado por el backend. Si se llama sin verificación previa,
+// lanza un error para evitar registros falsos.
 
 export const usePayments = () => {
-  const handlePayment = async (label: string, amount: number, userId: string) => {
-    if (!userId) throw new Error('Usuario no autenticado')
+  const handlePayment = async (
+    _label: string,
+    _amount: number,
+    _userId: string
+  ): Promise<never> => {
+    throw new Error(
+      "[usePayments] No usar directamente. Usa MiniKit.commandsAsync.pay() " +
+      "y verifica con /api/verifyPayment antes de registrar el pago."
+    );
+  };
 
-    const { data, error } = await supabase
-      .from('payments')
-      .insert({
-        user_id: userId,
-        label,
-        amount,
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-    return data?.id
-  }
-
-  return { handlePayment }
-}
+  return { handlePayment };
+};
