@@ -30,13 +30,16 @@ import {
   AtSign,
   Repeat2,
   CheckCircle2,
-  Sparkles,
 } from "lucide-react";
 
+// Lazy load — no entran en el bundle inicial
 const ProfileModal = lazy(() => import("../components/ProfileModal"));
 const Inbox = lazy(() => import("./chat/Inbox"));
 const AutonomousGrowthBrain = lazy(() => import("../components/AutonomousGrowthBrain"));
 
+// ─────────────────────────────────────────────
+// TIPOS
+// ─────────────────────────────────────────────
 interface HomePageProps {
   userId: string | null;
   wallet: string | null;
@@ -57,6 +60,9 @@ interface Notification {
   read: boolean;
 }
 
+// ─────────────────────────────────────────────
+// ÍCONO DE NOTIFICACIÓN
+// ─────────────────────────────────────────────
 const notifIcon = (type: Notification["type"]) => {
   switch (type) {
     case "like":      return <Heart size={13} className="text-pink-500" />;
@@ -69,6 +75,9 @@ const notifIcon = (type: Notification["type"]) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// COMPONENTE PRINCIPAL
+// ─────────────────────────────────────────────
 const HomePage: React.FC<HomePageProps> = ({
   userId,
   wallet,
@@ -78,6 +87,7 @@ const HomePage: React.FC<HomePageProps> = ({
   setUserId,
   verifyUser,
 }) => {
+  // ── Post modal ──
   const [optimisticPosts, setOptimisticPosts] = useState<any[]>([]);
   const [globalPosts, setGlobalPosts] = useState<any[]>([]);
   const [globalLoading, setGlobalLoading] = useState(true);
@@ -88,10 +98,12 @@ const HomePage: React.FC<HomePageProps> = ({
   const [isPosting, setIsPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
 
+  // ── Perfil ──
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
+  // ── Inbox ──
   const [showInbox, setShowInbox] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadTotal, setUnreadTotal] = useState(0);
@@ -99,19 +111,24 @@ const HomePage: React.FC<HomePageProps> = ({
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
 
+  // ── Notificaciones ──
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // Memoizado: no recalcula en cada render
   const unreadNotifCount = useMemo(
     () => notifications.filter((n) => !n.read).length,
     [notifications],
   );
   const mergedPosts = useMemo(() => {
-    const map = new Map();
-    [...optimisticPosts, ...globalPosts].forEach((p) => { map.set(p.id, p); });
-    return Array.from(map.values());
-  }, [optimisticPosts, globalPosts]);
+  const map = new Map();
 
+  [...optimisticPosts, ...globalPosts].forEach((p) => {
+    map.set(p.id, p);
+  });
+
+  return Array.from(map.values());
+}, [optimisticPosts, globalPosts]);
   const { theme, toggleTheme, username } = useContext(ThemeContext);
   const { language, setLanguage, t } = useContext(LanguageContext);
   const isDark = theme === "dark";
@@ -121,13 +138,15 @@ const HomePage: React.FC<HomePageProps> = ({
     : profile?.tier === "premium" ? 4000
     : 280;
 
-  const charPercent = Math.min((newPostContent.length / maxChars) * 100, 100);
-  const charWarning = newPostContent.length > maxChars * 0.85;
-
+  // ─────────────────────────────────────────────
+  // PERFIL: SELECT primero, upsert solo si no existe
+  // Evita escritura en cada carga (300-500ms de overhead)
+  // ─────────────────────────────────────────────
   const fetchOrUpsertProfile = useCallback(async () => {
     if (!userId) return;
     setProfileLoading(true);
     try {
+      // Solo columnas necesarias (no SELECT *)
       const { data: existing } = await supabase
         .from("profiles")
         .select("id, username, avatar_url, verified, tier, wallet")
@@ -139,6 +158,7 @@ const HomePage: React.FC<HomePageProps> = ({
         return;
       }
 
+      // Solo para usuarios nuevos
       const { data, error: upsertError } = await supabase
         .from("profiles")
         .upsert(
@@ -149,7 +169,7 @@ const HomePage: React.FC<HomePageProps> = ({
             verified,
             verified_at: new Date().toISOString(),
           },
-          { onConflict: "id" },
+          { onConflict: "id" }, // string, no array
         )
         .select("id, username, avatar_url, verified, tier, wallet")
         .maybeSingle();
@@ -163,6 +183,9 @@ const HomePage: React.FC<HomePageProps> = ({
     }
   }, [userId, username, wallet, verified]);
 
+  // ─────────────────────────────────────────────
+  // NOTIFICACIONES: solo columnas necesarias, limit 30
+  // ─────────────────────────────────────────────
   const fetchNotifications = useCallback(async () => {
     if (!userId) return;
     try {
@@ -171,99 +194,125 @@ const HomePage: React.FC<HomePageProps> = ({
         .select("id, type, user, avatar, message, time, read")
         .eq("receiver_id", userId)
         .order("created_at", { ascending: false })
-        .limit(30);
+        .limit(30); // 50 era innecesario, 30 es suficiente para UX
       if (data) setNotifications(data as Notification[]);
     } catch (err) {
       console.error("[HOME] Error fetching notifications:", err);
     }
   }, [userId]);
 
+  // ─────────────────────────────────────────────
+  // MENSAJES NO LEÍDOS: limit para evitar traer miles de filas
+  // ─────────────────────────────────────────────
   const loadUnread = useCallback(async () => {
     if (!userId) return;
     const { data } = await supabase
       .from("conversation_unread_counts")
       .select("unread")
       .eq("receiver_id", userId)
-      .limit(200);
+      .limit(200); // evita traer todo sin límite
 
     const total = data?.reduce((sum: number, r: any) => sum + (r.unread || 0), 0) || 0;
     setUnreadMessages(total);
     setUnreadTotal(total);
   }, [userId]);
 
-  const globalCursor = useRef<string | null>(null);
-  const globalFetching = useRef(false);
-  const [globalHasMore, setGlobalHasMore] = useState(true);
+    const globalCursor = useRef<string | null>(null);
+const globalFetching = useRef(false);
+const [globalHasMore, setGlobalHasMore] = useState(true);
 
-  const fetchGlobalPosts = useCallback(async (reset = false) => {
-    if (globalFetching.current) return;
-    if (!globalHasMore && !reset) return;
+const fetchGlobalPosts = useCallback(async (reset = false) => {
+  if (globalFetching.current) return;
+  if (!globalHasMore && !reset) return;
 
-    globalFetching.current = true;
+  globalFetching.current = true;
 
-    if (reset) {
-      globalCursor.current = null;
-      setGlobalPosts([]);
-      setGlobalHasMore(true);
+  if (reset) {
+    globalCursor.current = null;
+    setGlobalPosts([]);
+    setGlobalHasMore(true);
+  }
+
+  setGlobalLoading(true);
+
+  try {
+    let query = supabase
+      .from("posts")
+      .select("*")
+      .order("timestamp", { ascending: false })
+      .limit(10);
+
+    if (globalCursor.current) {
+      query = query.lt("timestamp", globalCursor.current);
     }
 
-    setGlobalLoading(true);
+    const { data, error } = await query;
+    if (error) throw error;
 
-    try {
-      let query = supabase
-        .from("posts")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(10);
+    const newPosts = data || [];
 
-      if (globalCursor.current) {
-        query = query.lt("timestamp", globalCursor.current);
-      }
+    setGlobalPosts((prev) =>
+      reset ? newPosts : [...prev, ...newPosts]
+    );
 
-      const { data, error } = await query;
-      if (error) throw error;
+    setGlobalHasMore(newPosts.length === 10);
 
-      const newPosts = data || [];
-      setGlobalPosts((prev) => reset ? newPosts : [...prev, ...newPosts]);
-      setGlobalHasMore(newPosts.length === 10);
-
-      if (newPosts.length > 0) {
-        globalCursor.current = newPosts[newPosts.length - 1].timestamp;
-      }
-    } catch (err) {
-      console.error("[HOME] Global fetch error:", err);
-    } finally {
-      setGlobalLoading(false);
-      globalFetching.current = false;
+    if (newPosts.length > 0) {
+      globalCursor.current =
+        newPosts[newPosts.length - 1].timestamp;
     }
-  }, [globalHasMore]);
-
+  } catch (err) {
+    console.error("[HOME] Global fetch error:", err);
+  } finally {
+    setGlobalLoading(false);
+    globalFetching.current = false;
+  }
+}, [globalHasMore]);
+  // ─────────────────────────────────────────────
+  // INICIALIZACIÓN al tener userId
+  // ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
+    // Paralelo: no bloquear uno con el otro
     fetchOrUpsertProfile();
     fetchNotifications();
     loadUnread();
-    setTimeout(() => { fetchGlobalPosts(); }, 10000);
+    setTimeout(() => {
+  fetchGlobalPosts();
+}, 10000); // 10 segundos
   }, [userId]);
 
+  // ─────────────────────────────────────────────
+  // REALTIME: mensajes no leídos
+  // Solo se abre cuando hay userId (no en primer render)
+  // ─────────────────────────────────────────────
   useEffect(() => {
     if (!userId) return;
+
     const channel = supabase
       .channel("messages-realtime")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `receiver_id=eq.${userId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `receiver_id=eq.${userId}`,
+        },
         () => setUnreadMessages((prev) => prev + 1),
       )
       .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, [userId]);
 
-  // ── CREAR POST: insert directo a Supabase, sin Edge Function ──
+  // ─────────────────────────────────────────────
+  // CREAR POST con optimistic UI + rollback
+  // ─────────────────────────────────────────────
   const handleCreatePost = async () => {
     if (isPosting) return;
     if (!newPostContent.trim()) {
-      setPostError(t("write_before_posting") || "Escribe algo antes de publicar.");
+      setPostError(t("write_before_posting"));
       return;
     }
     if (!userId) return;
@@ -275,23 +324,25 @@ const HomePage: React.FC<HomePageProps> = ({
     const tempId = `temp-${Date.now()}`;
 
     try {
-      // 1. Subir imagen primero si la hay
+      // 1. Subir imagen primero (si la hay)
       if (newPostImage) {
-        const ext = newPostImage.name.split(".").pop()?.toLowerCase() || "jpg";
-        const safeName = newPostImage.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const fileName = `${userId}-${Date.now()}-${safeName}`;
+        const fileExt = newPostImage.name.split(".").pop() || "png";
+        const fileName = `${userId}-${Date.now()}.${fileExt}`;
 
         const { error: uploadError } = await supabase.storage
           .from("post-images")
-          .upload(fileName, newPostImage, { contentType: newPostImage.type });
+          .upload(fileName, newPostImage);
 
-        if (uploadError) throw new Error(`Error subiendo imagen: ${uploadError.message}`);
+        if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage.from("post-images").getPublicUrl(fileName);
+        const { data } = supabase.storage
+          .from("post-images")
+          .getPublicUrl(fileName);
+
         imageUrl = data.publicUrl;
       }
 
-      // 2. Optimistic UI
+      // 2. Optimistic UI (se muestra inmediatamente)
       const tempPost = {
         id: tempId,
         user_id: userId,
@@ -304,21 +355,15 @@ const HomePage: React.FC<HomePageProps> = ({
         tier: profile?.tier || "free",
         optimistic: true,
       };
+
       setOptimisticPosts((prev) => [tempPost, ...prev]);
 
-      // 3. Insert directo en Supabase (sin Edge Function)
-      const { error: insertError } = await supabase.from("posts").insert({
-        user_id: userId,
-        content: newPostContent.trim(),
-        image_url: imageUrl,
-        timestamp: new Date().toISOString(),
-        username: profile?.username || username || `user_${userId.slice(0, 8)}`,
-        avatar_url: profile?.avatar_url || null,
-        verified: profile?.verified || false,
-        tier: profile?.tier || "free",
+      // 3. Backend via Edge Function
+      const { error: fnError } = await supabase.functions.invoke("publish-post-user", {
+        body: { content: newPostContent, image_url: imageUrl },
       });
 
-      if (insertError) throw new Error(insertError.message);
+      if (fnError) throw fnError;
 
       // 4. Limpiar UI
       setShowNewPostModal(false);
@@ -326,9 +371,11 @@ const HomePage: React.FC<HomePageProps> = ({
       setNewPostImage(null);
       setImagePreview(null);
 
+      // El realtime en FeedPage reemplazará el optimistic automáticamente
     } catch (err: any) {
       console.error("[HOME] Error creando post:", err);
       setPostError(err.message || "Error al publicar");
+      // Rollback: remover el optimistic
       setOptimisticPosts((prev) => prev.filter((p) => p.id !== tempId));
     } finally {
       setIsPosting(false);
@@ -374,14 +421,9 @@ const HomePage: React.FC<HomePageProps> = ({
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
-  const handleClosePostModal = () => {
-    setShowNewPostModal(false);
-    setNewPostContent("");
-    setNewPostImage(null);
-    setImagePreview(null);
-    setPostError(null);
-  };
-
+  // ─────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────
   return (
     <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"}`}>
       <Suspense fallback={null}>
@@ -401,6 +443,7 @@ const HomePage: React.FC<HomePageProps> = ({
             : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
         }}
       >
+        {/* Logo */}
         <motion.img
           src="https://vtjqfzpfehfofamhowjz.supabase.co/storage/v1/object/public/avatars/logoh-carbono.png"
           className="w-10 h-10 object-contain rounded-xl"
@@ -410,7 +453,9 @@ const HomePage: React.FC<HomePageProps> = ({
           transition={{ type: "spring", stiffness: 400, damping: 22 }}
         />
 
+        {/* Controles centrales */}
         <div className="flex items-center gap-1.5">
+          {/* Nuevo Post */}
           <motion.button
             onClick={() => setShowNewPostModal(true)}
             whileHover={{ scale: 1.04 }}
@@ -422,6 +467,7 @@ const HomePage: React.FC<HomePageProps> = ({
             <span className="hidden sm:inline">{t("post") || "Post"}</span>
           </motion.button>
 
+          {/* Inbox */}
           <div className="relative">
             <motion.button
               onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
@@ -435,7 +481,9 @@ const HomePage: React.FC<HomePageProps> = ({
               {unreadTotal > 0 && (
                 <motion.span
                   key="mail-badge"
-                  initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 24 }}
                   className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none shadow-md"
                 >
@@ -445,6 +493,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </AnimatePresence>
           </div>
 
+          {/* Notificaciones */}
           <div className="relative">
             <motion.button
               onClick={() => setShowNotifications(true)}
@@ -463,7 +512,9 @@ const HomePage: React.FC<HomePageProps> = ({
               {unreadNotifCount > 0 && (
                 <motion.span
                   key="bell-badge"
-                  initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0, opacity: 0 }}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 24 }}
                   className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] flex items-center justify-center rounded-full bg-violet-500 text-white text-[10px] font-bold px-1 leading-none shadow-md"
                 >
@@ -473,6 +524,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </AnimatePresence>
           </div>
 
+          {/* Tema */}
           <motion.button
             onClick={toggleTheme}
             whileHover={{ scale: 1.08 }}
@@ -492,6 +544,7 @@ const HomePage: React.FC<HomePageProps> = ({
             </AnimatePresence>
           </motion.button>
 
+          {/* Idioma */}
           <motion.button
             onClick={() => setLanguage(language === "es" ? "en" : "es")}
             whileHover={{ scale: 1.06 }}
@@ -503,6 +556,7 @@ const HomePage: React.FC<HomePageProps> = ({
           </motion.button>
         </div>
 
+        {/* Avatar */}
         <motion.div
           className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${isDark ? "ring-white/10 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"}`}
           onClick={() => setShowProfileModal(true)}
@@ -523,17 +577,18 @@ const HomePage: React.FC<HomePageProps> = ({
         </motion.div>
       </header>
 
+      {/* ── FEED con tabs (Global / Siguiendo / Mis posts) ── */}
       <main className="w-full px-2 pt-20 pb-6 flex justify-center">
         <FeedPage
-          posts={mergedPosts}
-          loading={globalLoading}
-          error={error}
-          currentUserId={userId}
-          userTier={profile?.tier || "free"}
-          onUpgradeSuccess={fetchOrUpsertProfile}
-          onLoadMoreGlobal={fetchGlobalPosts}
-          globalHasMore={globalHasMore}
-        />
+  posts={mergedPosts}        // 🔥 FIX REAL
+  loading={globalLoading}
+  error={error}
+  currentUserId={userId}
+  userTier={profile?.tier || "free"}
+  onUpgradeSuccess={fetchOrUpsertProfile}
+  onLoadMoreGlobal={fetchGlobalPosts}
+  globalHasMore={globalHasMore} 
+          />
       </main>
 
       {/* ── MODALES ── */}
@@ -548,128 +603,67 @@ const HomePage: React.FC<HomePageProps> = ({
         </Suspense>
       )}
 
-      {/* ── MODAL CREAR POST ── */}
+      {/* Modal crear post */}
       <AnimatePresence>
         {showNewPostModal && (
           <motion.div
             key="create-post-overlay"
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            style={{ backdropFilter: "blur(16px)", background: "rgba(0,0,0,0.75)" }}
-            onClick={handleClosePostModal}
+            transition={{ duration: 0.2 }}
+            style={{ backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.82)" }}
+            onClick={() => setShowNewPostModal(false)}
           >
             <motion.div
               key="create-post-modal"
-              className="relative w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden"
-              initial={{ opacity: 0, y: 60, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 60, scale: 0.97 }}
-              transition={{ type: "spring", stiffness: 360, damping: 30 }}
+              className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${isDark ? "bg-gray-950 border border-white/10" : "bg-white border border-gray-200"}`}
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 24 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
-              style={{
-                background: isDark
-                  ? "linear-gradient(160deg, #0f0f18 0%, #0c0c14 100%)"
-                  : "linear-gradient(160deg, #ffffff 0%, #f8f7ff 100%)",
-                border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(99,102,241,0.15)",
-                boxShadow: isDark
-                  ? "0 -8px 60px rgba(139,92,246,0.12), 0 0 0 1px rgba(255,255,255,0.04)"
-                  : "0 -8px 60px rgba(99,102,241,0.10), 0 0 0 1px rgba(99,102,241,0.08)",
-              }}
             >
-              {/* Barra superior de color */}
-              <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, #c084fc)" }} />
-
-              {/* Header del modal */}
-              <div className="flex items-center justify-between px-5 pt-5 pb-4">
+              <div className="absolute inset-x-0 top-0 h-1 rounded-t-3xl" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }} />
+              <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-3">
-                  {/* Avatar propio */}
-                  <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-violet-500/30 flex-shrink-0">
-                    {profile?.avatar_url ? (
-                      <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-sm font-bold text-white"
-                        style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
-                        {(profile?.username || username || "H")[0].toUpperCase()}
-                      </div>
-                    )}
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+                    <Send size={14} className="text-white -rotate-12" />
                   </div>
-                  <div>
-                    <p className={`text-sm font-semibold leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
-                      {profile?.username || username || "Usuario"}
-                    </p>
-                    <p className="text-xs text-violet-400 font-medium flex items-center gap-1">
-                      <Sparkles size={10} />
-                      {t("create_post") || "Nuevo post"}
-                    </p>
-                  </div>
+                  <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>{t("create_post")}</h2>
                 </div>
                 <motion.button
                   whileHover={{ scale: 1.1, rotate: 90 }}
                   whileTap={{ scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                  onClick={handleClosePostModal}
+                  onClick={() => setShowNewPostModal(false)}
                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
                 >
                   <X size={16} />
                 </motion.button>
               </div>
 
-              {/* Área de texto */}
-              <div className="px-5 pb-2">
-                <div
-                  className="relative rounded-2xl overflow-hidden transition-all"
-                  style={{
-                    background: isDark ? "rgba(255,255,255,0.04)" : "rgba(99,102,241,0.04)",
-                    border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(99,102,241,0.12)",
-                  }}
-                >
+              <div className="px-6">
+                <div className={`relative rounded-2xl overflow-hidden ${isDark ? "bg-gray-900 ring-1 ring-white/10 focus-within:ring-violet-500" : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400"}`}>
                   <textarea
                     value={newPostContent}
                     onChange={(e) => setNewPostContent(e.target.value)}
-                    className={`w-full min-h-[120px] p-4 pb-10 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400"}`}
-                    placeholder={t("whats_happening") || "¿Qué está pasando?"}
+                    className={`w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400"}`}
+                    placeholder={t("whats_happening")}
                     maxLength={maxChars}
-                    autoFocus
                   />
-                  {/* Barra de progreso de caracteres */}
-                  <div className="absolute bottom-0 left-0 right-0 h-[3px] rounded-b-2xl overflow-hidden"
-                    style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)" }}>
-                    <motion.div
-                      className="h-full rounded-b-2xl"
-                      style={{
-                        background: charWarning
-                          ? "linear-gradient(90deg, #f59e0b, #ef4444)"
-                          : "linear-gradient(90deg, #6366f1, #8b5cf6)",
-                      }}
-                      animate={{ width: `${charPercent}%` }}
-                      transition={{ duration: 0.2 }}
-                    />
-                  </div>
-                  {/* Contador de caracteres */}
-                  <div className={`absolute bottom-3 right-3 text-[11px] font-semibold tabular-nums transition-colors ${
-                    charWarning ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"
-                  }`}>
+                  <div className={`absolute bottom-3 right-3 text-xs font-medium tabular-nums ${newPostContent.length > maxChars * 0.85 ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"}`}>
                     {newPostContent.length}/{maxChars}
                   </div>
                 </div>
               </div>
 
-              {/* Preview de imagen */}
               <AnimatePresence>
                 {imagePreview && (
-                  <motion.div
-                    className="px-5 pb-2"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.22 }}
-                  >
-                    <div className="relative group rounded-2xl overflow-hidden shadow-lg ring-1 ring-violet-500/20">
-                      <img src={imagePreview} alt="Preview" className="w-full object-cover max-h-56" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <motion.div className="px-6 mt-4" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
+                    <div className="relative group rounded-2xl overflow-hidden shadow-lg max-h-60">
+                      <img src={imagePreview} alt="Preview" className="w-full object-cover max-h-60" />
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
@@ -683,40 +677,23 @@ const HomePage: React.FC<HomePageProps> = ({
                 )}
               </AnimatePresence>
 
-              {/* Error */}
               <AnimatePresence>
                 {postError && (
                   <motion.div
                     initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
-                    className="mx-5 mb-2 px-4 py-2.5 rounded-xl flex items-center justify-between gap-2"
-                    style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)" }}
+                    className="mx-6 mt-3 px-3 py-2 rounded-xl bg-red-900/60 border border-red-500/40 text-xs text-red-300 flex items-center justify-between gap-2"
                   >
-                    <span className="text-red-400 text-xs truncate">⚠ {postError}</span>
-                    <button onClick={() => setPostError(null)} className="flex-shrink-0 text-red-400/60 hover:text-red-300">
-                      <X size={13} />
-                    </button>
+                    <span className="truncate">⚠ {postError}</span>
+                    <button onClick={() => setPostError(null)} className="flex-shrink-0 text-red-400 hover:text-red-200"><X size={13} /></button>
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Footer de acciones */}
-              <div
-                className="flex items-center gap-2 px-5 py-4"
-                style={{
-                  borderTop: isDark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(99,102,241,0.08)",
-                }}
-              >
-                {/* Adjuntar imagen */}
-                <label
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                    isDark
-                      ? "text-gray-400 hover:text-violet-300 hover:bg-violet-500/10 border border-transparent hover:border-violet-500/20"
-                      : "text-gray-500 hover:text-violet-600 hover:bg-violet-50 border border-transparent hover:border-violet-200"
-                  }`}
-                >
+              <div className="flex items-center gap-3 px-6 py-5 mt-2">
+                <label className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${isDark ? "text-gray-400 hover:text-violet-400 hover:bg-violet-500/10" : "text-gray-500 hover:text-violet-600 hover:bg-violet-50"}`}>
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                    accept="image/*"
                     className="hidden"
                     onChange={(e) => {
                       if (e.target.files?.[0]) {
@@ -725,51 +702,34 @@ const HomePage: React.FC<HomePageProps> = ({
                       }
                     }}
                   />
-                  <ImageIcon size={15} />
-                  <span>{t("add_image") || "Imagen"}</span>
+                  <ImageIcon size={16} />
+                  <span className="hidden sm:inline">{t("add_image") || "Imagen"}</span>
                 </label>
-
                 <div className="flex-1" />
-
-                {/* Cancelar */}
                 <motion.button
                   whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                  onClick={handleClosePostModal}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                    isDark ? "text-gray-400 hover:text-white hover:bg-white/8" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                  }`}
+                  onClick={() => setShowNewPostModal(false)}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${isDark ? "text-gray-300 bg-white/5 hover:bg-white/10" : "text-gray-600 bg-gray-100 hover:bg-gray-200"}`}
                 >
-                  {t("cancel") || "Cancelar"}
+                  {t("cancel")}
                 </motion.button>
-
-                {/* Publicar */}
                 <motion.button
-                  whileHover={newPostContent.trim() && !isPosting ? { scale: 1.04 } : {}}
-                  whileTap={newPostContent.trim() && !isPosting ? { scale: 0.97 } : {}}
+                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                   onClick={handleCreatePost}
                   disabled={!newPostContent.trim() || isPosting}
-                  className="relative px-5 py-2 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  className="relative px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                    boxShadow: newPostContent.trim() && !isPosting
-                      ? "0 0 24px rgba(139,92,246,0.45), 0 2px 8px rgba(99,102,241,0.3)"
-                      : "none",
+                    boxShadow: newPostContent.trim() ? "0 0 20px rgba(139,92,246,0.4)" : "none",
                   }}
                 >
-                  {/* Shimmer animado mientras está activo */}
-                  {!isPosting && newPostContent.trim() && (
-                    <motion.div
-                      className="absolute inset-0 -skew-x-12 opacity-0 hover:opacity-100 transition-opacity"
-                      style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent)" }}
-                    />
-                  )}
                   <span className="relative flex items-center gap-2">
                     {isPosting ? (
                       <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                     ) : (
                       <Send size={14} className="-rotate-12" />
                     )}
-                    {isPosting ? (t("publishing") || "Publicando…") : (t("publish") || "Publicar")}
+                    {t("publish")}
                   </span>
                 </motion.button>
               </div>
@@ -778,7 +738,7 @@ const HomePage: React.FC<HomePageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── INBOX ── */}
+      {/* Inbox */}
       <AnimatePresence>
         {showInbox && (
           <motion.div
@@ -813,7 +773,7 @@ const HomePage: React.FC<HomePageProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── NOTIFICACIONES ── */}
+      {/* Notificaciones */}
       <AnimatePresence>
         {showNotifications && (
           <motion.div
@@ -884,20 +844,18 @@ const HomePage: React.FC<HomePageProps> = ({
                             {(notif.user || "?")[0].toUpperCase()}
                           </div>
                         )}
-                        <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-[#111113] flex items-center justify-center">
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ${isDark ? "bg-[#111113]" : "bg-white"}`}>
                           {notifIcon(notif.type)}
-                        </span>
+                        </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs leading-snug ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                        <p className={`text-sm leading-snug ${isDark ? "text-gray-200" : "text-gray-800"}`}>
                           <span className="font-semibold">{notif.user}</span>{" "}
-                          {notif.message}
+                          <span className={isDark ? "text-gray-400" : "text-gray-600"}>{notif.message}</span>
                         </p>
-                        <p className="text-[11px] text-gray-500 mt-0.5">{notif.time}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{notif.time}</p>
                       </div>
-                      {!notif.read && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0 mt-1.5" />
-                      )}
+                      {!notif.read && <div className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1.5" />}
                     </div>
                   ))
                 )}
