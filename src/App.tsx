@@ -203,9 +203,17 @@ const App = () => {
   };
 
   return (
-    // Fix 1: Suspense con fondo negro igual al tema oscuro
-    // Evita el flash blanco mientras carga el chunk de HomePage
-    <Suspense fallback={<div className="min-h-screen bg-[#09090b]" />}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+          <img
+            src="https://vtjqfzpfehfofamhowjz.supabase.co/storage/v1/object/public/avatars/logoh-carbono.png"
+            alt="H"
+            className="w-16 h-16 object-contain rounded-2xl animate-pulse"
+          />
+        </div>
+      }
+    >
       <HomePage
         userId={userId}
         verifyUser={verifyUser}
