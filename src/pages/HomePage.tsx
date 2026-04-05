@@ -8,6 +8,7 @@ import React, {
   lazy,
   Suspense,
 } from "react";
+
 import { supabase } from "../supabaseClient";
 import FeedPage from "./FeedPage";
 import { ThemeContext } from "../lib/ThemeContext";
@@ -31,6 +32,10 @@ import {
   Repeat2,
   CheckCircle2,
 } from "lucide-react";
+
+// URL de la token mini-app embebida. Pon VITE_TOKEN_APP_URL en tu .env
+const TOKEN_APP_URL: string =
+  (import.meta as any).env?.VITE_TOKEN_APP_URL ?? "";
 
 // Lazy load — no entran en el bundle inicial
 const ProfileModal = lazy(() => import("../components/ProfileModal"));
@@ -110,6 +115,12 @@ const HomePage: React.FC<HomePageProps> = ({
   const [newMessage, setNewMessage] = useState("");
   const [newMessageAttachments, setNewMessageAttachments] = useState<File[]>([]);
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
+
+  // ── Token mini-app ──
+  const [showTokenApp, setShowTokenApp] = useState(false);
+  // El iframe no se monta hasta 10s después del inicio para no demorar la carga
+  const [tokenPreloaded, setTokenPreloaded] = useState(false);
+  const tokenIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ── Notificaciones ──
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -263,6 +274,46 @@ const HomePage: React.FC<HomePageProps> = ({
       globalFetching.current = false;
     }
   }, [globalHasMore]);
+
+  // ─────────────────────────────────────────────
+  // TOKEN MINI-APP — bridge postMessage
+  // ─────────────────────────────────────────────
+  const injectTokenContext = useCallback(() => {
+    const win = tokenIframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage(
+      {
+        type: "WORLD_APP_CONTEXT",
+        payload: {
+          userId: userId ?? "",
+          username: profile?.username ?? username ?? "",
+          profilePicture: profile?.avatar_url ?? "",
+          verificationLevel: verified ? "orb" : "device",
+          balanceWld: 0,
+          balanceUsdc: 0,
+        },
+      },
+      "*"
+    );
+  }, [userId, profile, username, verified]);
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (!e.data || typeof e.data !== "object") return;
+      const { type } = e.data as { type: string };
+      if (type === "MINI_APP_READY") {
+        injectTokenContext();
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [injectTokenContext]);
+
+  // Permite montar el iframe 10s después del inicio (no bloquea la carga inicial)
+  useEffect(() => {
+    const timer = setTimeout(() => setTokenPreloaded(true), 10000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // ─────────────────────────────────────────────
   // INICIALIZACIÓN al tener userId
@@ -582,6 +633,17 @@ const HomePage: React.FC<HomePageProps> = ({
                 {isDark ? <Sun size={18} /> : <Moon size={18} />}
               </motion.span>
             </AnimatePresence>
+          </motion.button>
+
+          {/* Token mini-app */}
+          <motion.button
+            onClick={() => setShowTokenApp(true)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+            className={`w-9 h-9 flex items-center justify-center rounded-full text-base transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
+            title="Token Market"
+          >
+            🪙
           </motion.button>
 
           {/* Idioma */}
@@ -905,6 +967,64 @@ const HomePage: React.FC<HomePageProps> = ({
                 )}
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ── TOKEN MINI-APP OVERLAY ── */}
+      <AnimatePresence>
+        {showTokenApp && (
+          <motion.div
+            key="token-app-overlay"
+            className="fixed inset-0 z-50 flex flex-col"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+            style={{ background: "#0d0e14" }}
+          >
+            {/* Barra superior con botón cerrar */}
+            <div
+              className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <span className="text-white font-semibold text-sm flex items-center gap-2">
+                🪙 Token Market
+              </span>
+              <motion.button
+                onClick={() => setShowTokenApp(false)}
+                whileHover={{ scale: 1.1, rotate: 90 }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10"
+              >
+                <X size={16} />
+              </motion.button>
+            </div>
+
+            {/* iframe de la token app — solo se monta tras el delay de 10s */}
+            {!tokenPreloaded ? (
+              <div className="flex-1 flex items-center justify-center flex-col gap-3">
+                <div className="w-8 h-8 rounded-full border-2 border-violet-500/30 border-t-violet-400 animate-spin" />
+                <p className="text-gray-400 text-sm">Preparando Token Market…</p>
+              </div>
+            ) : TOKEN_APP_URL ? (
+              <iframe
+                ref={tokenIframeRef}
+                src={TOKEN_APP_URL}
+                className="flex-1 w-full border-0"
+                allow="camera; microphone; payment"
+                title="Token Market"
+              />
+            ) : (
+              <div className="flex-1 flex items-center justify-center flex-col gap-4 text-center px-6">
+                <span className="text-4xl">🪙</span>
+                <p className="text-white font-semibold text-lg">Token Market</p>
+                <p className="text-gray-400 text-sm max-w-xs">
+                  Define <code className="bg-white/10 px-1 rounded text-violet-300">VITE_TOKEN_APP_URL</code> en tu{" "}
+                  <code className="bg-white/10 px-1 rounded text-violet-300">.env</code> con la URL donde está desplegada la token app.
+                </p>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
