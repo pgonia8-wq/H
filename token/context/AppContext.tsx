@@ -50,11 +50,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    let contextReceived = false;
+
     const handler = (e: MessageEvent) => {
       if (!e.data || typeof e.data !== "object") return;
       const { type, payload } = e.data;
 
       if (type === "WORLD_APP_CONTEXT") {
+        contextReceived = true;
         setState((s) => ({
           ...s,
           user: {
@@ -73,10 +76,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.addEventListener("message", handler);
 
     const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+
+    const retryInterval = setInterval(() => {
+      if (contextReceived) { clearInterval(retryInterval); return; }
+      window.parent?.postMessage({ type: "MINI_APP_READY" }, origin);
+    }, 1000);
+
     window.parent?.postMessage({ type: "MINI_APP_READY" }, origin);
+
+    const fallbackTimer = setTimeout(() => {
+      if (!contextReceived) {
+        console.warn("[AppContext] Parent no respondió en 5s, continuando sin contexto");
+        setState((s) => ({ ...s, worldAppReady: true }));
+      }
+    }, 5000);
 
     return () => {
       window.removeEventListener("message", handler);
+      clearInterval(retryInterval);
+      clearTimeout(fallbackTimer);
     };
   }, []);
 
