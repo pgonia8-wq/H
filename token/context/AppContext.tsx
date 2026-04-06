@@ -39,14 +39,14 @@ const MOCK_USER: WorldAppUser = {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>({
-    user: MOCK_USER,
-    balanceWld: 142.5,
-    balanceUsdc: 380.0,
+    user: null,
+    balanceWld: 0,
+    balanceUsdc: 0,
     screen: "discovery",
     selectedTokenId: null,
     selectedAirdropId: null,
     isCreatorModalOpen: false,
-    worldAppReady: true,
+    worldAppReady: false,
   });
 
   useEffect(() => {
@@ -72,7 +72,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("message", handler);
 
-    window.parent?.postMessage({ type: "MINI_APP_READY" }, "*");
+    const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+    window.parent?.postMessage({ type: "MINI_APP_READY" }, origin);
 
     return () => {
       window.removeEventListener("message", handler);
@@ -80,7 +81,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const emitToBridge = (event: string, payload?: unknown) => {
-    window.parent?.postMessage({ type: event, payload }, "*");
+    const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+    window.parent?.postMessage({ type: event, payload }, origin);
   };
 
   const navigate = (screen: Screen, params?: { tokenId?: string; airdropId?: string }) => {

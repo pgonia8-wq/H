@@ -3,7 +3,7 @@ import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { useTheme } from "./lib/ThemeContext";
 import HomePage from "./pages/HomePage";
 
-const APP_ID = "app_6a98c88249208506dcd4e04b529111fc";
+const APP_ID = (import.meta as any).env?.VITE_APP_ID ?? "app_6a98c88249208506dcd4e04b529111fc";
 
 const App = () => {
   const [wallet, setWallet] = useState<string | null>(null);

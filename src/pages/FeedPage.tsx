@@ -22,7 +22,18 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
+const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
+
+function generatePayReference(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 // ── Tipos ──────────────────────────────────────────────────────────────
 interface FeedPageProps {
@@ -386,7 +397,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
     setLoadingUpgrade(true);
     try {
       const payRes = await MiniKit.commandsAsync.pay({
-        reference: "upgrade-" + Date.now(),
+        reference: generatePayReference(),
         to: RECEIVER,
         tokens: [
           {
@@ -432,7 +443,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
   return (
     <div
       ref={scrollRef}
-      className={`flex flex-col p-4 ${isDark ? "bg-gray-900 text-white" : "bg-white text-black"}`}
+      className={`flex flex-col p-4 overflow-y-auto ${isDark ? "bg-gray-900 text-white" : "bg-white text-black"}`}
     >
       {/* ── TABS (NUEVO) ─────────────────────────────────────────── */}
       <div

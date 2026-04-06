@@ -35,7 +35,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../../supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -50,23 +50,6 @@ import {
   Search,
   UserPlus,
 } from "lucide-react";
-
-// ─── [I1] Supabase client con validación de env vars ─────────────────────────
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error(
-    "[Inbox] VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están definidos. " +
-    "Verifica tu archivo .env.local"
-  );
-}
-
-const supabase = createClient(
-  supabaseUrl ?? "",
-  supabaseAnonKey ?? ""
-);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

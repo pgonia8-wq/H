@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
-const avatarCache: Record<string, string> = {}; // Cache simple en memoria
+const avatarCache: Record<string, string> = {};
 
 export const useAvatar = (userId: string | null) => {
   const [avatarUrl, setAvatarUrl] = useState<string>("default-avatar.png");
@@ -14,7 +14,6 @@ export const useAvatar = (userId: string | null) => {
       return;
     }
 
-    // Si ya está en cache, úsalo
     if (avatarCache[userId]) {
       setAvatarUrl(avatarCache[userId]);
       setLoading(false);
@@ -23,18 +22,26 @@ export const useAvatar = (userId: string | null) => {
 
     const fetchAvatar = async () => {
       try {
-        const { data } = supabase.storage
-          .from("avatars")
-          .getPublicUrl(`${userId}.png`);
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("id", userId)
+          .maybeSingle();
 
-        if (data?.publicUrl) {
-          avatarCache[userId] = data.publicUrl; // guarda en cache
-          setAvatarUrl(data.publicUrl);
+        if (error) {
+          console.error("[useAvatar] Error fetching profile:", error.message);
+          setAvatarUrl("default-avatar.png");
+          return;
+        }
+
+        if (data?.avatar_url) {
+          avatarCache[userId] = data.avatar_url;
+          setAvatarUrl(data.avatar_url);
         } else {
           setAvatarUrl("default-avatar.png");
         }
       } catch (err) {
-        console.error("Error fetching avatar:", err);
+        console.error("[useAvatar] Error:", err);
         setAvatarUrl("default-avatar.png");
       } finally {
         setLoading(false);

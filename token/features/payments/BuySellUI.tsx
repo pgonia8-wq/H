@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
+import { api } from "@/services/api";
 import type { Token } from "@/services/mockData";
 
 type Tab = "buy" | "sell";
@@ -23,6 +24,7 @@ export default function BuySellUI({ token, onSuccess }: Props) {
   const [amount, setAmount] = useState("10");
   const [currency, setCurrency] = useState<"WLD" | "USDC">("USDC");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [urgencyIdx, setUrgencyIdx] = useState(0);
 
   useEffect(() => {
@@ -41,33 +43,65 @@ export default function BuySellUI({ token, onSuccess }: Props) {
   const projectedGain = tokensOut * price * (1 + token.change24h / 100);
 
   const handleSubmit = async () => {
-    if (!numAmount || numAmount <= 0) return;
+    if (!numAmount || numAmount <= 0 || !user?.id) return;
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
+    setError(null);
 
-    if (tab === "buy") {
-      const newWld = currency === "WLD" ? balanceWld - numAmount : balanceWld;
-      const newUsdc = currency === "USDC" ? balanceUsdc - numAmount : balanceUsdc;
-      updateBalance(newWld, newUsdc);
-      emitToBridge("onTokenPurchased", {
-        tokenId: token.id,
-        tokenSymbol: token.symbol,
-        amount: tokensOut,
-        totalPaid: total,
-        currency,
-        userId: user?.id,
-      });
-      emitToBridge("onBalanceUpdate", { balanceWld: newWld, balanceUsdc: newUsdc });
-    } else {
-      const revenue = numAmount * price;
-      updateBalance(
-        currency === "WLD" ? balanceWld + revenue : balanceWld,
-        currency === "USDC" ? balanceUsdc + revenue : balanceUsdc,
-      );
+    try {
+      if (tab === "buy") {
+        const result = await api.buyToken({
+          tokenId: token.id,
+          amount: numAmount,
+          currency,
+          userId: user.id,
+          paymentMethod: "WLD",
+        });
+
+        if (!result.success) {
+          setError(result.message || "Error al comprar");
+          return;
+        }
+
+        const newWld = currency === "WLD" ? balanceWld - numAmount : balanceWld;
+        const newUsdc = currency === "USDC" ? balanceUsdc - numAmount : balanceUsdc;
+        updateBalance(newWld, newUsdc);
+        emitToBridge("onTokenPurchased", {
+          tokenId: token.id,
+          tokenSymbol: token.symbol,
+          amount: result.amount ?? tokensOut,
+          totalPaid: total,
+          currency,
+          userId: user.id,
+          txHash: result.txHash,
+        });
+        emitToBridge("onBalanceUpdate", { balanceWld: newWld, balanceUsdc: newUsdc });
+      } else {
+        const result = await api.sellToken({
+          tokenId: token.id,
+          amount: numAmount,
+          userId: user.id,
+        });
+
+        if (!result.success) {
+          setError(result.message || "Error al vender");
+          return;
+        }
+
+        const revenue = result.total ?? numAmount * price;
+        updateBalance(
+          currency === "WLD" ? balanceWld + revenue : balanceWld,
+          currency === "USDC" ? balanceUsdc + revenue : balanceUsdc,
+        );
+      }
+
+      onSuccess();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      console.error("[BuySellUI] Error:", msg);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
-    onSuccess();
   };
 
   return (
@@ -76,7 +110,7 @@ export default function BuySellUI({ token, onSuccess }: Props) {
         {(["buy", "sell"] as Tab[]).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); setError(null); }}
             style={{
               flex: 1,
               padding: "10px",
@@ -208,6 +242,23 @@ export default function BuySellUI({ token, onSuccess }: Props) {
               ${projectedGain.toFixed(2)}
             </span>
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div
+          style={{
+            textAlign: "center",
+            padding: "8px",
+            marginBottom: 8,
+            fontSize: 12,
+            color: "#f05050",
+            fontWeight: 600,
+            background: "rgba(240,80,80,0.08)",
+            borderRadius: 8,
+          }}
+        >
+          {error}
         </div>
       )}
 

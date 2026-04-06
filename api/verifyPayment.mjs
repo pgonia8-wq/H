@@ -105,7 +105,7 @@ export default async function handler(req, res) {
 
   if (!txOk) {
     console.error("[VERIFY_PAYMENT] Error al contactar Worldcoin:", txData);
-    console.warn("[VERIFY_PAYMENT] Continuando sin confirmación de Worldcoin (fallo de red).");
+    return res.status(502).json({ error: "No se pudo verificar la transacción con Worldcoin. Intenta de nuevo.", txStatus: "unverified" });
   } else if (txStatus === "failed") {
     return res.status(402).json({ error: "Transacción de pago fallida en Worldcoin", txStatus });
   }

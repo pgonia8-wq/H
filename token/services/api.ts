@@ -102,16 +102,13 @@ export interface CreateTokenRequest {
   lockDurationDays?: number;
 }
 
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 export const api = {
   async getTokens(params?: { search?: string; sort?: string; limit?: number; offset?: number }): Promise<TokenListResponse> {
     try {
-      return await request<TokenListResponse>(`/tokens?${new URLSearchParams(params as Record<string, string>)}`);
-    } catch {
-      await delay(400);
+      const qs = new URLSearchParams(params as Record<string, string>).toString();
+      return await request<TokenListResponse>(`/tokens${qs ? `?${qs}` : ""}`);
+    } catch (err) {
+      console.warn("[api.getTokens] API no disponible, usando datos locales:", (err as Error).message);
       let tokens = [...MOCK_TOKENS];
       if (params?.search) {
         const q = params.search.toLowerCase();
@@ -127,8 +124,8 @@ export const api = {
   async getTrendingTokens(): Promise<TokenListResponse> {
     try {
       return await request<TokenListResponse>("/tokens/trending");
-    } catch {
-      await delay(300);
+    } catch (err) {
+      console.warn("[api.getTrendingTokens] API no disponible, usando datos locales:", (err as Error).message);
       const tokens = MOCK_TOKENS.filter((t) => t.isTrending);
       return { tokens, total: tokens.length, hasMore: false };
     }
@@ -137,8 +134,8 @@ export const api = {
   async getToken(id: string): Promise<Token> {
     try {
       return await request<Token>(`/tokens/${id}`);
-    } catch {
-      await delay(300);
+    } catch (err) {
+      console.warn("[api.getToken] API no disponible, usando datos locales:", (err as Error).message);
       const token = MOCK_TOKENS.find((t) => t.id === id);
       if (!token) throw new Error("Token not found");
       return token;
@@ -148,49 +145,41 @@ export const api = {
   async getTokenActivity(id: string, limit = 20): Promise<ActivityListResponse> {
     try {
       return await request<ActivityListResponse>(`/tokens/${id}/activity?limit=${limit}`);
-    } catch {
-      await delay(300);
+    } catch (err) {
+      console.warn("[api.getTokenActivity] API no disponible, usando datos locales:", (err as Error).message);
       const activities = MOCK_ACTIVITY.filter((a) => a.tokenId === id);
       return { activities, total: activities.length };
     }
   },
 
   async buyToken(body: BuyRequest): Promise<TransactionResult> {
-    try {
-      return await request<TransactionResult>("/buy", { method: "POST", body: JSON.stringify(body) });
-    } catch {
-      await delay(1200);
-      const token = MOCK_TOKENS.find((t) => t.id === body.tokenId);
-      return {
-        success: true,
-        txHash: `0x${Math.random().toString(16).slice(2, 18)}`,
-        amount: body.currency === "USDC" ? body.amount / (token?.priceUsdc ?? 0.1) : body.amount / (token?.priceWld ?? 0.03),
-        price: body.currency === "USDC" ? token?.priceUsdc : token?.priceWld,
-        total: body.amount,
-        message: "Purchase successful",
-      };
-    }
+    return await request<TransactionResult>(`/tokens/${body.tokenId}/buy`, {
+      method: "POST",
+      body: JSON.stringify({
+        amount: body.amount,
+        currency: body.currency,
+        userId: body.userId,
+        paymentMethod: body.paymentMethod,
+      }),
+    });
   },
 
   async sellToken(body: SellRequest): Promise<TransactionResult> {
-    try {
-      return await request<TransactionResult>("/sell", { method: "POST", body: JSON.stringify(body) });
-    } catch {
-      await delay(1000);
-      return {
-        success: true,
-        txHash: `0x${Math.random().toString(16).slice(2, 18)}`,
+    return await request<TransactionResult>(`/tokens/${body.tokenId}/sell`, {
+      method: "POST",
+      body: JSON.stringify({
         amount: body.amount,
-        message: "Sell successful",
-      };
-    }
+        userId: body.userId,
+      }),
+    });
   },
 
-  async getAirdrops(): Promise<AirdropListResponse> {
+  async getAirdrops(userId?: string): Promise<AirdropListResponse> {
     try {
-      return await request<AirdropListResponse>("/airdrops");
-    } catch {
-      await delay(400);
+      const qs = userId ? `?user_id=${userId}` : "";
+      return await request<AirdropListResponse>(`/airdrops${qs}`);
+    } catch (err) {
+      console.warn("[api.getAirdrops] API no disponible, usando datos locales:", (err as Error).message);
       return { airdrops: MOCK_AIRDROPS, total: MOCK_AIRDROPS.length };
     }
   },
@@ -198,8 +187,8 @@ export const api = {
   async getAirdrop(id: string): Promise<Airdrop> {
     try {
       return await request<Airdrop>(`/airdrops/${id}`);
-    } catch {
-      await delay(300);
+    } catch (err) {
+      console.warn("[api.getAirdrop] API no disponible, usando datos locales:", (err as Error).message);
       const a = MOCK_AIRDROPS.find((x) => x.id === id);
       if (!a) throw new Error("Airdrop not found");
       return a;
@@ -207,25 +196,17 @@ export const api = {
   },
 
   async claimAirdrop(body: ClaimAirdropRequest): Promise<ClaimResult> {
-    try {
-      return await request<ClaimResult>("/claim-airdrop", { method: "POST", body: JSON.stringify(body) });
-    } catch {
-      await delay(900);
-      const airdrop = MOCK_AIRDROPS.find((a) => a.id === body.airdropId);
-      return {
-        success: true,
-        amount: airdrop?.dailyAmount ?? 10,
-        nextClaimAt: new Date(Date.now() + (airdrop?.cooldownHours ?? 24) * 3600 * 1000).toISOString(),
-        message: `Claimed ${airdrop?.dailyAmount ?? 10} ${airdrop?.tokenSymbol}!`,
-      };
-    }
+    return await request<ClaimResult>(`/airdrops/${body.airdropId}/claim`, {
+      method: "POST",
+      body: JSON.stringify({ userId: body.userId }),
+    });
   },
 
   async getUser(userId: string): Promise<UserProfile> {
     try {
       return await request<UserProfile>(`/user?user_id=${userId}`);
-    } catch {
-      await delay(400);
+    } catch (err) {
+      console.warn("[api.getUser] API no disponible, usando datos locales:", (err as Error).message);
       return {
         id: userId,
         username: "worlduser.eth",
@@ -242,8 +223,8 @@ export const api = {
   async getUserHoldings(userId: string): Promise<HoldingsResponse> {
     try {
       return await request<HoldingsResponse>(`/user/holdings?user_id=${userId}`);
-    } catch {
-      await delay(400);
+    } catch (err) {
+      console.warn("[api.getUserHoldings] API no disponible, usando datos locales:", (err as Error).message);
       const totalValue = MOCK_HOLDINGS.reduce((s, h) => s + h.value, 0);
       const totalPnl = MOCK_HOLDINGS.reduce((s, h) => s + h.pnl, 0);
       return {
@@ -258,42 +239,16 @@ export const api = {
   async getUserActivity(userId: string): Promise<ActivityListResponse> {
     try {
       return await request<ActivityListResponse>(`/user/activity?user_id=${userId}`);
-    } catch {
-      await delay(300);
+    } catch (err) {
+      console.warn("[api.getUserActivity] API no disponible, usando datos locales:", (err as Error).message);
       return { activities: MOCK_ACTIVITY, total: MOCK_ACTIVITY.length };
     }
   },
 
   async createToken(body: CreateTokenRequest): Promise<Token> {
-    try {
-      return await request<Token>("/creator/tokens", { method: "POST", body: JSON.stringify(body) });
-    } catch {
-      await delay(1400);
-      return {
-        id: `tkn_${Math.random().toString(36).slice(2, 8)}`,
-        name: body.name,
-        symbol: body.symbol,
-        emoji: body.emoji ?? "🌟",
-        creatorId: body.creatorId,
-        creatorName: "you.eth",
-        priceWld: 0.001,
-        priceUsdc: 0.003,
-        marketCap: 3000,
-        holders: 1,
-        curvePercent: 0,
-        change24h: 0,
-        volume24h: 0,
-        totalSupply: body.totalSupply,
-        circulatingSupply: body.totalSupply * (1 - (body.lockPercent ?? 60) / 100),
-        lockedSupply: body.totalSupply * ((body.lockPercent ?? 60) / 100),
-        burnedSupply: 0,
-        lockDurationDays: body.lockDurationDays ?? 90,
-        description: body.description,
-        createdAt: new Date().toISOString(),
-        isTrending: false,
-        tags: [],
-        buyPressure: 50,
-      };
-    }
+    return await request<Token>("/creator/tokens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   },
 };

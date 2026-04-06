@@ -46,6 +46,8 @@ const AutonomousGrowthBrain = lazy(() => import("../components/AutonomousGrowthB
 // TIPOS
 // ─────────────────────────────────────────────
 interface HomePageProps {
+  username?: string | null;
+  avatar?: string | null;
   userId: string | null;
   wallet: string | null;
   verified: boolean;
@@ -293,7 +295,7 @@ const HomePage: React.FC<HomePageProps> = ({
           balanceUsdc: 0,
         },
       },
-      "*"
+      TOKEN_APP_URL || "*"
     );
   }, [userId, profile, username, verified]);
 
@@ -536,7 +538,7 @@ const HomePage: React.FC<HomePageProps> = ({
       >
         {/* Logo */}
         <motion.img
-          src="https://vtjqfzpfehfofamhowjz.supabase.co/storage/v1/object/public/avatars/logoh-carbono.png"
+          src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/avatars/logoh-carbono.png`}
           className="w-10 h-10 object-contain rounded-xl"
           alt="Humans Logo"
           whileHover={{ scale: 1.08 }}

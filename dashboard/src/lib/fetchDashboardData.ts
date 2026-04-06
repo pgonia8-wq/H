@@ -1,6 +1,11 @@
-import { supabase } from "../../../src/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
 import { getFlag } from "./utils";
 import type { AdMetric, AudienceGroup, ChartPoint, DashboardData, Post, PostStats } from "./types";
+
+const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL ?? "";
+const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ?? "";
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 function emptyData(): DashboardData {
   return {

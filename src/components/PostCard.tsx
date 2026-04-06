@@ -40,7 +40,7 @@ interface PostCardProps {
   currentUserId: string | null;
 }
 
-const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
+const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
 const CPC_BY_COUNTRY: Record<string, number> = {
   US: 0.08,
   GB: 0.07,
@@ -458,6 +458,26 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         description: t("tip"),
       });
       if (payRes?.finalPayload?.status === "success") {
+        const transactionId = payRes.finalPayload.transaction_id;
+        try {
+          const verifyRes = await fetch("/api/verifyPayment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transactionId, userId: currentUserId, action: "tip" }),
+          });
+          if (!verifyRes.ok) {
+            const errData = await verifyRes.json().catch(() => ({}));
+            setError("Error al verificar tip: " + (errData.error || "HTTP " + verifyRes.status));
+            return;
+          }
+        } catch (verifyErr) {
+          setError("Error de red al verificar tip: " + (verifyErr instanceof Error ? verifyErr.message : ""));
+          return;
+        }
+        await supabase
+          .from("posts")
+          .update({ tips_total: (post.tips_total || 0) + Number(tipAmount) })
+          .eq("id", post.id);
         setTipAmount(1);
       } else {
         setError(t("pago_cancelado"));
@@ -494,6 +514,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       });
 
       if (payRes?.finalPayload?.status === "success") {
+        const transactionId = payRes.finalPayload.transaction_id;
+        try {
+          const verifyRes = await fetch("/api/verifyPayment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transactionId, userId: currentUserId, action: "boost" }),
+          });
+          if (!verifyRes.ok) {
+            const errData = await verifyRes.json().catch(() => ({}));
+            setError("Error al verificar boost: " + (errData.error || "HTTP " + verifyRes.status));
+            return;
+          }
+        } catch (verifyErr) {
+          setError("Error de red al verificar boost: " + (verifyErr instanceof Error ? verifyErr.message : ""));
+          return;
+        }
         await supabase
           .from("posts")
           .update({
@@ -548,19 +584,22 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       });
       console.log("Resultado del pago:", payRes);
       if (payRes?.finalPayload?.status === "success") {
-        console.log("Pago exitoso → guardando suscripción en DB");
-        const { error: dbError } = await supabase
-          .from("subscriptions")
-          .upsert({
-            user_id: currentUserId,
-            product: "chat_classic",
+        const transactionId = payRes.finalPayload.transaction_id;
+        try {
+          const verifyRes = await fetch("/api/verifyPayment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transactionId, userId: currentUserId, action: "chat_classic" }),
           });
-        if (dbError) {
-          console.error("Error al guardar suscripción:", dbError);
-          setError("Pago recibido, pero hubo un error al guardar. Contacta soporte.");
+          if (!verifyRes.ok) {
+            const errData = await verifyRes.json().catch(() => ({}));
+            setError("Error al verificar pago: " + (errData.error || "HTTP " + verifyRes.status));
+            return;
+          }
+        } catch (verifyErr) {
+          setError("Error de red al verificar pago: " + (verifyErr instanceof Error ? verifyErr.message : ""));
           return;
         }
-        console.log("Suscripción guardada exitosamente");
         setHasChatAccess(true);
         setShowGlobalChat(true);
         setLoadingAction(null);

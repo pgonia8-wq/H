@@ -46,7 +46,7 @@ import { supabase } from "../../supabaseClient";
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES
 // ─────────────────────────────────────────────────────────────────────────────
-const RECEIVER   = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
+const RECEIVER   = import.meta.env.VITE_PAYMENT_RECEIVER || "";
 const EMOJI_LIST = ["❤️", "🔥", "😂", "😮", "👍", "🎉", "💯", "🤯"];
 
 // Nombre de la sala general que debe existir siempre

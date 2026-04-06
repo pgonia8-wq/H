@@ -6,7 +6,18 @@ import Dashboard from "../../dashboard/src/Dashboard";
 import { useLanguage } from '../LanguageContext';
 import { Country, State, City } from "country-state-city";
 
-const RECEIVER = "0xdf4a991bc05945bd0212e773adcff6ea619f4c4b";
+const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
+
+function generatePayReference(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface ProfileModalProps {
   id: string | null;
@@ -307,7 +318,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
       const res = await fetch(
-        "https://vtjqfzpfehfofamhowjz.supabase.co/functions/v1/send-complaint",
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-complaint`,
         {
           method: "POST",
           headers: {
@@ -354,7 +365,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     try {
       if (!MiniKit.isInstalled()) throw new Error(t("minikit_no_detectado"));
       const payRes = await MiniKit.commandsAsync.pay({
-        reference: "premium-chat-" + Date.now(),
+        reference: generatePayReference(),
         to: RECEIVER,
         tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(5, Tokens.WLD).toString() }],
         description: t("suscripcion_chat_exclusivo"),
