@@ -25,12 +25,13 @@ export default async function handler(req, res) {
     }
 
     const isOrbVerified =
-      profile.verification_level === "orb" && profile.orb_verified_at != null;
+      (profile.verification_level === "orb" && profile.orb_verified_at != null)
+      || profile.verified === true;
 
     return res.status(200).json({
       orbVerified: isOrbVerified,
       verified: isOrbVerified,
-      verificationLevel: profile.verification_level ?? "device",
+      verificationLevel: profile.verification_level ?? (profile.verified ? "orb" : "device"),
     });
   } catch (err) {
     console.error("[CHECK_ORB_STATUS]", err.message);
