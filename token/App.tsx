@@ -1,116 +1,100 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider, useApp } from "@/context/AppContext";
+import { AnimatePresence, motion } from "framer-motion";
 import BottomTabBar from "@/components/BottomTabBar";
 import DiscoveryPage from "@/features/tokens/DiscoveryPage";
 import TokenPage from "@/features/tokens/TokenPage";
 import AirdropPage from "@/features/airdrops/AirdropPage";
-import UserProfile from "@/features/user/UserProfile";
+import UserProfilePage from "@/features/user/UserProfile";
 import CreatorDashboard from "@/features/creator/CreatorDashboard";
+
+const queryClient = new QueryClient();
 
 function SplashScreen() {
   return (
-    <div
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0d0e14",
-      }}
-    >
-      <div
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: "50%",
-          background: "linear-gradient(135deg,#8b5cf6,#06d6f7)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 32,
-          marginBottom: 20,
-          boxShadow: "0 0 32px rgba(139,92,246,0.5)",
-        }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="flex flex-col items-center gap-4"
       >
-        🌍
-      </div>
-      <h1 style={{ fontSize: 22, fontWeight: 800, color: "#e8e9f0", marginBottom: 8 }}>
-        Token Market
-      </h1>
-      <p style={{ fontSize: 13, color: "#888" }}>Connecting to World App...</p>
+        <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 shadow-[0_0_30px_rgba(139,92,246,0.3)]">
+          <div className="w-8 h-8 rounded-full bg-primary animate-pulse" />
+        </div>
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">Token Market</h1>
+        <p className="text-sm text-muted-foreground">Connecting to World App...</p>
+      </motion.div>
     </div>
   );
 }
 
-function AppShell() {
-  const { screen, isCreatorModalOpen, worldAppReady } = useApp();
+function MainApp() {
+  const { worldAppReady, screen, isCreatorModalOpen } = useApp();
 
-  if (!worldAppReady) return <SplashScreen />;
+  if (!worldAppReady) {
+    return <SplashScreen />;
+  }
 
   const renderScreen = () => {
     switch (screen) {
       case "discovery": return <DiscoveryPage />;
       case "token": return <TokenPage />;
       case "airdrops": return <AirdropPage />;
-      case "profile": return <UserProfile />;
+      case "profile": return <UserProfilePage />;
       default: return <DiscoveryPage />;
     }
   };
 
   return (
-    <div
-      style={{
-        height: "100vh",
-        width: "100%",
-        background: "#0d0e14",
-        position: "relative",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: -120,
-          right: -80,
-          width: 320,
-          height: 320,
-          borderRadius: "50%",
-          background: "radial-gradient(circle,rgba(139,92,246,0.08) 0%,transparent 70%)",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          left: -100,
-          width: 280,
-          height: 280,
-          borderRadius: "50%",
-          background: "radial-gradient(circle,rgba(6,214,247,0.06) 0%,transparent 70%)",
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      />
-
-      <div style={{ position: "relative", zIndex: 1, flex: 1, overflow: "hidden" }}>
-        {renderScreen()}
+    <div className="flex flex-col h-[100dvh] w-full max-w-md mx-auto bg-background overflow-hidden relative selection:bg-primary/30">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={screen}
+            initial={{ opacity: 0, x: screen === "token" ? 20 : 0 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            {renderScreen()}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <BottomTabBar />
+      <AnimatePresence>
+        {isCreatorModalOpen && (
+          <motion.div
+            key="creator-modal"
+            initial={{ opacity: 0, y: "100%" }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            className="absolute inset-0 z-50 bg-background overflow-y-auto"
+          >
+            <CreatorDashboard />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {isCreatorModalOpen && <CreatorDashboard />}
+      <BottomTabBar />
     </div>
   );
 }
 
-export default function App() {
+function App() {
   return (
-    <AppProvider>
-      <AppShell />
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <TooltipProvider>
+          <MainApp />
+          <Toaster />
+        </TooltipProvider>
+      </AppProvider>
+    </QueryClientProvider>
   );
 }
+
+export default App;

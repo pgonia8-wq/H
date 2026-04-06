@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/services/api";
 import type { Token } from "@/services/types";
+import { motion } from "framer-motion";
+import { X, Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
 
 type Tab = "buy" | "sell";
 
-const RECEIVER = (import.meta as any).env?.VITE_PAYMENT_RECEIVER || "";
+const RECEIVER = import.meta.env?.VITE_PAYMENT_RECEIVER || "";
 
 function generatePayReference(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -22,10 +24,11 @@ interface Props {
   token: Token;
   onSuccess: () => void;
   defaultTab?: Tab;
+  onClose?: () => void;
 }
 
-export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
-  const { balanceWld, updateBalance, emitToBridge, user, formatPrice, displayCurrency, wldUsdRate } = useApp();
+export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Props) {
+  const { balanceWld, updateBalance, emitToBridge, user, displayCurrency, wldUsdRate } = useApp();
   const [tab, setTab] = useState<Tab>(defaultTab ?? "buy");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,6 +36,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
   const [orbChecked, setOrbChecked] = useState(false);
   const [orbVerified, setOrbVerified] = useState(false);
   const [userHolding, setUserHolding] = useState(0);
+  const [success, setSuccess] = useState(false);
   const paymentCancelRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -64,11 +68,13 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
   const handlePercentBuy = (percent: number) => {
     const val = (balanceWld * percent / 100).toFixed(4);
     setAmount(val);
+    setError(null);
   };
 
   const handlePercentSell = (percent: number) => {
     const val = Math.floor(userHolding * percent / 100);
     setAmount(String(val));
+    setError(null);
   };
 
   const requestPayment = (amountWld: number, description: string): Promise<string> => {
@@ -76,14 +82,14 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
       return Promise.reject(new Error("Payment receiver address not configured"));
     }
 
-    const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
     const reference = generatePayReference();
 
-    return new Promise<string>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         window.removeEventListener("message", handler);
         paymentCancelRef.current = null;
-        reject(new Error("Payment timeout — no response from World App"));
+        reject(new Error("Payment timeout -- no response from World App"));
       }, 30000);
 
       paymentCancelRef.current = () => {
@@ -107,18 +113,19 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
       };
 
       window.addEventListener("message", handler);
-
       window.parent?.postMessage({
         type: "REQUEST_PAYMENT",
-        payload: {
-          reference,
-          to: RECEIVER,
-          amount: amountWld,
-          token: "WLD",
-          description,
-        },
+        payload: { reference, to: RECEIVER, amount: amountWld, token: "WLD", description },
       }, origin);
     });
+  };
+
+  const handleCancel = () => {
+    if (paymentCancelRef.current) {
+      paymentCancelRef.current();
+    }
+    setLoading(false);
+    setError(null);
   };
 
   const handleSubmit = async () => {
@@ -140,37 +147,17 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
           return;
         }
 
-        const transactionId = await requestPayment(
-          amountWld,
-          `Buy ${token.symbol} tokens`
-        );
-
+        const transactionId = await requestPayment(amountWld, `Buy ${token.symbol} tokens`);
         const verifyRes = await api.verifyTokenPayment(transactionId, user.id, "buy_token");
-        if (!verifyRes.success) {
-          throw new Error("Payment verification failed");
-        }
+        if (!verifyRes.success) throw new Error("Payment verification failed");
 
-        const result = await api.buyToken({
-          tokenId: token.id,
-          amountWld,
-          userId: user.id,
-          transactionId,
-        });
-
-        if (!result.success) {
-          setError(result.message || "Buy failed");
-          return;
-        }
+        const result = await api.buyToken({ tokenId: token.id, amountWld, userId: user.id, transactionId });
+        if (!result.success) { setError(result.message || "Buy failed"); return; }
 
         updateBalance(balanceWld - amountWld, 0);
         emitToBridge("onTokenPurchased", {
-          tokenId: token.id,
-          tokenSymbol: token.symbol,
-          tokensReceived: result.tokensReceived,
-          amountWld,
-          newPrice: result.newPrice,
-          userId: user.id,
-          transactionId,
+          tokenId: token.id, tokenSymbol: token.symbol, tokensReceived: result.tokensReceived,
+          amountWld, newPrice: result.newPrice, userId: user.id, transactionId,
         });
       } else {
         if (numAmount > userHolding) {
@@ -179,32 +166,21 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
           return;
         }
 
-        const result = await api.sellToken({
-          tokenId: token.id,
-          tokensToSell: numAmount,
-          userId: user.id,
-        });
-
-        if (!result.success) {
-          setError(result.message || "Sell failed");
-          return;
-        }
+        const result = await api.sellToken({ tokenId: token.id, tokensToSell: numAmount, userId: user.id });
+        if (!result.success) { setError(result.message || "Sell failed"); return; }
 
         updateBalance(balanceWld + result.wldReceived, 0);
         emitToBridge("onTokenSold", {
-          tokenId: token.id,
-          tokenSymbol: token.symbol,
-          tokensSold: numAmount,
-          wldReceived: result.wldReceived,
-          userId: user.id,
+          tokenId: token.id, tokenSymbol: token.symbol, tokensSold: numAmount,
+          wldReceived: result.wldReceived, userId: user.id,
         });
       }
 
-      onSuccess();
+      setSuccess(true);
+      setTimeout(() => { setSuccess(false); onSuccess(); }, 1500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
-      console.error("[BuySellUI]", msg);
     } finally {
       setLoading(false);
     }
@@ -218,103 +194,86 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
     ? numAmount * token.priceWld * (1 - 0.10) * (1 - 0.03)
     : 0;
 
+  const percents = [5, 10, 25, 50, 75, 100];
+
   if (!orbChecked) {
-    return (
-      <div style={{ padding: 32, textAlign: "center", color: "#888" }}>
-        Checking verification status...
-      </div>
-    );
+    return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
   }
 
   if (!orbVerified) {
     return (
-      <div style={{ textAlign: "center", padding: "32px 20px" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
-        <h3 style={{ fontSize: 18, fontWeight: 800, color: "#f7a606", marginBottom: 8 }}>
-          ORB Verification Required
-        </h3>
-        <p style={{ fontSize: 13, color: "#888", lineHeight: 1.6, marginBottom: 20 }}>
-          You need to be ORB-verified to trade tokens. Complete your verification in the main H app.
-        </p>
-        <div style={{
-          padding: "10px 16px", background: "rgba(247,166,6,0.1)",
-          border: "1px solid rgba(247,166,6,0.3)", borderRadius: 10,
-          fontSize: 12, color: "#f7a606", fontWeight: 600,
-        }}>
-          Only verified humans can trade
-        </div>
+      <div className="text-center py-6 space-y-3">
+        <ShieldAlert className="w-10 h-10 text-amber-400 mx-auto" />
+        <div className="text-sm font-bold text-foreground">ORB Verification Required</div>
+        <p className="text-xs text-muted-foreground px-4">Complete your ORB verification in the main H app to start trading.</p>
+        {onClose && (
+          <button onClick={onClose} data-testid="button-close-orb" className="text-xs text-primary font-medium">Close</button>
+        )}
       </div>
     );
   }
 
+  if (success) {
+    return (
+      <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center py-6 space-y-2">
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 300 }}>
+          <ShieldCheck className="w-12 h-12 text-emerald-400 mx-auto" />
+        </motion.div>
+        <div className="text-sm font-bold text-emerald-400">Trade Successful</div>
+      </motion.div>
+    );
+  }
+
   return (
-    <div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        {(["buy", "sell"] as Tab[]).map((t) => (
+    <div className="space-y-3" data-testid="buy-sell-ui">
+      <div className="flex items-center justify-between">
+        <div className="flex rounded-xl bg-card/60 border border-border/30 overflow-hidden">
           <button
-            key={t}
-            onClick={() => { setTab(t); setError(null); setAmount(""); }}
-            style={{
-              flex: 1, padding: "10px", borderRadius: 10, border: "none", cursor: "pointer",
-              fontWeight: 700, fontSize: 13,
-              background: tab === t
-                ? t === "buy" ? "linear-gradient(135deg,#8b5cf6,#6d3fcf)" : "rgba(240,80,80,0.2)"
-                : "rgba(255,255,255,0.06)",
-              color: tab === t ? (t === "buy" ? "#fff" : "#f05050") : "#888",
-              WebkitTapHighlightColor: "transparent",
-            }}
+            onClick={() => { setTab("buy"); setAmount(""); setError(null); }}
+            data-testid="tab-buy"
+            className={`px-5 py-2 text-xs font-bold transition-all ${tab === "buy" ? "bg-emerald-500/20 text-emerald-400" : "text-muted-foreground"}`}
           >
-            {t === "buy" ? "BUY" : "SELL"}
+            Buy
           </button>
-        ))}
+          <button
+            onClick={() => { setTab("sell"); setAmount(""); setError(null); }}
+            data-testid="tab-sell"
+            className={`px-5 py-2 text-xs font-bold transition-all ${tab === "sell" ? "bg-red-500/20 text-red-400" : "text-muted-foreground"}`}
+          >
+            Sell
+          </button>
+        </div>
+        {onClose && (
+          <button onClick={onClose} data-testid="button-close-trade" className="p-1.5 rounded-lg hover:bg-card/60">
+            <X className="w-4 h-4 text-muted-foreground" />
+          </button>
+        )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-        <span style={{ fontSize: 11, color: "#888" }}>
-          {tab === "buy"
-            ? `Balance: ${balanceWld.toFixed(4)} WLD`
-            : `Holdings: ${userHolding.toLocaleString()} ${token.symbol}`
-          }
-        </span>
-        <span style={{ fontSize: 11, color: "#555" }}>
-          Price: {formatPrice(token.priceWld)}
-        </span>
+      <div className="text-[11px] text-muted-foreground">
+        {tab === "buy" ? `Balance: ${balanceWld.toFixed(2)} WLD` : `Holdings: ${userHolding.toLocaleString()} ${token.symbol}`}
       </div>
 
-      <div style={{ position: "relative", marginBottom: 10 }}>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-          style={{
-            width: "100%", padding: "14px 70px 14px 14px",
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            borderRadius: 12, color: "#e8e9f0", fontSize: 20,
-            fontFamily: "monospace", fontWeight: 700, outline: "none",
-          }}
-        />
-        <span style={{
-          position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-          fontSize: 13, fontWeight: 700, color: "#888",
-        }}>
-          {tab === "buy" ? (displayCurrency === "WLD" ? "WLD" : "USD") : token.symbol}
-        </span>
-      </div>
+      <input
+        type="number"
+        value={amount}
+        onChange={(e) => { setAmount(e.target.value); setError(null); }}
+        placeholder={tab === "buy" ? `Amount in ${displayCurrency}` : `Amount in ${token.symbol}`}
+        data-testid="input-amount"
+        className="w-full p-3 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 14 }}>
-        {[5, 10, 25, 50, 75, 100].map((p) => (
+      <div className="grid grid-cols-6 gap-1.5">
+        {percents.map((p) => (
           <button
             key={p}
             onClick={() => tab === "buy" ? handlePercentBuy(p) : handlePercentSell(p)}
-            style={{
-              padding: "8px 0", background: "rgba(255,255,255,0.06)",
-              border: `1px solid ${tab === "buy" ? "#10f09030" : "#f0505030"}`,
-              borderRadius: 8, color: tab === "buy" ? "#10f090" : "#f05050",
-              fontSize: 12, fontWeight: 700, cursor: "pointer",
-              WebkitTapHighlightColor: "transparent",
-            }}
+            data-testid={`percent-${p}`}
+            className={`py-2 rounded-lg text-[10px] font-bold border transition-all active:scale-95 ${
+              tab === "buy"
+                ? "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                : "border-red-500/30 text-red-400 hover:bg-red-500/10"
+            }`}
           >
             {p}%
           </button>
@@ -322,36 +281,27 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
       </div>
 
       {numAmount > 0 && (
-        <div style={{
-          padding: "10px 14px", background: "rgba(139,92,246,0.08)",
-          border: "1px solid rgba(139,92,246,0.2)", borderRadius: 10, marginBottom: 12,
-        }}>
+        <div className="text-xs space-y-1 p-2.5 rounded-xl bg-card/30 border border-border/20">
           {tab === "buy" ? (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: "#888" }}>You receive (est.)</span>
-                <span style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 700, color: "#e8e9f0" }}>
-                  ~{estimatedTokens.toLocaleString()} {token.symbol}
-                </span>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Est. tokens</span>
+                <span className="text-foreground font-medium">~{estimatedTokens.toLocaleString()} {token.symbol}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, color: "#888" }}>Fee (2%)</span>
-                <span style={{ fontSize: 12, fontFamily: "monospace", color: "#666" }}>
-                  {(numAmount * 0.02).toFixed(4)} {displayCurrency === "WLD" ? "WLD" : "USD"}
-                </span>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fee (2%)</span>
+                <span className="text-foreground font-medium">{((displayCurrency === "WLD" ? numAmount : numAmount / wldUsdRate) * 0.02).toFixed(4)} WLD</span>
               </div>
             </>
           ) : (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: "#888" }}>You receive (est.)</span>
-                <span style={{ fontSize: 13, fontFamily: "monospace", fontWeight: 700, color: "#e8e9f0" }}>
-                  ~{estimatedWld.toFixed(6)} WLD
-                </span>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Est. receive</span>
+                <span className="text-foreground font-medium">~{estimatedWld.toFixed(4)} WLD</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, color: "#888" }}>Slippage + Fee</span>
-                <span style={{ fontSize: 12, fontFamily: "monospace", color: "#666" }}>10% + 3%</span>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Slippage (10%) + Fee (3%)</span>
+                <span className="text-foreground font-medium">~{(numAmount * token.priceWld * 0.127).toFixed(4)} WLD</span>
               </div>
             </>
           )}
@@ -359,56 +309,34 @@ export default function BuySellUI({ token, onSuccess, defaultTab }: Props) {
       )}
 
       {error && (
-        <div style={{
-          textAlign: "center", padding: 8, marginBottom: 8, fontSize: 12, color: "#f05050",
-          fontWeight: 600, background: "rgba(240,80,80,0.08)", borderRadius: 8,
-        }}>
+        <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">
           {error}
-        </div>
+        </motion.div>
       )}
 
-      <div style={{
-        padding: "6px 10px", marginBottom: 12, fontSize: 10,
-        color: "#10f090", fontWeight: 600, textAlign: "center",
-        background: "rgba(16,240,144,0.06)", borderRadius: 8,
-        border: "1px solid rgba(16,240,144,0.15)",
-      }}>
-        On-chain payment via World App · ORB verified
-      </div>
-
-      <button
-        onClick={handleSubmit}
-        disabled={loading || numAmount <= 0}
-        style={{
-          width: "100%", padding: "16px", borderRadius: 14, border: "none",
-          cursor: loading ? "not-allowed" : "pointer",
-          fontSize: 15, fontWeight: 800,
-          background: tab === "buy"
-            ? "linear-gradient(135deg,#8b5cf6,#06d6f7)"
-            : "linear-gradient(135deg,#f05050,#f7a606)",
-          color: "#fff", opacity: loading ? 0.7 : 1,
-          WebkitTapHighlightColor: "transparent",
-        }}
-      >
-        {loading
-          ? "Confirming in World App..."
-          : tab === "buy"
-          ? `Buy ${token.symbol} with WLD`
-          : `Sell ${numAmount > 0 ? numAmount.toLocaleString() : ""} ${token.symbol}`}
-      </button>
-
-      {loading && (
+      <div className="flex gap-2">
         <button
-          onClick={() => { paymentCancelRef.current?.(); paymentCancelRef.current = null; }}
-          style={{
-            width: "100%", marginTop: 8, padding: "10px", borderRadius: 10,
-            background: "rgba(240,80,80,0.1)", border: "1px solid rgba(240,80,80,0.3)",
-            color: "#f05050", fontSize: 13, fontWeight: 700, cursor: "pointer",
-          }}
+          onClick={handleSubmit}
+          disabled={loading || !numAmount || numAmount <= 0}
+          data-testid="button-submit-trade"
+          className={`flex-1 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 ${
+            tab === "buy"
+              ? "bg-emerald-500 shadow-[0_0_16px_rgba(16,185,129,0.3)]"
+              : "bg-red-500 shadow-[0_0_16px_rgba(239,68,68,0.3)]"
+          }`}
         >
-          Cancel Payment
+          {loading ? (
+            <span className="flex items-center justify-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Processing...</span>
+          ) : (
+            tab === "buy" ? "Buy" : "Sell"
+          )}
         </button>
-      )}
+        {loading && (
+          <button onClick={handleCancel} data-testid="button-cancel-payment" className="px-4 py-3 rounded-xl border border-border/40 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+            Cancel
+          </button>
+        )}
+      </div>
     </div>
   );
 }

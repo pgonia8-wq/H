@@ -49,6 +49,8 @@ export interface Airdrop {
   cooldownHours: number;
   userClaimedAt?: string | null;
   userTotalClaimed?: number;
+  hasClaimed?: boolean;
+  nextClaimAt?: string | null;
 }
 
 export interface Holding {
@@ -244,22 +246,28 @@ export interface PriceHistoryResponse {
 }
 
 export function formatNum(n: number, decimals = 2): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(decimals) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(decimals) + "K";
   return n.toFixed(decimals);
 }
 
-export function timeAgo(isoString: string): string {
-  const diff = (Date.now() - new Date(isoString).getTime()) / 1000;
-  if (diff < 60) return `${Math.floor(diff)}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+export function formatCompact(n: number): string {
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(1) + "B";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return n.toFixed(0);
 }
 
-export function getMomentumLabel(curvePercent: number): { label: string; color: string; description: string } {
-  if (curvePercent < 20) return { label: "EARLY", color: "#10f090", description: "Get in before the crowd" };
-  if (curvePercent < 50) return { label: "RISING", color: "#06d6f7", description: "Momentum building fast" };
-  if (curvePercent < 80) return { label: "HOT", color: "#f7a606", description: "High conviction zone" };
-  return { label: "LAST CHANCE", color: "#f05050", description: "Curve almost complete" };
+export function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }

@@ -3,10 +3,10 @@ import type {
   HoldingsResponse, ActivityListResponse, UserProfile, HolderInfo,
   BuyRequest, BuyResult, SellRequest, SellResult,
   ClaimAirdropRequest, ClaimResult, CreateTokenRequest,
-  UploadResult, GraduateResult, Airdrop,
+  UploadResult, GraduateResult, Airdrop, PriceHistoryResponse,
 } from "./types";
 
-const BASE = "/api";
+const BASE = import.meta.env.VITE_API_BASE || "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -140,12 +140,3 @@ export const api = {
     return request<PriceHistoryResponse>(`/tokens/${tokenId}/priceHistory?period=${period}`);
   },
 };
-
-export type {
-  Token, TokenDetail, TokenListResponse, AirdropListResponse,
-  HoldingsResponse, ActivityListResponse, UserProfile, HolderInfo,
-  BuyRequest, BuyResult, SellRequest, SellResult,
-  ClaimAirdropRequest, ClaimResult, CreateTokenRequest,
-  UploadResult, GraduateResult, Airdrop, TokenStats,
-  PriceSnapshot, Candle, PriceHistoryResponse,
-} from "./types";

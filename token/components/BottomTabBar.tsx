@@ -1,89 +1,61 @@
 import { useApp } from "@/context/AppContext";
 import type { Screen } from "@/context/AppContext";
+import { Compass, Gift, User, Plus } from "lucide-react";
+import { motion } from "framer-motion";
 
-interface Tab {
-  id: Screen;
-  label: string;
-  icon: string;
-}
-
-const TABS: Tab[] = [
-  { id: "discovery", label: "Explore", icon: "🔭" },
-  { id: "airdrops", label: "Airdrops", icon: "🎁" },
-  { id: "profile", label: "Portfolio", icon: "👤" },
+const tabs: { key: Screen; icon: typeof Compass; label: string }[] = [
+  { key: "discovery", icon: Compass, label: "Explore" },
+  { key: "airdrops", icon: Gift, label: "Airdrops" },
+  { key: "profile", icon: User, label: "Profile" },
 ];
 
 export default function BottomTabBar() {
-  const { screen, navigate } = useApp();
-  const activeScreen = ["discovery", "token"].includes(screen) ? "discovery" : screen;
+  const { screen, navigate, openCreatorDashboard, isCreatorModalOpen } = useApp();
+
+  if (isCreatorModalOpen) return null;
+  if (screen === "token") return null;
 
   return (
-    <nav
-      style={{
-        position: "fixed",
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 64,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-around",
-        background: "rgba(13,14,20,0.92)",
-        backdropFilter: "blur(16px)",
-        WebkitBackdropFilter: "blur(16px)",
-        borderTop: "1px solid rgba(255,255,255,0.08)",
-        zIndex: 100,
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-      }}
-    >
-      {TABS.map((tab) => {
-        const isActive = activeScreen === tab.id;
-        return (
-          <button
-            key={tab.id}
-            onClick={() => navigate(tab.id)}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 4,
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "6px 16px",
-              borderRadius: 12,
-              transition: "opacity 0.15s",
-              opacity: isActive ? 1 : 0.5,
-              WebkitTapHighlightColor: "transparent",
-            }}
-          >
-            <span style={{ fontSize: 22 }}>{tab.icon}</span>
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: "0.05em",
-                color: isActive ? "#8b5cf6" : "#888",
-                textTransform: "uppercase",
-              }}
-            >
-              {tab.label}
-            </span>
-            {isActive && (
-              <span
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  width: 32,
-                  height: 2,
-                  background: "linear-gradient(90deg,#8b5cf6,#06d6f7)",
-                  borderRadius: 2,
-                }}
-              />
-            )}
-          </button>
-        );
+    <div className="relative flex items-center justify-around px-2 pb-[env(safe-area-inset-bottom)] bg-card/80 backdrop-blur-xl border-t border-border/50" data-testid="bottom-tab-bar">
+      {tabs.map((tab, i) => {
+        const isActive = screen === tab.key;
+        const Icon = tab.icon;
+
+        if (i === 1) {
+          return (
+            <div key="create-group" className="flex items-center gap-0">
+              <TabButton isActive={isActive} onClick={() => navigate(tab.key)} icon={Icon} label={tab.label} testId={`tab-${tab.key}`} />
+              <button
+                onClick={openCreatorDashboard}
+                data-testid="button-create-token"
+                className="relative -mt-6 mx-3 w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-[0_0_24px_rgba(139,92,246,0.4)] active:scale-95 transition-transform"
+              >
+                <Plus className="w-7 h-7 text-white" strokeWidth={2.5} />
+              </button>
+            </div>
+          );
+        }
+
+        return <TabButton key={tab.key} isActive={isActive} onClick={() => navigate(tab.key)} icon={Icon} label={tab.label} testId={`tab-${tab.key}`} />;
       })}
-    </nav>
+    </div>
+  );
+}
+
+function TabButton({ isActive, onClick, icon: Icon, label, testId }: { isActive: boolean; onClick: () => void; icon: typeof Compass; label: string; testId: string }) {
+  return (
+    <button onClick={onClick} data-testid={testId} className="relative flex flex-col items-center gap-1 py-3 px-5 group">
+      <div className="relative">
+        <Icon className={`w-5 h-5 transition-colors ${isActive ? "text-primary" : "text-muted-foreground group-active:text-foreground"}`} />
+        {isActive && (
+          <motion.div
+            layoutId="tab-glow"
+            className="absolute -inset-2 rounded-full bg-primary/15 blur-md"
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          />
+        )}
+      </div>
+      <span className={`text-[10px] font-medium transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}>{label}</span>
+    </button>
   );
 }

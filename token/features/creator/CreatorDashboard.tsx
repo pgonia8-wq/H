@@ -1,6 +1,8 @@
 import { useState, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/services/api";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, Loader2, CheckCircle2, ShieldAlert, Camera, ArrowRight, Sparkles } from "lucide-react";
 
 type Step = "form" | "checking_orb" | "paying" | "creating" | "success" | "orb_required";
 
@@ -14,577 +16,326 @@ interface TokenForm {
   website: string;
 }
 
-const EMOJIS = ["🌟","💜","🔺","🔥","🌊","🌀","⚡","🦋","🧬","🎯","🪄","🌙","🦄","🏆","🌈"];
+const EMOJIS = ["🌟","💜","🔺","🔥","🌊","🌀","⚡","🦋","🧬","🎯","🪄","🌙","🦄","🏆","🌈","💎","🚀","🪐","🎮","🎵","🎨","🌺","🐉","🦊","⭐","🔮","🎪","🍀","🦅","🐋"];
 const CREATION_FEE = 5;
-const RECEIVER = (import.meta as any).env?.VITE_PAYMENT_RECEIVER || "";
+const RECEIVER = import.meta.env?.VITE_PAYMENT_RECEIVER || "";
 
 function generatePayReference(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
+    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
   });
 }
 
 export default function CreatorDashboard() {
-  const { closeCreatorDashboard, user } = useApp();
+  const { closeCreatorDashboard, user, navigate } = useApp();
   const [step, setStep] = useState<Step>("form");
   const [form, setForm] = useState<TokenForm>({
     name: "", symbol: "", emoji: "🌟", description: "",
     twitter: "", telegram: "", website: "",
   });
-  const [loading, setLoading] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarBase64, setAvatarBase64] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const paymentCancelRef = useRef<(() => void) | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [createdTokenId, setCreatedTokenId] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
 
-  const set = (k: keyof TokenForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const updateField = (key: keyof TokenForm, value: string) => {
+    setForm((f) => ({ ...f, [key]: value }));
+    setError(null);
+  };
 
-  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
-      setError("Image must be under 4MB");
-      return;
-    }
+    if (file.size > 2 * 1024 * 1024) { setError("Image must be under 2MB"); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      setAvatarPreview(result);
       setAvatarBase64(result.split(",")[1]);
+      setAvatarPreview(result);
     };
     reader.readAsDataURL(file);
   };
 
-  const checkOrbFromSupabase = async (): Promise<boolean> => {
-    const userId = user?.id;
-    if (!userId || userId === "usr_guest") {
-      setError("You need to be logged in via World App");
-      return false;
-    }
+  const validate = (): string | null => {
+    if (!form.name.trim()) return "Token name is required";
+    if (form.name.length > 32) return "Name must be 32 characters or less";
+    if (!form.symbol.trim()) return "Symbol is required";
+    if (form.symbol.length < 2 || form.symbol.length > 8) return "Symbol must be 2-8 characters";
+    if (form.description.length < 10) return "Description must be at least 10 characters";
+    return null;
+  };
+
+  const handleSubmit = async () => {
+    const validationError = validate();
+    if (validationError) { setError(validationError); return; }
 
     setStep("checking_orb");
     setError(null);
 
     try {
-      const status = await api.checkOrbStatus(userId);
+      if (!user?.id) throw new Error("Not authenticated");
 
-      if (!status.orbVerified) {
-        setStep("orb_required");
-        setError("ORB verification required. Verify in the main H app first.");
-        return false;
-      }
+      const orbRes = await api.checkOrbStatus(user.id);
+      if (!orbRes.orbVerified) { setStep("orb_required"); return; }
 
-      return true;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      setStep("orb_required");
-      return false;
-    }
-  };
+      setStep("paying");
 
-  const executePayment = async (): Promise<string | null> => {
-    setStep("paying");
-    setError(null);
-
-    try {
+      const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
       const reference = generatePayReference();
-      const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
-
-      if (!RECEIVER) {
-        throw new Error("Payment receiver address not configured");
-      }
 
       const transactionId = await new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => {
           window.removeEventListener("message", handler);
-          paymentCancelRef.current = null;
-          reject(new Error("Payment timeout — no response from H app"));
-        }, 30000);
+          cancelRef.current = null;
+          reject(new Error("Payment timeout"));
+        }, 60000);
 
-        paymentCancelRef.current = () => {
+        cancelRef.current = () => {
           clearTimeout(timeout);
           window.removeEventListener("message", handler);
-          paymentCancelRef.current = null;
-          reject(new Error("Payment cancelled by user"));
+          cancelRef.current = null;
+          reject(new Error("Payment cancelled"));
         };
 
         const handler = (e: MessageEvent) => {
           if (e.data?.type === "PAYMENT_RESULT") {
             clearTimeout(timeout);
             window.removeEventListener("message", handler);
-            paymentCancelRef.current = null;
+            cancelRef.current = null;
             if (e.data.payload?.success && e.data.payload?.transactionId) {
               resolve(e.data.payload.transactionId);
             } else {
-              reject(new Error(e.data.payload?.error || "Payment cancelled or failed"));
+              reject(new Error(e.data.payload?.error || "Payment failed"));
             }
           }
         };
 
         window.addEventListener("message", handler);
-
         window.parent?.postMessage({
           type: "REQUEST_PAYMENT",
-          payload: {
-            reference,
-            to: RECEIVER,
-            amount: CREATION_FEE,
-            token: "WLD",
-            description: `Create token: ${form.name} ($${form.symbol.toUpperCase()})`,
-          },
+          payload: { reference, to: RECEIVER, amount: CREATION_FEE, token: "WLD", description: `Create token: ${form.symbol}` },
         }, origin);
       });
 
-      setTxHash(transactionId);
-
-      const verifyRes = await api.verifyTokenPayment(
-        transactionId,
-        user?.id ?? "",
-        "create_token"
-      );
-
-      if (!verifyRes.success) {
-        throw new Error("Payment verification failed on server");
-      }
-
-      return transactionId;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      setStep("form");
-      return null;
-    }
-  };
-
-  const handleCreate = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const orbOk = await checkOrbFromSupabase();
-      if (!orbOk) { setLoading(false); return; }
-
-      const transactionId = await executePayment();
-      if (!transactionId) { setLoading(false); return; }
+      const verifyRes = await api.verifyTokenPayment(transactionId, user.id, "create_token");
+      if (!verifyRes.success) throw new Error("Payment verification failed");
 
       setStep("creating");
 
       let avatarUrl: string | undefined;
       if (avatarBase64) {
-        try {
-          const uploadResult = await api.uploadAvatar(
-            avatarBase64,
-            user?.id ?? "usr_guest",
-            "token",
-            undefined,
-            `${form.symbol.toLowerCase()}_avatar.png`
-          );
-          avatarUrl = uploadResult.url;
-        } catch (uploadErr) {
-          console.warn("[CreatorDashboard] Avatar upload failed, continuing without:", uploadErr);
-        }
+        const uploadRes = await api.uploadAvatar(avatarBase64, user.id, "token", undefined, `${form.symbol}.png`);
+        if (uploadRes.success) avatarUrl = uploadRes.url;
       }
 
-      await api.createToken({
-        name: form.name,
-        symbol: form.symbol.toUpperCase(),
-        description: form.description,
+      const token = await api.createToken({
+        name: form.name.trim(),
+        symbol: form.symbol.toUpperCase().trim(),
+        description: form.description.trim(),
         emoji: form.emoji,
-        creatorId: user?.id ?? "usr_guest",
+        creatorId: user.id,
         avatarUrl,
-        twitter: form.twitter || undefined,
-        telegram: form.telegram || undefined,
-        website: form.website || undefined,
         transactionId,
+        twitter: form.twitter.trim() || undefined,
+        telegram: form.telegram.trim() || undefined,
+        website: form.website.trim() || undefined,
       });
 
+      setCreatedTokenId(token.id);
       setStep("success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-      setStep("form");
-      console.error("[CreatorDashboard]", msg);
-    } finally {
-      setLoading(false);
+      if (msg.includes("cancelled")) {
+        setStep("form");
+      } else {
+        setError(msg);
+        setStep("form");
+      }
     }
   };
 
-  const isValid = form.name.length >= 2 && form.symbol.length >= 2 && form.description.length >= 10;
-
-  const labelStyle = {
-    fontSize: 11, color: "#888", fontWeight: 600 as const,
-    letterSpacing: "0.06em", textTransform: "uppercase" as const,
-    display: "block", marginBottom: 6,
-  };
-
-  const inputStyle = {
-    width: "100%", padding: "12px 14px",
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: 10, color: "#e8e9f0", fontSize: 14, outline: "none",
+  const handleCancel = () => {
+    if (cancelRef.current) cancelRef.current();
+    else setStep("form");
   };
 
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
-        display: "flex", alignItems: "flex-end", zIndex: 300, backdropFilter: "blur(4px)",
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) closeCreatorDashboard(); }}
-    >
-      <div
-        className="slide-up"
-        style={{
-          width: "100%", maxHeight: "92vh", background: "#111218",
-          borderRadius: "20px 20px 0 0", border: "1px solid rgba(255,255,255,0.1)",
-          borderBottom: "none", display: "flex", flexDirection: "column",
-        }}
-      >
-        <div style={{
-          padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.07)",
-          display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0,
-        }}>
-          <h2 style={{ fontSize: 17, fontWeight: 800, color: "#e8e9f0" }}>
-            {step === "success" ? "Token Launched!" : step === "orb_required" ? "ORB Required" : "Create Token"}
-          </h2>
-          <button onClick={closeCreatorDashboard} style={{
-            background: "none", border: "none", color: "#666", fontSize: 20, cursor: "pointer", padding: 4,
-          }}>×</button>
-        </div>
+    <div className="min-h-full bg-background" data-testid="creator-dashboard">
+      <div className="sticky top-0 z-30 bg-background/90 backdrop-blur-xl px-4 py-3 flex items-center justify-between border-b border-border/30">
+        <h2 className="text-lg font-bold text-foreground">Create Token</h2>
+        <button onClick={closeCreatorDashboard} data-testid="button-close-creator" className="p-2 rounded-xl hover:bg-card/60 active:scale-95 transition-all">
+          <X className="w-5 h-5 text-foreground" />
+        </button>
+      </div>
 
-        <div className="scrollable" style={{ flex: 1, padding: 16 }}>
-          {step === "orb_required" ? (
-            <div style={{ textAlign: "center", padding: "40px 20px" }}>
-              <div style={{ fontSize: 64, marginBottom: 16 }}>🔐</div>
-              <h3 style={{ fontSize: 20, fontWeight: 800, color: "#f7a606", marginBottom: 12 }}>
-                ORB Verification Required
-              </h3>
-              <p style={{ fontSize: 14, color: "#888", lineHeight: 1.6, marginBottom: 8 }}>
-                To create tokens, you must verify your identity with <strong style={{ color: "#8b5cf6" }}>World ID ORB</strong> in the main H app.
-              </p>
-              <p style={{ fontSize: 12, color: "#666", lineHeight: 1.5, marginBottom: 24 }}>
-                This ensures one person = one creator. Device-level verification is not sufficient.
-                Go back to the main app and verify with an ORB operator.
-              </p>
+      <div className="px-4 pt-4 pb-20">
+        <AnimatePresence mode="wait">
+          {step === "form" && (
+            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  data-testid="button-upload-avatar"
+                  className="w-20 h-20 rounded-2xl bg-card/60 border-2 border-dashed border-border/50 flex items-center justify-center hover:border-primary/50 transition-colors shrink-0 overflow-hidden"
+                >
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Camera className="w-6 h-6 text-muted-foreground" />
+                  )}
+                </button>
+                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+                <div className="flex-1 space-y-2">
+                  <input
+                    value={form.name}
+                    onChange={(e) => updateField("name", e.target.value)}
+                    placeholder="Token Name"
+                    data-testid="input-token-name"
+                    className="w-full p-2.5 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50"
+                  />
+                  <input
+                    value={form.symbol}
+                    onChange={(e) => updateField("symbol", e.target.value.toUpperCase().slice(0, 8))}
+                    placeholder="SYMBOL (2-8 chars)"
+                    data-testid="input-token-symbol"
+                    className="w-full p-2.5 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 uppercase"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Emoji</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => updateField("emoji", e)}
+                      data-testid={`emoji-${e}`}
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg transition-all ${
+                        form.emoji === e ? "bg-primary/20 border-2 border-primary scale-110" : "bg-card/40 border border-border/30 hover:border-primary/30"
+                      }`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] text-muted-foreground uppercase tracking-wider mb-1.5 block">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  placeholder="Describe your token (min 10 chars)..."
+                  rows={3}
+                  data-testid="input-description"
+                  className="w-full p-3 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 resize-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[11px] text-muted-foreground uppercase tracking-wider">Socials (optional)</label>
+                <input value={form.twitter} onChange={(e) => updateField("twitter", e.target.value)} placeholder="Twitter/X handle" data-testid="input-twitter" className="w-full p-2.5 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50" />
+                <input value={form.telegram} onChange={(e) => updateField("telegram", e.target.value)} placeholder="Telegram link" data-testid="input-telegram" className="w-full p-2.5 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50" />
+                <input value={form.website} onChange={(e) => updateField("website", e.target.value)} placeholder="Website URL" data-testid="input-website" className="w-full p-2.5 rounded-xl bg-card/60 border border-border/40 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50" />
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <div className="text-xs text-amber-400 font-medium">Creation fee: {CREATION_FEE} WLD</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">Paid via World App to launch your token on the bonding curve</div>
+              </div>
 
               {error && (
-                <div style={{
-                  padding: 12, background: "rgba(240,80,80,0.1)", borderRadius: 12,
-                  marginBottom: 16, border: "1px solid rgba(240,80,80,0.2)",
-                }}>
-                  <p style={{ fontSize: 12, color: "#f05050" }}>{error}</p>
-                </div>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">
+                  {error}
+                </motion.div>
               )}
 
               <button
-                onClick={() => { setStep("form"); setError(null); }}
-                style={{
-                  width: "100%", padding: 12, background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14,
-                  color: "#888", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                }}
+                onClick={handleSubmit}
+                data-testid="button-create-submit"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-500 text-white font-bold text-sm active:scale-[0.97] transition-transform shadow-[0_0_24px_rgba(139,92,246,0.3)] flex items-center justify-center gap-2"
               >
-                Go Back
+                <Sparkles className="w-4 h-4" /> Create Token
               </button>
-            </div>
-          ) : step === "success" ? (
-            <div style={{ textAlign: "center", padding: "40px 20px" }}>
-              <div style={{ fontSize: 64, marginBottom: 16 }}>
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="" style={{
-                    width: 80, height: 80, borderRadius: "50%", objectFit: "cover",
-                    border: "3px solid #10f090",
-                  }} />
-                ) : (
-                  form.emoji
-                )}
+            </motion.div>
+          )}
+
+          {step === "checking_orb" && (
+            <motion.div key="checking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-20 space-y-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto" />
+              <div className="text-sm font-medium text-foreground">Checking ORB verification...</div>
+            </motion.div>
+          )}
+
+          {step === "orb_required" && (
+            <motion.div key="orb" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-20 space-y-4">
+              <ShieldAlert className="w-12 h-12 text-amber-400 mx-auto" />
+              <div className="text-lg font-bold text-foreground">ORB Verification Required</div>
+              <p className="text-sm text-muted-foreground px-6">You need to verify with World ID ORB in the main H app before creating tokens.</p>
+              <button onClick={() => setStep("form")} data-testid="button-back-form" className="text-sm text-primary font-medium">Go Back</button>
+            </motion.div>
+          )}
+
+          {step === "paying" && (
+            <motion.div key="paying" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-20 space-y-4">
+              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
               </div>
-              <h3 style={{ fontSize: 22, fontWeight: 800, color: "#10f090", marginBottom: 10 }}>
-                {form.name} is live!
-              </h3>
-              <p style={{ fontSize: 14, color: "#888", lineHeight: 1.6, marginBottom: 8 }}>
-                Your token <strong style={{ color: "#8b5cf6" }}>${form.symbol.toUpperCase()}</strong> is now on the bonding curve.
-              </p>
-              <p style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
-                Creation fee: {CREATION_FEE} WLD · Verified via ORB
-              </p>
-
-              {txHash && (
-                <div style={{
-                  padding: 10, background: "rgba(16,240,144,0.08)", borderRadius: 10,
-                  marginBottom: 16, border: "1px solid rgba(16,240,144,0.2)",
-                }}>
-                  <p style={{ fontSize: 10, color: "#10f090", fontFamily: "monospace", wordBreak: "break-all" }}>
-                    TX: {txHash}
-                  </p>
-                </div>
-              )}
-
-              <div style={{
-                padding: 16, background: "rgba(139,92,246,0.1)", borderRadius: 14,
-                marginBottom: 12, border: "1px solid rgba(139,92,246,0.2)",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#888" }}>Total Supply</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#e8e9f0" }}>100,000,000</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#888" }}>Initial Price</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#e8e9f0" }}>$0.0000015</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, color: "#888" }}>Graduation Target</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#e8e9f0" }}>2,000 WLD</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: "#888" }}>Security</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "#10f090" }}>ORB Verified ✓</span>
-                </div>
-              </div>
-
-              <button onClick={closeCreatorDashboard} style={{
-                width: "100%", padding: 14,
-                background: "linear-gradient(135deg,#8b5cf6,#06d6f7)",
-                border: "none", borderRadius: 14, color: "#fff", fontSize: 15, fontWeight: 800,
-                cursor: "pointer",
-              }}>
-                View Token
-              </button>
-            </div>
-          ) : step === "checking_orb" ? (
-            <div style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ fontSize: 48, marginBottom: 16, animation: "spin-slow 2s linear infinite" }}>🔐</div>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: "#f7a606", marginBottom: 8 }}>
-                Checking ORB Status...
-              </h3>
-              <p style={{ fontSize: 13, color: "#888" }}>
-                Verifying your identity from Supabase
-              </p>
-            </div>
-          ) : step === "paying" ? (
-            <div style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ fontSize: 48, marginBottom: 16, animation: "spin-slow 2s linear infinite" }}>💳</div>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: "#e8e9f0", marginBottom: 8 }}>
-                Processing Payment...
-              </h3>
-              <p style={{ fontSize: 13, color: "#888" }}>
-                Approve {CREATION_FEE} WLD in World App
-              </p>
-              <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
-                On-chain verification in progress
-              </p>
+              <div className="text-lg font-bold text-foreground">Waiting for Payment</div>
+              <p className="text-sm text-muted-foreground">Confirm the {CREATION_FEE} WLD payment in World App</p>
               <button
-                onClick={() => { paymentCancelRef.current?.(); paymentCancelRef.current = null; }}
-                style={{
-                  marginTop: 20, padding: "10px 28px",
-                  background: "rgba(240,80,80,0.15)", border: "1px solid rgba(240,80,80,0.4)",
-                  borderRadius: 10, color: "#f05050", fontSize: 13, fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                onClick={handleCancel}
+                data-testid="button-cancel-payment"
+                className="px-6 py-2.5 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
               >
                 Cancel
               </button>
-            </div>
-          ) : step === "creating" ? (
-            <div style={{ textAlign: "center", padding: "60px 20px" }}>
-              <div style={{ fontSize: 48, marginBottom: 16, animation: "spin-slow 2s linear infinite" }}>⚡</div>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: "#8b5cf6", marginBottom: 8 }}>
-                Deploying {form.name}...
-              </h3>
-              <p style={{ fontSize: 13, color: "#888" }}>
-                Setting up bonding curve on-chain
-              </p>
-            </div>
-          ) : (
-            <>
-              <div style={{
-                padding: 10, background: "rgba(16,240,144,0.06)", borderRadius: 10,
-                marginBottom: 14, border: "1px solid rgba(16,240,144,0.15)",
-                display: "flex", alignItems: "center", gap: 8,
-              }}>
-                <span style={{ fontSize: 16 }}>🔐</span>
-                <span style={{ fontSize: 11, color: "#10f090", fontWeight: 600 }}>
-                  ORB verification required · On-chain payment via World App
-                </span>
-              </div>
-
-              <div style={{ marginBottom: 14, textAlign: "center" }}>
-                <label style={labelStyle}>Token Avatar</label>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{
-                    width: 80, height: 80, borderRadius: "50%", border: "2px dashed rgba(139,92,246,0.4)",
-                    background: avatarPreview ? "transparent" : "rgba(255,255,255,0.04)",
-                    cursor: "pointer", overflow: "hidden",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    margin: "0 auto",
-                  }}
-                >
-                  {avatarPreview ? (
-                    <img src={avatarPreview} alt="" style={{
-                      width: "100%", height: "100%", objectFit: "cover",
-                    }} />
-                  ) : (
-                    <span style={{ fontSize: 28, color: "#8b5cf6" }}>📷</span>
-                  )}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarSelect}
-                  style={{ display: "none" }}
-                />
-                <p style={{ fontSize: 10, color: "#555", marginTop: 4 }}>Tap to upload (max 4MB)</p>
-              </div>
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={labelStyle}>Token Emoji</label>
-                <button
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  style={{
-                    width: 52, height: 52, fontSize: 28, borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.15)",
-                    background: "rgba(255,255,255,0.06)", cursor: "pointer",
-                  }}
-                >
-                  {form.emoji}
-                </button>
-                {showEmojiPicker && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                    {EMOJIS.map((e) => (
-                      <button
-                        key={e}
-                        onClick={() => { set("emoji", e); setShowEmojiPicker(false); }}
-                        style={{
-                          width: 40, height: 40, fontSize: 22, borderRadius: 8,
-                          border: `1px solid ${form.emoji === e ? "#8b5cf6" : "transparent"}`,
-                          background: "rgba(255,255,255,0.04)", cursor: "pointer",
-                        }}
-                      >
-                        {e}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {[
-                { key: "name", label: "Token Name", placeholder: "e.g. Nova Protocol", maxLength: 30 },
-                { key: "symbol", label: "Ticker Symbol", placeholder: "e.g. NOVA (3-5 chars)", maxLength: 8 },
-              ].map(({ key, label, placeholder, maxLength }) => (
-                <div key={key} style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>{label}</label>
-                  <input
-                    value={form[key as keyof TokenForm]}
-                    onChange={(e) => set(key as keyof TokenForm, key === "symbol" ? e.target.value.toUpperCase() : e.target.value)}
-                    placeholder={placeholder}
-                    maxLength={maxLength}
-                    style={inputStyle}
-                  />
-                </div>
-              ))}
-
-              <div style={{ marginBottom: 14 }}>
-                <label style={labelStyle}>Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => set("description", e.target.value)}
-                  placeholder="What does your token do? What's the vision?"
-                  rows={3}
-                  style={{
-                    ...inputStyle, resize: "none" as const, fontFamily: "inherit",
-                    lineHeight: 1.5, fontSize: 13,
-                  }}
-                />
-              </div>
-
-              <div style={{
-                padding: 14, background: "rgba(255,255,255,0.03)", borderRadius: 12,
-                marginBottom: 14, border: "1px solid rgba(255,255,255,0.06)",
-              }}>
-                <label style={labelStyle}>Socials (optional)</label>
-                {[
-                  { key: "twitter", label: "𝕏 Twitter", placeholder: "https://x.com/..." },
-                  { key: "telegram", label: "Telegram", placeholder: "https://t.me/..." },
-                  { key: "website", label: "Website", placeholder: "https://..." },
-                ].map(({ key, label, placeholder }) => (
-                  <div key={key} style={{ marginBottom: 8 }}>
-                    <span style={{ fontSize: 11, color: "#666", marginBottom: 4, display: "block" }}>{label}</span>
-                    <input
-                      value={form[key as keyof TokenForm]}
-                      onChange={(e) => set(key as keyof TokenForm, e.target.value)}
-                      placeholder={placeholder}
-                      style={{ ...inputStyle, fontSize: 12, padding: "8px 12px" }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div style={{
-                padding: 14, background: "rgba(247,166,6,0.08)", borderRadius: 12,
-                marginBottom: 14, border: "1px solid rgba(247,166,6,0.2)",
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#f7a606" }}>Creation Fee</div>
-                    <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-                      On-chain payment via World App
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#f7a606" }}>
-                    {CREATION_FEE} WLD
-                  </div>
-                </div>
-              </div>
-
-              <div style={{
-                padding: 12, background: "rgba(139,92,246,0.06)", borderRadius: 12,
-                marginBottom: 16, border: "1px solid rgba(139,92,246,0.15)",
-              }}>
-                <div style={{ fontSize: 11, color: "#888", lineHeight: 1.6 }}>
-                  <strong style={{ color: "#8b5cf6" }}>Token Details:</strong><br/>
-                  Supply: 100M · Initial Price: $0.0000015<br/>
-                  Buy Fee: 2% · Sell Fee: 3% · Slippage: 10%<br/>
-                  Creator Lock: 24h · Max Hold: 10%<br/>
-                  Graduation: 2,000 WLD + 300 holders<br/>
-                  <strong style={{ color: "#10f090" }}>Security: ORB Only · On-chain verified</strong>
-                </div>
-              </div>
-
-              <button
-                onClick={handleCreate}
-                disabled={!isValid || loading}
-                className={isValid && !loading ? "btn-pulse" : ""}
-                style={{
-                  width: "100%", padding: 16, borderRadius: 14, border: "none",
-                  cursor: isValid && !loading ? "pointer" : "not-allowed",
-                  fontSize: 15, fontWeight: 800,
-                  background: isValid
-                    ? "linear-gradient(135deg,#8b5cf6,#06d6f7)"
-                    : "rgba(255,255,255,0.06)",
-                  color: isValid ? "#fff" : "#555",
-                  marginBottom: 16,
-                }}
-              >
-                {loading ? "Processing..." : `🔐 Launch ${form.symbol || "Token"} · ${CREATION_FEE} WLD`}
-              </button>
-
-              {error && (
-                <p style={{ textAlign: "center", fontSize: 12, color: "#f05050", marginTop: 8 }}>{error}</p>
-              )}
-            </>
+            </motion.div>
           )}
-        </div>
+
+          {step === "creating" && (
+            <motion.div key="creating" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-20 space-y-4">
+              <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto" />
+              <div className="text-sm font-medium text-foreground">Creating your token...</div>
+              <p className="text-xs text-muted-foreground">Deploying {form.symbol} to the bonding curve</p>
+            </motion.div>
+          )}
+
+          {step === "success" && (
+            <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="text-center py-16 space-y-4">
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 300, delay: 0.1 }}>
+                <CheckCircle2 className="w-16 h-16 text-emerald-400 mx-auto" />
+              </motion.div>
+              <div className="text-2xl">{form.emoji}</div>
+              <div className="text-xl font-bold text-foreground">{form.name}</div>
+              <div className="text-sm text-muted-foreground">${form.symbol} is now live on the bonding curve</div>
+              <div className="flex gap-3 justify-center pt-2">
+                <button
+                  onClick={() => {
+                    closeCreatorDashboard();
+                    if (createdTokenId) navigate("token", { tokenId: createdTokenId });
+                  }}
+                  data-testid="button-view-token"
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-cyan-500 text-white font-bold text-sm active:scale-95 transition-transform flex items-center gap-2"
+                >
+                  View Token <ArrowRight className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={closeCreatorDashboard}
+                  data-testid="button-done"
+                  className="px-6 py-3 rounded-xl border border-border/40 text-sm font-medium text-muted-foreground"
+                >
+                  Done
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

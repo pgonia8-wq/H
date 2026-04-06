@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 
 export type Screen = "discovery" | "token" | "airdrops" | "profile" | "creator" | "settings";
 export type DisplayCurrency = "USD" | "WLD";
@@ -84,7 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("message", handler);
-    const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
 
     const retryInterval = setInterval(() => {
       if (contextReceived) { clearInterval(retryInterval); return; }
@@ -95,7 +95,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const fallbackTimer = setTimeout(() => {
       if (!contextReceived) {
-        console.warn("[AppContext] Parent no respondio en 5s, continuando sin contexto");
         setState((s) => ({ ...s, worldAppReady: true }));
       }
     }, 5000);
@@ -107,55 +106,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const emitToBridge = (event: string, payload?: unknown) => {
-    const origin = (import.meta as any).env?.VITE_PARENT_ORIGIN || "*";
+  const emitToBridge = useCallback((event: string, payload?: unknown) => {
+    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
     window.parent?.postMessage({ type: event, payload }, origin);
-  };
+  }, []);
 
-  const navigate = (screen: Screen, params?: { tokenId?: string; airdropId?: string }) => {
+  const navigate = useCallback((screen: Screen, params?: { tokenId?: string; airdropId?: string }) => {
     setState((s) => ({
       ...s,
       screen,
-      selectedTokenId: params?.tokenId ?? s.selectedTokenId,
+      selectedTokenId: params?.tokenId ?? (screen === "discovery" ? null : s.selectedTokenId),
       selectedAirdropId: params?.airdropId ?? s.selectedAirdropId,
     }));
-  };
+  }, []);
 
-  const openCreatorDashboard = () =>
-    setState((s) => ({ ...s, isCreatorModalOpen: true }));
-  const closeCreatorDashboard = () =>
-    setState((s) => ({ ...s, isCreatorModalOpen: false }));
-
-  const openSettings = () =>
-    setState((s) => ({ ...s, isSettingsOpen: true }));
-  const closeSettings = () =>
-    setState((s) => ({ ...s, isSettingsOpen: false }));
-
-  const toggleCurrency = () =>
-    setState((s) => ({ ...s, displayCurrency: s.displayCurrency === "USD" ? "WLD" : "USD" }));
-  const setCurrency = (c: DisplayCurrency) =>
-    setState((s) => ({ ...s, displayCurrency: c }));
-
-  const updateBalance = (wld: number, usdc: number) =>
-    setState((s) => ({ ...s, balanceWld: wld, balanceUsdc: usdc }));
-
-  const updateUser = (updates: Partial<WorldAppUser>) =>
+  const openCreatorDashboard = useCallback(() =>
+    setState((s) => ({ ...s, isCreatorModalOpen: true })), []);
+  const closeCreatorDashboard = useCallback(() =>
+    setState((s) => ({ ...s, isCreatorModalOpen: false })), []);
+  const openSettings = useCallback(() =>
+    setState((s) => ({ ...s, isSettingsOpen: true })), []);
+  const closeSettings = useCallback(() =>
+    setState((s) => ({ ...s, isSettingsOpen: false })), []);
+  const toggleCurrency = useCallback(() =>
+    setState((s) => ({ ...s, displayCurrency: s.displayCurrency === "USD" ? "WLD" : "USD" })), []);
+  const setCurrency = useCallback((c: DisplayCurrency) =>
+    setState((s) => ({ ...s, displayCurrency: c })), []);
+  const updateBalance = useCallback((wld: number, usdc: number) =>
+    setState((s) => ({ ...s, balanceWld: wld, balanceUsdc: usdc })), []);
+  const updateUser = useCallback((updates: Partial<WorldAppUser>) =>
     setState((s) => ({
       ...s,
       user: s.user ? { ...s.user, ...updates } : null,
-    }));
+    })), []);
 
-  const formatPrice = (wldPrice: number): string => {
+  const formatPrice = useCallback((wldPrice: number): string => {
     if (state.displayCurrency === "WLD") {
       return `${wldPrice.toFixed(7)} WLD`;
     }
     return `$${(wldPrice * WLD_USD_RATE).toFixed(7)}`;
-  };
+  }, [state.displayCurrency]);
 
-  const formatPriceValue = (wldPrice: number): number => {
+  const formatPriceValue = useCallback((wldPrice: number): number => {
     if (state.displayCurrency === "WLD") return wldPrice;
     return wldPrice * WLD_USD_RATE;
-  };
+  }, [state.displayCurrency]);
 
   const currencySymbol = state.displayCurrency === "WLD" ? "WLD" : "$";
 
@@ -163,12 +158,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         ...state,
-        navigate, openCreatorDashboard, closeCreatorDashboard,
-        openSettings, closeSettings,
-        toggleCurrency, setCurrency,
-        emitToBridge, updateBalance, updateUser,
-        formatPrice, formatPriceValue,
-        currencySymbol, wldUsdRate: WLD_USD_RATE,
+        navigate,
+        openCreatorDashboard,
+        closeCreatorDashboard,
+        openSettings,
+        closeSettings,
+        toggleCurrency,
+        setCurrency,
+        emitToBridge,
+        updateBalance,
+        updateUser,
+        formatPrice,
+        formatPriceValue,
+        currencySymbol,
+        wldUsdRate: WLD_USD_RATE,
       }}
     >
       {children}

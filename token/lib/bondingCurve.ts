@@ -112,7 +112,7 @@ export function validateCreatorMaxHold(userId: string, creatorId: string, curren
 }
 
 export function validateNotGraduated(graduated: boolean): void {
-  if (graduated) throw new Error("Token has graduated — trade on DEX pool");
+  if (graduated) throw new Error("Token has graduated -- trade on DEX pool");
 }
 
 export function marketCap(currentSupply: number): number {
