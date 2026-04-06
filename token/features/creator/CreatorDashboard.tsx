@@ -84,6 +84,8 @@ export default function CreatorDashboard() {
 
       setStep("paying");
 
+      if (!RECEIVER) throw new Error("Payment receiver not configured");
+
       const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
       const reference = generatePayReference();
 
@@ -120,9 +122,6 @@ export default function CreatorDashboard() {
           payload: { reference, to: RECEIVER, amount: CREATION_FEE, token: "WLD", description: `Create token: ${form.symbol}` },
         }, origin);
       });
-
-      const verifyRes = await api.verifyTokenPayment(transactionId, user.id, "create_token");
-      if (!verifyRes.success) throw new Error("Payment verification failed");
 
       setStep("creating");
 

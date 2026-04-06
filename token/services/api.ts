@@ -118,13 +118,6 @@ export const api = {
     });
   },
 
-  async verifyTokenPayment(transactionId: string, userId: string, action: string): Promise<{ success: boolean; transactionStatus: string; replayed?: boolean }> {
-    return request(`/verifyTokenPayment`, {
-      method: "POST",
-      body: JSON.stringify({ transactionId, userId, action }),
-    });
-  },
-
   async verifyOrb(payload: Record<string, unknown>, userId: string): Promise<{ success: boolean; nullifier_hash: string; orbVerified: boolean; reused?: boolean }> {
     return request(`/verifyOrb`, {
       method: "POST",

@@ -79,7 +79,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
 
   const requestPayment = (amountWld: number, description: string): Promise<string> => {
     if (!RECEIVER) {
-      return Promise.reject(new Error("Payment receiver address not configured"));
+      return Promise.reject(new Error("Payment receiver not configured"));
     }
 
     const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
@@ -89,14 +89,14 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
       const timeout = setTimeout(() => {
         window.removeEventListener("message", handler);
         paymentCancelRef.current = null;
-        reject(new Error("Payment timeout -- no response from World App"));
-      }, 30000);
+        reject(new Error("Payment timeout"));
+      }, 60000);
 
       paymentCancelRef.current = () => {
         clearTimeout(timeout);
         window.removeEventListener("message", handler);
         paymentCancelRef.current = null;
-        reject(new Error("Payment cancelled by user"));
+        reject(new Error("Payment cancelled"));
       };
 
       const handler = (e: MessageEvent) => {
@@ -107,7 +107,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
           if (e.data.payload?.success && e.data.payload?.transactionId) {
             resolve(e.data.payload.transactionId);
           } else {
-            reject(new Error(e.data.payload?.error || "Payment cancelled or failed"));
+            reject(new Error(e.data.payload?.error || "Payment failed or cancelled"));
           }
         }
       };
@@ -147,17 +147,15 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
           return;
         }
 
-        const transactionId = await requestPayment(amountWld, `Buy ${token.symbol} tokens`);
-        const verifyRes = await api.verifyTokenPayment(transactionId, user.id, "buy_token");
-        if (!verifyRes.success) throw new Error("Payment verification failed");
+        await requestPayment(amountWld, `Buy ${token.symbol} tokens`);
 
-        const result = await api.buyToken({ tokenId: token.id, amountWld, userId: user.id, transactionId });
-        if (!result.success) { setError(result.message || "Buy failed"); return; }
+        const result = await api.buyToken({ tokenId: token.id, amountWld, userId: user.id });
+        if (!result.success) { setError(result.message || "Buy failed"); setLoading(false); return; }
 
         updateBalance(balanceWld - amountWld, 0);
         emitToBridge("onTokenPurchased", {
           tokenId: token.id, tokenSymbol: token.symbol, tokensReceived: result.tokensReceived,
-          amountWld, newPrice: result.newPrice, userId: user.id, transactionId,
+          amountWld, newPrice: result.newPrice, userId: user.id,
         });
       } else {
         if (numAmount > userHolding) {
@@ -167,7 +165,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
         }
 
         const result = await api.sellToken({ tokenId: token.id, tokensToSell: numAmount, userId: user.id });
-        if (!result.success) { setError(result.message || "Sell failed"); return; }
+        if (!result.success) { setError(result.message || "Sell failed"); setLoading(false); return; }
 
         updateBalance(balanceWld + result.wldReceived, 0);
         emitToBridge("onTokenSold", {
@@ -180,7 +178,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
       setTimeout(() => { setSuccess(false); onSuccess(); }, 1500);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+      if (!msg.includes("cancelled")) setError(msg);
     } finally {
       setLoading(false);
     }
