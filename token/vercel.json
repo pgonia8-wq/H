@@ -3,23 +3,80 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/tokens/:id/holders",
+      "destination": "/api/tokenHolders?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/activity",
+      "destination": "/api/tokenActivity?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/priceHistory",
+      "destination": "/api/tokenPriceHistory?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/buy",
+      "destination": "/api/tokenBuy?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/sell",
+      "destination": "/api/tokenSell?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/graduate",
+      "destination": "/api/tokenGraduate?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id",
+      "destination": "/api/tokenGet?id=:id"
+    },
+    {
+      "source": "/api/airdrops/:id/claim",
+      "destination": "/api/airdropClaim?id=:id"
+    },
+    {
+      "source": "/api/airdrops/:id",
+      "destination": "/api/airdropGet?id=:id"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        }
       ]
     },
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Frame-Options", "value": "ALLOWALL" },
-        { "key": "Content-Security-Policy", "value": "frame-ancestors *" }
+        {
+          "key": "X-Frame-Options",
+          "value": "ALLOWALL"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors *"
+        }
       ]
     }
   ]
