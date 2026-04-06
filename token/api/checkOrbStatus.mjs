@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   try {
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, verified")
+      .select("id, verified, verification_level, orb_verified_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -24,9 +24,13 @@ export default async function handler(req, res) {
       });
     }
 
+    const isOrbVerified =
+      profile.verification_level === "orb" && profile.orb_verified_at != null;
+
     return res.status(200).json({
-      orbVerified: profile.verified === true,
-      verified: profile.verified ?? false,
+      orbVerified: isOrbVerified,
+      verified: isOrbVerified,
+      verificationLevel: profile.verification_level ?? "device",
     });
   } catch (err) {
     console.error("[CHECK_ORB_STATUS]", err.message);

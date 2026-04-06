@@ -9,7 +9,7 @@ export async function requireOrb(userId, res) {
   try {
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, verified")
+      .select("id, verified, verification_level, orb_verified_at")
       .eq("id", userId)
       .maybeSingle();
 
@@ -28,7 +28,10 @@ export async function requireOrb(userId, res) {
       return false;
     }
 
-    if (profile.verified !== true) {
+    const isOrbVerified =
+      profile.verification_level === "orb" && profile.orb_verified_at != null;
+
+    if (!isOrbVerified) {
       res.status(403).json({
         error: "ORB verification required to use this feature.",
         orbRequired: true,

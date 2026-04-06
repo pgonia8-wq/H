@@ -160,7 +160,7 @@ const HomePage: React.FC<HomePageProps> = ({
     try {
       const { data: existing } = await supabase
         .from("profiles")
-        .select("id, username, avatar_url, verified, tier, wallet")
+        .select("id, username, avatar_url, verified, verification_level, orb_verified_at, tier, wallet")
         .eq("id", userId)
         .maybeSingle();
 
@@ -291,7 +291,7 @@ const HomePage: React.FC<HomePageProps> = ({
           userId: userId ?? "",
           username: profile?.username ?? username ?? "",
           profilePicture: profile?.avatar_url ?? "",
-          verificationLevel: verified ? "orb" : "device",
+          verificationLevel: (profile?.verification_level === "orb" && profile?.orb_verified_at) ? "orb" : "device",
           balanceWld: 0,
           balanceUsdc: 0,
         },
