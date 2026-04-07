@@ -109,6 +109,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+      if (!state.user?.id || state.user.id === "usr_guest" || state.walletAddress) return;
+      let active = true;
+
+      const fetchWallet = async () => {
+        try {
+          const base = import.meta.env.VITE_API_BASE || "/api";
+          const res = await fetch(base + "/user/wallet?userId=" + encodeURIComponent(state.user!.id));
+          if (!res.ok) return;
+          const { wallet } = await res.json();
+          if (active && wallet) {
+            setState((s) => ({ ...s, walletAddress: wallet }));
+          }
+        } catch (err) {
+          console.warn("Wallet fetch failed:", err);
+        }
+      };
+
+      fetchWallet();
+      return () => { active = false; };
+    }, [state.user?.id, state.walletAddress]);
+
+    useEffect(() => {
       if (!state.walletAddress) return;
       let active = true;
 
