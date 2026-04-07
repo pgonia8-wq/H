@@ -31,28 +31,6 @@ export interface Token {
   contractAddress?: string | null;
 }
 
-export interface Airdrop {
-  id: string;
-  tokenId: string;
-  tokenName: string;
-  tokenSymbol: string;
-  tokenEmoji: string;
-  title: string;
-  description: string;
-  totalAmount: number;
-  claimedAmount: number;
-  dailyAmount: number;
-  participants: number;
-  maxParticipants: number;
-  endDate: string;
-  isActive: boolean;
-  cooldownHours: number;
-  userClaimedAt?: string | null;
-  userTotalClaimed?: number;
-  hasClaimed?: boolean;
-  nextClaimAt?: string | null;
-}
-
 export interface Holding {
   tokenId: string;
   tokenName: string;
@@ -68,7 +46,7 @@ export interface Holding {
 
 export interface ActivityItem {
   id: string;
-  type: "buy" | "sell" | "airdrop" | "lock" | "burn" | "create" | "graduate";
+  type: "buy" | "sell" | "airdrop" | "airdrop_claim" | "lock" | "burn" | "create" | "graduate";
   userId: string;
   username: string;
   tokenId: string;
@@ -125,11 +103,6 @@ export interface TokenListResponse {
   hasMore: boolean;
 }
 
-export interface AirdropListResponse {
-  airdrops: Airdrop[];
-  total: number;
-}
-
 export interface HoldingsResponse {
   holdings: Holding[];
   totalValue: number;
@@ -177,18 +150,6 @@ export interface SellResult {
   newPriceUsd: number;
   newSupply: number;
   curvePercent: number;
-  message: string;
-}
-
-export interface ClaimAirdropRequest {
-  airdropId: string;
-  userId: string;
-}
-
-export interface ClaimResult {
-  success: boolean;
-  amount?: number;
-  nextClaimAt?: string;
   message: string;
 }
 
@@ -387,4 +348,11 @@ export function timeAgo(dateStr: string): string {
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
   return `${Math.floor(days / 30)}mo ago`;
+}
+
+export function getMomentumLabel(curvePercent: number): { label: string; color: string; description: string } {
+  if (curvePercent >= 80) return { label: "GRADUATING", color: "#f05050", description: "Nearing DEX launch" };
+  if (curvePercent >= 50) return { label: "ACCELERATING", color: "#f7a606", description: "Strong momentum" };
+  if (curvePercent >= 20) return { label: "BUILDING", color: "#06d6f7", description: "Growing steadily" };
+  return { label: "EARLY", color: "#10f090", description: "Just getting started" };
 }

@@ -13,6 +13,7 @@ export interface WorldAppUser {
 
 export interface AppState {
   user: WorldAppUser | null;
+  walletAddress: string | null;
   balanceWld: number;
   balanceUsdc: number;
   screen: Screen;
@@ -42,11 +43,13 @@ interface AppContextValue extends AppState {
 }
 
 const WLD_USD_RATE = 3.0;
+const PARENT_ORIGIN = import.meta.env?.VITE_PARENT_ORIGIN || "*";
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>({
     user: null,
+    walletAddress: null,
     balanceWld: 0,
     balanceUsdc: 0,
     screen: "discovery",
@@ -76,6 +79,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             avatarUrl: payload?.avatarUrl ?? "",
             verificationLevel: payload?.verificationLevel ?? "device",
           },
+          walletAddress: payload?.walletAddress ?? s.walletAddress,
           balanceWld: payload?.balanceWld ?? s.balanceWld,
           balanceUsdc: payload?.balanceUsdc ?? s.balanceUsdc,
           worldAppReady: true,
@@ -84,14 +88,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     window.addEventListener("message", handler);
-    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
 
     const retryInterval = setInterval(() => {
       if (contextReceived) { clearInterval(retryInterval); return; }
-      window.parent?.postMessage({ type: "MINI_APP_READY" }, origin);
+      window.parent?.postMessage({ type: "MINI_APP_READY" }, PARENT_ORIGIN);
     }, 1000);
 
-    window.parent?.postMessage({ type: "MINI_APP_READY" }, origin);
+    window.parent?.postMessage({ type: "MINI_APP_READY" }, PARENT_ORIGIN);
 
     const fallbackTimer = setTimeout(() => {
       if (!contextReceived) {
@@ -107,8 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const emitToBridge = useCallback((event: string, payload?: unknown) => {
-    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
-    window.parent?.postMessage({ type: event, payload }, origin);
+    window.parent?.postMessage({ type: event, payload }, PARENT_ORIGIN);
   }, []);
 
   const navigate = useCallback((screen: Screen, params?: { tokenId?: string; airdropId?: string }) => {

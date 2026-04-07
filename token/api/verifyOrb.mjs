@@ -53,6 +53,24 @@ export default async function handler(req, res) {
     console.warn("[VERIFY_ORB] Anti-replay check failed:", err.message);
   }
 
+  try {
+    const { data: nullifierUsed } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("nullifier_hash", nullifierHash)
+      .neq("id", userId)
+      .maybeSingle();
+
+    if (nullifierUsed) {
+      return res.status(409).json({
+        error: "This ORB proof has already been used by another account.",
+        code: "NULLIFIER_REPLAY",
+      });
+    }
+  } catch (err) {
+    console.warn("[VERIFY_ORB] Nullifier replay check failed:", err.message);
+  }
+
   let verifyData;
   try {
     const verifyResponse = await fetch(
@@ -95,6 +113,7 @@ export default async function handler(req, res) {
           id: userId,
           verified: true,
           verification_level: "orb",
+          nullifier_hash: nullifierHash,
           orb_verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },

@@ -40,24 +40,12 @@
       "destination": "/api/tokenGet?id=:id"
     },
     {
-      "source": "/api/airdrops/:id/claim",
-      "destination": "/api/airdropClaim?id=:id"
-    },
-    {
       "source": "/api/airdrops/:id",
       "destination": "/api/airdropGet?id=:id"
     },
     {
       "source": "/api/user/wallet",
       "destination": "/api/userWallet"
-    },
-    {
-      "source": "/api/airdropLinks",
-      "destination": "/api/airdropLinks"
-    },
-    {
-      "source": "/api/airdropRedeem",
-      "destination": "/api/airdropRedeem"
     },
     {
       "source": "/api/(.*)",

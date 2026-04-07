@@ -104,7 +104,7 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       await supabase.from("token_activity").insert({
-        type: "airdrop_claim",
+        type: "airdrop",
         user_id: userId,
         username: profile?.username ?? "anon",
         token_id: link.token_id,

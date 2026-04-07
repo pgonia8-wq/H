@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { timeAgo } from "@/services/mockData";
+import { timeAgo } from "@/services/types";
 
 interface FeedEntry {
   id: string;

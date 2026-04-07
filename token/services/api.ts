@@ -1,9 +1,8 @@
 import type {
-  Token, TokenDetail, TokenListResponse, AirdropListResponse,
+  Token, TokenDetail, TokenListResponse,
   HoldingsResponse, ActivityListResponse, UserProfile, HolderInfo,
   BuyRequest, BuyResult, SellRequest, SellResult,
-  ClaimAirdropRequest, ClaimResult, CreateTokenRequest,
-  UploadResult, GraduateResult, Airdrop, PriceHistoryResponse,
+  CreateTokenRequest, UploadResult, GraduateResult, PriceHistoryResponse,
   LockRequest, LockResult, BurnRequest, BurnResult,
   BuyPoolRequest, BuyPoolResult, CreateLinkRequest, CreateLinkResult,
   DeleteLinkRequest, DeleteLinkResult, AirdropDataResponse,
@@ -77,22 +76,6 @@ export const api = {
     return request<UploadResult>("/upload", {
       method: "POST",
       body: JSON.stringify({ imageBase64, userId, target, targetId, fileName }),
-    });
-  },
-
-  async getAirdrops(userId?: string): Promise<AirdropListResponse> {
-    const qs = userId ? `?user_id=${userId}` : "";
-    return request<AirdropListResponse>(`/airdrops${qs}`);
-  },
-
-  async getAirdrop(id: string): Promise<Airdrop> {
-    return request<Airdrop>(`/airdrops/${id}`);
-  },
-
-  async claimAirdrop(body: ClaimAirdropRequest): Promise<ClaimResult> {
-    return request<ClaimResult>(`/airdrops/${body.airdropId}/claim`, {
-      method: "POST",
-      body: JSON.stringify({ userId: body.userId }),
     });
   },
 
@@ -187,3 +170,5 @@ export const api = {
     return request<TokenListResponse>(`/tokens?creator=${encodeURIComponent(creatorId)}`);
   },
 };
+
+export type { TokenListResponse, BuyRequest, SellRequest };

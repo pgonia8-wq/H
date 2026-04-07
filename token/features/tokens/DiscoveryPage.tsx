@@ -162,14 +162,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
     const [allTokens, setAllTokens] = useState<Token[]>([]);
     const [loading, setLoading] = useState(true);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const fetchingRef = useRef(false);
 
     const loadTokens = useCallback(async () => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
       try {
         const res = await api.getTokens({ sort });
         setAllTokens(res.tokens);
       } catch (err) {
         console.error("[Discovery] load error:", err);
       } finally {
+        fetchingRef.current = false;
         setLoading(false);
       }
     }, [sort]);

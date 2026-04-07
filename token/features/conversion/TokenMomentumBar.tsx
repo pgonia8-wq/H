@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { getMomentumLabel } from "@/services/mockData";
+import { getMomentumLabel } from "@/services/types";
 
 interface Props {
   curvePercent: number;

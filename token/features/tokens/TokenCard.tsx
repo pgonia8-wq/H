@@ -1,5 +1,5 @@
-import type { Token } from "@/services/mockData";
-import { formatNum } from "@/services/mockData";
+import type { Token } from "@/services/types";
+import { formatNum } from "@/services/types";
 
 interface Props {
   token: Token;

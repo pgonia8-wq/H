@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/services/api";
-import type { Token } from "@/services/mockData";
+import type { Token } from "@/services/types";
 
 interface UseTokenResult {
   token: Token | null;

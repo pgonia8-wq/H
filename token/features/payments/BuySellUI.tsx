@@ -27,7 +27,7 @@ import { useState, useEffect, useRef } from "react";
   }
 
   export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Props) {
-    const { balanceWld, updateBalance, emitToBridge, user, displayCurrency, wldUsdRate } = useApp();
+    const { balanceWld, balanceUsdc, updateBalance, emitToBridge, user, displayCurrency, wldUsdRate } = useApp();
     const { balance: realWldBalance, refetch: refetchBalance } = useWldBalance();
     const [tab, setTab] = useState<Tab>(defaultTab ?? "buy");
     const [amount, setAmount] = useState("");
@@ -158,7 +158,7 @@ import { useState, useEffect, useRef } from "react";
       try {
         const result = await api.sellToken({ tokenId: token.id, tokensToSell: numAmount, userId: user.id });
         if (!result.success) { setError(result.message || "Sell failed"); setLoading(false); return; }
-        updateBalance(balanceWld + result.wldReceived, 0);
+        updateBalance(balanceWld + result.wldReceived, balanceUsdc);
         emitToBridge("onTokenSold", {
           tokenId: token.id, tokenSymbol: token.symbol,
           tokensSold: numAmount, wldReceived: result.wldReceived, userId: user.id,
@@ -322,7 +322,7 @@ import { useState, useEffect, useRef } from "react";
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Slippage + Fee</span>
-                  <span className="text-muted-foreground font-mono">~{(numAmount * token.priceWld * 0.127).toFixed(4)} WLD</span>
+                  <span className="text-muted-foreground font-mono">~{(numAmount * token.priceWld - estimatedWld).toFixed(4)} WLD</span>
                 </div>
                 <div className="flex justify-between items-center text-[9px]">
                   <span className="text-yellow-400 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> 10% slippage + 3% fee</span>
