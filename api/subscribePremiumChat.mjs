@@ -40,7 +40,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 );
 
-const APP_ID = process.env.WORLDCOIN_APP_ID ?? "";
+const APP_ID = process.env.APP_ID ?? "";
 
 async function verifyWorldcoinPayment(transactionId) {
   try {

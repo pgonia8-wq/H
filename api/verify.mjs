@@ -21,8 +21,8 @@ if (!process.env.SUPABASE_URL) {
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.error("[VERIFY] ERROR: SUPABASE_SERVICE_ROLE_KEY no está configurada");
 }
-if (!process.env.WORLDCOIN_APP_ID) {
-  console.warn("[VERIFY] ADVERTENCIA: WORLDCOIN_APP_ID no está configurada. Usando valor hardcoded.");
+if (!process.env.APP_ID) {
+  console.warn("[VERIFY] ADVERTENCIA: APP_ID no está configurada.");
 }
 
 const supabase = createClient(
@@ -30,7 +30,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 );
 
-const APP_ID = process.env.WORLDCOIN_APP_ID ?? "";
+const APP_ID = process.env.APP_ID ?? "";
 const ACTION_ID = process.env.WORLDCOIN_ACTION_ID ?? "verify-user";
 
 export default async function handler(req, res) {
