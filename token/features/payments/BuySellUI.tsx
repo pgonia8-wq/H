@@ -301,7 +301,7 @@ import { useState, useEffect, useRef } from "react";
         </div>
 
         <div className="text-[11px] text-muted-foreground">
-          {tab === "buy" ? "Balance: " + balanceWld.toFixed(2) + " WLD" : "Holdings: " + userHolding.toLocaleString() + " " + token.symbol}
+          {tab === "buy" ? "Price: " + token.priceWld.toFixed(7) + " WLD per " + token.symbol : "Holdings: " + userHolding.toLocaleString() + " " + token.symbol}
         </div>
 
         <input
