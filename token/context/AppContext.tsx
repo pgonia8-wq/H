@@ -82,7 +82,7 @@ function smartCompact(val: number): string {
   return sign + abs.toFixed(6);
 }
 
-const PARENT_ORIGIN = import.meta.env?.VITE_PARENT_ORIGIN || window.location.origin;
+const PARENT_ORIGIN = import.meta.env?.VITE_PARENT_ORIGIN || "*";
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
