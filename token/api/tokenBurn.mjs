@@ -1,8 +1,8 @@
 import { supabase, cors } from "./_supabase.mjs";
-  import { requireOrb } from "./_orbGuard.mjs";
-  import { spotPrice } from "./_curve.mjs";
+import { requireOrb } from "./_orbGuard.mjs";
+import { spotPrice } from "./_curve.mjs";
 
-  export default async function handler(req, res) {
+export default async function handler(req, res) {
     cors(res);
     if (req.method === "OPTIONS") return res.status(200).end();
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
