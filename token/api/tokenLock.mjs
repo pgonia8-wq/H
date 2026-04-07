@@ -29,6 +29,17 @@ export default async function handler(req, res) {
       if (tErr || !token) return res.status(404).json({ error: "Token not found" });
       if (token.creator_id !== userId) return res.status(403).json({ error: "Only the creator can lock tokens" });
 
+      const { data: holding } = await supabase
+        .from("holdings")
+        .select("amount")
+        .eq("user_id", userId)
+        .eq("token_id", tokenId)
+        .maybeSingle();
+      const heldAmount = Number(holding?.amount ?? 0);
+      if (heldAmount < amount) {
+        return res.status(400).json({ error: `Insufficient holdings. You hold: ${heldAmount}` });
+      }
+
       const available = Number(token.circulating_supply ?? 0);
       if (amount > available) {
         return res.status(400).json({ error: `Insufficient circulating supply. Available: ${available}` });
@@ -38,16 +49,25 @@ export default async function handler(req, res) {
       const newCirculating = available - amount;
       const unlockDate = new Date(Date.now() + durationDays * 86400000).toISOString();
 
-      const { error: uErr } = await supabase
+      const { data: updated, error: uErr } = await supabase
         .from("tokens")
         .update({
           locked_supply: newLocked,
           circulating_supply: newCirculating,
           lock_duration_days: durationDays,
         })
-        .eq("id", tokenId);
+        .eq("id", tokenId)
+        .eq("circulating_supply", available)
+        .select("id")
+        .maybeSingle();
 
       if (uErr) throw uErr;
+      if (!updated) {
+        return res.status(409).json({ error: "Concurrent modification detected, please retry" });
+      }
+
+      await supabase.from("holdings").update({ amount: heldAmount - amount, updated_at: new Date().toISOString() })
+        .eq("user_id", userId).eq("token_id", tokenId);
 
       const { data: profile } = await supabase
         .from("profiles")
