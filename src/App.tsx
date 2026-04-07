@@ -3,7 +3,7 @@ import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { useTheme } from "./lib/ThemeContext";
 import HomePage from "./pages/HomePage";
 
-const APP_ID = (import.meta as any).env?.VITE_APP_ID ?? "app_6a98c88249208506dcd4e04b529111fc";
+const APP_ID = (import.meta as any).env?.VITE_APP_ID ?? "";
 
 const App = () => {
   const [wallet, setWallet] = useState<string | null>(null);
@@ -18,28 +18,18 @@ const App = () => {
 
   const { setUsername: setGlobalUsername } = useTheme();
 
-  // Fix 2: Un solo useEffect en lugar de tres encadenados
-  // Antes: mount → setState(miniKitReady) → re-render → setState(verified) → re-render → loadWallet
-  // Ahora: mount → todo en secuencia sin ciclos de render intermedios
   useEffect(() => {
     const init = async () => {
-      // Paso 1: leer localStorage de forma sincrónica (sin await, sin render extra)
       const storedId = localStorage.getItem("userId");
       if (storedId) {
         setUserId(storedId);
         setVerified(true);
-        console.log("[APP] ID cargado de localStorage:", storedId);
-      } else {
-        console.log("[APP] No hay ID en localStorage, se verificará después de MiniKit");
       }
 
-      // Paso 2: instalar MiniKit
       try {
-        console.log("[APP] Instalando MiniKit...");
         MiniKit.install({ appId: APP_ID });
 
         const installed = MiniKit.isInstalled();
-        console.log("[APP] MiniKit.isInstalled():", installed);
 
         if (!installed) {
           console.warn("[APP] MiniKit no está disponible");
@@ -47,7 +37,6 @@ const App = () => {
         }
 
         setMiniKitReady(true);
-        console.log("[APP] MiniKit listo");
 
         if (MiniKit.user) {
           const u = MiniKit.user.username || null;
@@ -55,11 +44,8 @@ const App = () => {
           setUsername(u);
           setAvatar(a);
           if (u) setGlobalUsername(u);
-          console.log("[APP] MiniKit user:", u, a);
         }
 
-        // Paso 3: si no había ID guardado, verificar ahora que MiniKit está listo
-        // Sin esperar un re-render extra — llamada directa
         if (!storedId) {
           await runVerification();
         }
@@ -70,10 +56,8 @@ const App = () => {
     };
 
     init();
-  }, []); // Un solo efecto, sin dependencias cruzadas
+  }, []);
 
-  // Wallet auth: sigue siendo efecto separado porque depende de verified + miniKitReady
-  // pero ahora ambos se setean en el mismo render (init effect), no en renders distintos
   useEffect(() => {
     const loadWallet = async () => {
       if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
@@ -81,14 +65,11 @@ const App = () => {
       }
 
       walletLoading.current = true;
-      console.log("[APP] Iniciando walletAuth...");
 
       try {
         const nonceRes = await fetch("/api/nonce");
         if (!nonceRes.ok) throw new Error("No se pudo obtener nonce");
         const { nonce } = await nonceRes.json();
-
-        console.log("[APP] Nonce recibido:", nonce);
 
         const auth = await MiniKit.commandsAsync.walletAuth({
           nonce,
@@ -98,14 +79,11 @@ const App = () => {
           statement: "Autenticar wallet para H humans",
         });
 
-        console.log("[APP] walletAuth result:", auth);
-
         const address =
           auth?.finalPayload?.address || auth?.finalPayload?.wallet_address || null;
 
         if (address) {
           setWallet(address);
-          console.log("[APP] Wallet obtenida:", address);
         } else {
           console.warn("[APP] WalletAuth success pero sin address");
         }
@@ -116,7 +94,6 @@ const App = () => {
           setUsername(u);
           setAvatar(a);
           if (u) setGlobalUsername(u);
-          console.log("[APP] MiniKit user post-walletAuth:", u, a);
         }
       } catch (err: any) {
         console.error("[APP] Error walletAuth:", err);
@@ -129,7 +106,6 @@ const App = () => {
     loadWallet();
   }, [verified, wallet, verifying, miniKitReady]);
 
-  // Verificación interna usada por el init effect (MiniKit ya está listo aquí)
   const runVerification = async () => {
     setVerifying(true);
     setError(null);
@@ -137,14 +113,10 @@ const App = () => {
     try {
       if (!MiniKit.isInstalled()) throw new Error("MiniKit no instalado");
 
-      console.log("[APP] Iniciando verify...");
-
       const verifyRes = await MiniKit.commandsAsync.verify({
         action: "verify-user",
         verification_level: VerificationLevel.Device,
       });
-
-      console.log("[APP] Verify response:", verifyRes);
 
       const proof = verifyRes?.finalPayload;
       if (!proof) throw new Error("No se recibió proof");
@@ -158,7 +130,6 @@ const App = () => {
       if (!res.ok) {
         const text = await res.text();
         if (text.includes("already verified") && proof.nullifier_hash) {
-          console.log("[APP] Usuario ya verificado, usando nullifier_hash existente");
           const id = proof.nullifier_hash;
           localStorage.setItem("userId", id);
           setUserId(id);
@@ -170,14 +141,12 @@ const App = () => {
       }
 
       const backend = await res.json();
-      console.log("[APP] Backend verify:", backend);
 
       if (backend.success && proof.nullifier_hash) {
         const id = proof.nullifier_hash;
         localStorage.setItem("userId", id);
         setUserId(id);
         setVerified(true);
-        console.log("[APP] Usuario verificado:", id);
       } else {
         throw new Error(backend.error || "Backend rechazó la prueba");
       }
@@ -189,7 +158,6 @@ const App = () => {
     }
   };
 
-  // verifyUser sigue disponible como prop para que HomePage lo pueda llamar manualmente
   const verifyUser = async () => {
     if (verifying || !miniKitReady) return;
     await runVerification();

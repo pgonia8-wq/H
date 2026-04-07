@@ -376,7 +376,6 @@ function buildDecision(
 ): CycleDecision {
   const softRandom = Math.random() < 0.12;
   if (softRandom) {
-    console.log("🎲 [SEEDS] Soft randomness activated — exploring outside comfort zone");
   }
 
   // Account selection: avoid repeating last account
@@ -467,18 +466,15 @@ export default function AutonomousGrowthBrain(): null {
   const runCycle = useCallback(async () => {
     // Prevent concurrent local executions
     if (isRunning.current) {
-      console.log("⏳ [SEEDS] Cycle already running locally — skip");
       return;
     }
 
     // Distributed lock via localStorage
     if (!acquireLock()) {
-      console.log("🔒 [SEEDS] Lock held by another instance — skip");
       return;
     }
 
     isRunning.current = true;
-    console.log("🧠 [SEEDS] ─── Cycle start ───────────────────────────");
 
     try {
       const { runPipeline, isPipelineLoading } = pipelineRef.current;
@@ -516,7 +512,6 @@ export default function AutonomousGrowthBrain(): null {
 
       // ── 2. Learning ───────────────────────────────────────────────────────
       const memory = updateMemory(allMetrics);
-      console.log(
         `🎓 [SEEDS] Top: [${memory.topCategories.join(", ")}] | Weak: [${memory.weakCategories.join(", ")}] | Best hours: [${memory.bestHours.join(", ")}]`
       );
 
@@ -536,7 +531,6 @@ export default function AutonomousGrowthBrain(): null {
         state.cycleCount
       );
 
-      console.log(
         `🎯 [SEEDS] Mode: ${mode} | Queue: ${queueSize} | AvgScore: ${avgScore.toFixed(1)} | Hour: ${currentHour()}:00 | Published/h: ${state.publishedThisHour}`
       );
        const trends = await getCachedTrends();
@@ -546,7 +540,6 @@ export default function AutonomousGrowthBrain(): null {
       // ── 6. Generate ───────────────────────────────────────────────────────
       if (decision.shouldGenerate && !isPipelineLoading) {
         try {
-          console.log(
             `✍️  [SEEDS] Running pipeline: ${decision.postsToGenerate} posts — ${decision.category} / ${decision.account}`
           );
 
@@ -557,7 +550,6 @@ export default function AutonomousGrowthBrain(): null {
             count: decision.postsToGenerate,
           });
 
-          console.log(`✅ [SEEDS] Queued ${result?.queued ?? "?"} posts`);
 
           // Track used topics
           const generatedTopics: string[] = result?.topics ?? [decision.topic];
@@ -573,7 +565,6 @@ export default function AutonomousGrowthBrain(): null {
       // ── 7. Publish (with human-like delay) ───────────────────────────────
       if (decision.shouldPublish && !isPublishLoading) {
         const delayMs = randInt(PUBLISH_DELAY_MIN_MS, PUBLISH_DELAY_MAX_MS);
-        console.log(
           `📤 [SEEDS] Will publish via ${decision.account} in ${Math.round(delayMs / 60000)} min`
         );
 
@@ -584,7 +575,6 @@ export default function AutonomousGrowthBrain(): null {
             });
 
             const published = result?.published ?? 0;
-            console.log(`🚀 [SEEDS] Published ${published} post(s) via ${decision.account}`);
 
             const updatedState = load<BrainState>(STORAGE_BRAIN, state);
             save<BrainState>(STORAGE_BRAIN, {
@@ -617,7 +607,6 @@ export default function AutonomousGrowthBrain(): null {
       // Trim stored metrics
       save<PostMetrics[]>(STORAGE_METRICS, allMetrics.slice(-MAX_STORED_METRICS));
 
-      console.log(
         `✨ [SEEDS] Cycle #${state.cycleCount + 1} done. Next in ${CYCLE_MIN_MS / 60000}–${CYCLE_MAX_MS / 60000} min.`
       );
     } catch (err) {
@@ -637,7 +626,6 @@ export default function AutonomousGrowthBrain(): null {
   }, [runCycle]);
 
   useEffect(() => {
-    console.log("🌱 [SEEDS] Autonomous Growth Brain mounting...");
 
     const boot = setTimeout(async () => {
       await runCycle();
@@ -648,7 +636,6 @@ export default function AutonomousGrowthBrain(): null {
       clearTimeout(boot);
       if (cycleTimer.current) clearTimeout(cycleTimer.current);
       releaseLock();
-      console.log("🛑 [SEEDS] Brain unmounted.");
     };
   }, [runCycle, scheduleNext]);
 

@@ -72,9 +72,6 @@ export function usePublishQueuedPosts(): UsePublishQueuedPostsReturn {
         );
 
         if (!fnError && fnData) {
-          console.log(
-            `✅ [usePublishQueuedPosts] Edge Function published ${fnData.published} post(s)`
-          );
           return fnData;
         }
 
@@ -98,7 +95,6 @@ export function usePublishQueuedPosts(): UsePublishQueuedPostsReturn {
         if (selectErr) throw new Error(selectErr.message);
 
         if (!candidates || candidates.length === 0) {
-          console.log(`📭 [usePublishQueuedPosts] No queued posts for ${account}`);
           return { published: 0 };
         }
 
@@ -136,7 +132,6 @@ export function usePublishQueuedPosts(): UsePublishQueuedPostsReturn {
             `❌ [usePublishQueuedPosts] Error insertando en posts: ${postInsertErr.message}`
           );
         } else {
-          console.log(`📰 [usePublishQueuedPosts] Post visible en feed para ${account}`);
         }
 
         // Registrar métricas
@@ -160,7 +155,6 @@ export function usePublishQueuedPosts(): UsePublishQueuedPostsReturn {
           );
         }
 
-        console.log(`✅ [usePublishQueuedPosts] Published post ${post.id} via ${account}`);
         return { published: 1 };
 
       } catch (err) {

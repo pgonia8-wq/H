@@ -554,12 +554,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
       return;
     }
     if (checkingAccess) {
-      console.log("Aún verificando acceso, espera un momento...");
       return;
     }
-    console.log("handleChatCreadores ejecutado", { hasChatAccess, checkingAccess, currentUserId });
     if (hasChatAccess) {
-      console.log("Usuario ya tiene acceso → mostrando chat overlay");
       setShowGlobalChat(true);
       return;
     }
@@ -570,7 +567,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     setLoadingAction("subscription");
     setError(null);
     try {
-      console.log("Iniciando pago para chat exclusivo...");
       const payRes = await MiniKit.commandsAsync.pay({
         reference: generatePayReference(),
         to: RECEIVER,
@@ -582,7 +578,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         ],
         description: t("chat_exclusivo"),
       });
-      console.log("Resultado del pago:", payRes);
       if (payRes?.finalPayload?.status === "success") {
         const transactionId = payRes.finalPayload.transaction_id;
         try {
@@ -604,7 +599,6 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         setShowGlobalChat(true);
         setLoadingAction(null);
       } else {
-        console.log("Pago no completado o cancelado");
         setError(t("pago_cancelado"));
         setLoadingAction(null);
       }

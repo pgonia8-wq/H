@@ -8,14 +8,13 @@ interface ThemeContextType {
   toggleTheme: () => void;
   setTheme: (t: ThemeType) => void;
   setAccentColor: (c: string) => void;
-  username: string | null;           // NUEVO: username global
-  setUsername: (u: string | null) => void; // NUEVO: setter global
+  username: string | null;
+  setUsername: (u: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  // Tema
   const [theme, setTheme] = useState<ThemeType>(
     (typeof window !== "undefined" && (localStorage.getItem("theme") as ThemeType)) || "dark"
   );
@@ -24,20 +23,16 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     (typeof window !== "undefined" && localStorage.getItem("accentColor")) || "#7c3aed"
   );
 
-  // NUEVO: Username global
   const [username, setUsername] = useState<string | null>(null);
 
-  // --- NUEVO: Cargar username desde localStorage al montar ---
   useEffect(() => {
-    if (typeof window === "undefined") return; // seguridad SSR
+    if (typeof window === "undefined") return;
     const storedUsername = localStorage.getItem("username");
     if (storedUsername) {
       setUsername(storedUsername);
-      console.log("[ThemeContext] username cargado desde localStorage:", storedUsername);
     }
   }, []);
 
-  // Persistir cambios en localStorage
   useEffect(() => {
     localStorage.setItem("theme", theme);
   }, [theme]);
@@ -46,7 +41,6 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem("accentColor", accentColor);
   }, [accentColor]);
 
-  // NUEVO: Persistir username
   useEffect(() => {
     if (username) localStorage.setItem("username", username);
     else localStorage.removeItem("username");
@@ -68,7 +62,6 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-// Hook para usar el contexto fácilmente
 export const useTheme = () => {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider");

@@ -1332,7 +1332,6 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
       await insertRoom(pendingRoomData);
       setShowExtraRoomModal(false);
       setPendingRoomData(null);
-      console.log("[GlobalChat] Sala extra creada. isGoldPrice:", isGoldPrice);
 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

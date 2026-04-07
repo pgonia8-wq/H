@@ -42,7 +42,6 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
 
         // ── 2. SI responde bien → insertar en DB SIEMPRE ────────
         if (!fnError && fnData && fnData.posts) {
-          console.log(
             `✅ [Pipeline] AI generated ${fnData.posts.length} posts`
           );
 

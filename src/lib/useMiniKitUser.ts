@@ -1,4 +1,3 @@
-// ~/projects/h/src/lib/useMiniKitUser.ts
 import { useState, useEffect } from "react";
 import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
@@ -12,7 +11,6 @@ export function useMiniKitUser() {
     try {
       MiniKit.install();
       const installed = MiniKit.isInstalled();
-      console.log("MiniKit installed:", installed);
 
       if (installed) {
         const w = MiniKit.walletAddress;
@@ -32,12 +30,10 @@ export function useMiniKitUser() {
 
     try {
       const verifyRes = await MiniKit.commandsAsync.verify({
-        action: "verify-user",           // Acción exacta en tu portal 4.0
-        signal: wallet,                   // Wallet actual
+        action: "verify-user",
+        signal: wallet,
         verification_level: VerificationLevel.Device
       });
-
-      console.log("Verify response:", verifyRes);
 
       const proof = verifyRes?.finalPayload;
 
@@ -46,11 +42,10 @@ export function useMiniKitUser() {
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload: proof }) // ENVÍO CORRECTO 4.0
+        body: JSON.stringify({ payload: proof })
       });
 
       const backend = await res.json();
-      console.log("Backend response:", backend);
 
       if (backend.success) {
         setVerified(true);
@@ -67,4 +62,4 @@ export function useMiniKitUser() {
   };
 
   return { wallet, verified, verifying, error, verifyUser };
-        }
+}

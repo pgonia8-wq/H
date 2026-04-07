@@ -8,8 +8,10 @@ import { ThemeProvider } from "./lib/ThemeContext";
 import { UserProvider } from "./context/UserContext";
 import { LanguageProvider } from "./LanguageContext";
 
+const APP_ID = (import.meta as any).env?.VITE_APP_ID ?? "";
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <MiniKitProvider appId="app_6a98c88249208506dcd4e04b529111fc">
+  <MiniKitProvider appId={APP_ID}>
     <UserProvider>
       <ThemeProvider>
         <LanguageProvider>
