@@ -5,7 +5,9 @@ import type {
   ClaimAirdropRequest, ClaimResult, CreateTokenRequest,
   UploadResult, GraduateResult, Airdrop, PriceHistoryResponse,
   LockRequest, LockResult, BurnRequest, BurnResult,
-  BuyPoolRequest, BuyPoolResult, CreateLinkRequest, CreateLinkResult, DeleteLinkRequest, DeleteLinkResult, AirdropDataResponse, RedeemAirdropRequest, RedeemAirdropResult,
+  BuyPoolRequest, BuyPoolResult, CreateLinkRequest, CreateLinkResult,
+  DeleteLinkRequest, DeleteLinkResult, AirdropDataResponse,
+  RedeemAirdropRequest, RedeemAirdropResult,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE || "/api";
@@ -149,8 +151,33 @@ export const api = {
     });
   },
 
-  async createAirdrop(body: CreateAirdropRequest): Promise<CreateAirdropResult> {
-    return request<CreateAirdropResult>("/airdrops", {
+  async buyAirdropPool(body: BuyPoolRequest): Promise<BuyPoolResult> {
+    return request<BuyPoolResult>("/airdropLinks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async createAirdropLink(body: CreateLinkRequest): Promise<CreateLinkResult> {
+    return request<CreateLinkResult>("/airdropLinks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async deleteAirdropLink(body: DeleteLinkRequest): Promise<DeleteLinkResult> {
+    return request<DeleteLinkResult>("/airdropLinks", {
+      method: "DELETE",
+      body: JSON.stringify(body),
+    });
+  },
+
+  async getAirdropData(creatorId: string): Promise<AirdropDataResponse> {
+    return request<AirdropDataResponse>(`/airdropLinks?creator=${encodeURIComponent(creatorId)}`);
+  },
+
+  async redeemAirdrop(body: RedeemAirdropRequest): Promise<RedeemAirdropResult> {
+    return request<RedeemAirdropResult>("/airdropRedeem", {
       method: "POST",
       body: JSON.stringify(body),
     });
