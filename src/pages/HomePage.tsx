@@ -292,13 +292,14 @@ const HomePage: React.FC<HomePageProps> = ({
           username: profile?.username ?? username ?? "",
           profilePicture: profile?.avatar_url ?? "",
           verificationLevel: verified ? "orb" : "device",
+          walletAddress: wallet ?? "",
           balanceWld: 0,
           balanceUsdc: 0,
         },
       },
       TOKEN_APP_URL || "*"
     );
-  }, [userId, profile, username, verified]);
+  }, [userId, profile, username, verified, wallet]);
 
   useEffect(() => {
     const handler = async (e: MessageEvent) => {
