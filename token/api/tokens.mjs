@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { supabase, cors, mapTokenRow } from "./_supabase.mjs";
 import { requireOrb } from "./_orbGuard.mjs";
 import { recordPriceSnapshot } from "./_snapshot.mjs";
@@ -32,12 +33,13 @@ export default async function handler(req, res) {
 
         const { data: activityData } = await supabase
           .from("token_activity")
-          .select("type, total")
+          .select("type, total, user_id")
           .eq("token_id", id);
 
         const stats = { txns: 0, buys: 0, sells: 0, buyVolume: 0, sellVolume: 0, makers: new Set() };
         (activityData ?? []).forEach(a => {
           stats.txns++;
+          if (a.user_id) stats.makers.add(a.user_id);
           if (a.type === "buy") { stats.buys++; stats.buyVolume += Number(a.total ?? 0); }
           if (a.type === "sell") { stats.sells++; stats.sellVolume += Number(a.total ?? 0); }
         });
@@ -66,7 +68,8 @@ export default async function handler(req, res) {
       let query = supabase.from("tokens").select("*", { count: "exact" });
 
       if (search) {
-        query = query.or(`name.ilike.%${search}%,symbol.ilike.%${search}%`);
+        const safe = search.replace(/[%_,()]/g, "");
+        if (safe) query = query.or(`name.ilike.%${safe}%,symbol.ilike.%${safe}%`);
       }
       if (filter === "trending") query = query.eq("is_trending", true);
       if (filter === "graduated") query = query.eq("graduated", true);
@@ -130,7 +133,7 @@ export default async function handler(req, res) {
     if (website) socials.website = website;
 
     const newToken = {
-      id: `tkn_${Math.random().toString(36).slice(2, 10)}`,
+      id: `tkn_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
       name: name.trim(),
       symbol: symbol.trim().toUpperCase(),
       emoji: emoji ?? "🌟",
