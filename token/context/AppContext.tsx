@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { formatCompact } from "@/services/types";
+import { api } from "@/services/api";
 
 export type Screen = "discovery" | "token" | "profile" | "creator" | "settings";
 export type DisplayCurrency = "USD" | "WLD";
@@ -23,6 +25,7 @@ export interface AppState {
   isSettingsOpen: boolean;
   worldAppReady: boolean;
   displayCurrency: DisplayCurrency;
+  wldUsdRate: number;
 }
 
 interface AppContextValue extends AppState {
@@ -38,11 +41,15 @@ interface AppContextValue extends AppState {
   updateUser: (updates: Partial<WorldAppUser>) => void;
   formatPrice: (wldPrice: number) => string;
   formatPriceValue: (wldPrice: number) => number;
+  fmtWld: (wld: number, opts?: { compact?: boolean; decimals?: number }) => string;
+  fmtUsd: (usd: number, opts?: { compact?: boolean; decimals?: number }) => string;
+  toDisplayWld: (wld: number) => number;
+  toDisplayUsd: (usd: number) => number;
   currencySymbol: string;
-  wldUsdRate: number;
+  currencyPrefix: string;
+  currencySuffix: string;
 }
 
-const WLD_USD_RATE = 3.0;
 const PARENT_ORIGIN = import.meta.env?.VITE_PARENT_ORIGIN || "*";
 const AppContext = createContext<AppContextValue | null>(null);
 
@@ -59,7 +66,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isSettingsOpen: false,
     worldAppReady: false,
     displayCurrency: "USD",
+    wldUsdRate: 3.0,
   });
+
+  useEffect(() => {
+    const fetchRate = () => {
+      api.getWldRate()
+        .then((res) => {
+          if (res.rate > 0) {
+            setState((s) => ({ ...s, wldUsdRate: res.rate }));
+          }
+        })
+        .catch(() => {});
+    };
+    fetchRate();
+    const iv = setInterval(fetchRate, 30000);
+    return () => clearInterval(iv);
+  }, []);
 
   useEffect(() => {
     let contextReceived = false;
@@ -144,17 +167,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const formatPrice = useCallback((wldPrice: number): string => {
     if (state.displayCurrency === "WLD") {
-      return `${wldPrice.toFixed(7)} WLD`;
+      if (wldPrice < 0.001) return wldPrice.toExponential(2) + " WLD";
+      if (wldPrice < 1) return wldPrice.toFixed(7) + " WLD";
+      return wldPrice.toFixed(4) + " WLD";
     }
-    return `$${(wldPrice * WLD_USD_RATE).toFixed(7)}`;
-  }, [state.displayCurrency]);
+    const usd = wldPrice * state.wldUsdRate;
+    if (usd < 0.001) return "$" + usd.toExponential(2);
+    if (usd < 1) return "$" + usd.toFixed(7);
+    return "$" + usd.toFixed(4);
+  }, [state.displayCurrency, state.wldUsdRate]);
 
   const formatPriceValue = useCallback((wldPrice: number): number => {
     if (state.displayCurrency === "WLD") return wldPrice;
-    return wldPrice * WLD_USD_RATE;
-  }, [state.displayCurrency]);
+    return wldPrice * state.wldUsdRate;
+  }, [state.displayCurrency, state.wldUsdRate]);
+
+  const toDisplayWld = useCallback((wld: number): number => {
+    return state.displayCurrency === "WLD" ? wld : wld * state.wldUsdRate;
+  }, [state.displayCurrency, state.wldUsdRate]);
+
+  const toDisplayUsd = useCallback((usd: number): number => {
+    return state.displayCurrency === "USD" ? usd : usd / state.wldUsdRate;
+  }, [state.displayCurrency, state.wldUsdRate]);
+
+  const fmtWld = useCallback((wld: number, opts?: { compact?: boolean; decimals?: number }): string => {
+    const val = state.displayCurrency === "WLD" ? wld : wld * state.wldUsdRate;
+    const prefix = state.displayCurrency === "USD" ? "$" : "";
+    const suffix = state.displayCurrency === "WLD" ? " WLD" : "";
+    if (opts?.compact) return `${prefix}${formatCompact(Math.abs(val))}${suffix}`;
+    return `${prefix}${val.toFixed(opts?.decimals ?? 4)}${suffix}`;
+  }, [state.displayCurrency, state.wldUsdRate]);
+
+  const fmtUsd = useCallback((usd: number, opts?: { compact?: boolean; decimals?: number }): string => {
+    const val = state.displayCurrency === "USD" ? usd : usd / state.wldUsdRate;
+    const prefix = state.displayCurrency === "USD" ? "$" : "";
+    const suffix = state.displayCurrency === "WLD" ? " WLD" : "";
+    if (opts?.compact) return `${prefix}${formatCompact(Math.abs(val))}${suffix}`;
+    return `${prefix}${val.toFixed(opts?.decimals ?? 4)}${suffix}`;
+  }, [state.displayCurrency, state.wldUsdRate]);
 
   const currencySymbol = state.displayCurrency === "WLD" ? "WLD" : "$";
+  const currencyPrefix = state.displayCurrency === "USD" ? "$" : "";
+  const currencySuffix = state.displayCurrency === "WLD" ? " WLD" : "";
 
   return (
     <AppContext.Provider
@@ -172,8 +226,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updateUser,
         formatPrice,
         formatPriceValue,
+        fmtWld,
+        fmtUsd,
+        toDisplayWld,
+        toDisplayUsd,
         currencySymbol,
-        wldUsdRate: WLD_USD_RATE,
+        currencyPrefix,
+        currencySuffix,
       }}
     >
       {children}

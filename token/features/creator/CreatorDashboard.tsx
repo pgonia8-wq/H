@@ -66,6 +66,7 @@ function ToolCard({ icon: Icon, label, desc, color, onClick }: { icon: typeof Lo
 function LockPanel({ token, userId, onDone }: { token: Token; userId: string; onDone: () => void }) {
   const [amount, setAmount] = useState("");
   const [days, setDays] = useState("30");
+  const [showCustomDays, setShowCustomDays] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -139,16 +140,22 @@ function LockPanel({ token, userId, onDone }: { token: Token; userId: string; on
 
       <div>
         <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Lock Duration</label>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-5 gap-1.5">
           {["7", "30", "90", "180"].map(d => (
-            <button key={d} onClick={() => setDays(d)}
-              className={`py-2 rounded-lg text-[10px] font-bold transition-all ${days === d ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
+            <button key={d} onClick={() => { setDays(d); setShowCustomDays(false); }}
+              className={`py-2 rounded-lg text-[10px] font-bold transition-all ${!showCustomDays && days === d ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
               {d}d
             </button>
           ))}
+          <button onClick={() => setShowCustomDays(true)}
+            className={`py-2 rounded-lg text-[10px] font-bold transition-all ${showCustomDays ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
+            ✏️
+          </button>
         </div>
-        <input type="number" value={days} onChange={(e) => setDays(e.target.value)} min={1}
-          className="w-full mt-1.5 p-2 rounded-lg bg-secondary/30 border border-border/20 text-xs text-foreground font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Custom days" />
+        {showCustomDays && (
+          <input type="number" value={days} onChange={(e) => setDays(e.target.value)} min={1}
+            className="w-full mt-1.5 p-2 rounded-lg bg-secondary/30 border border-border/20 text-xs text-foreground font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" placeholder="Enter custom days" />
+        )}
       </div>
 
       {error && <div className="text-[11px] text-red-400 bg-red-500/8 border border-red-500/15 p-2.5 rounded-lg">{error}</div>}

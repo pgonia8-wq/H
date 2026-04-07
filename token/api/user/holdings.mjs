@@ -1,9 +1,5 @@
-import { supabase, cors, mapHoldingRow } from "../_supabase.mjs";
+import { supabase, cors } from "../_supabase.mjs";
 
-/**
- * GET /api/user/holdings?user_id=XXX
- * Devuelve los tokens que tiene el usuario, con PnL calculado.
- */
 export default async function handler(req, res) {
   cors(res);
   if (req.method === "OPTIONS") return res.status(200).end();
@@ -28,7 +24,7 @@ export default async function handler(req, res) {
 
     const holdings = (data ?? []).map((row) => {
       const token = Array.isArray(row.tokens) ? row.tokens[0] : row.tokens;
-      const currentPrice = Number(token?.price_usdc ?? 0);
+      const currentPrice = Number(token?.price_wld ?? 0);
       const amount = Number(row.amount ?? 0);
       const avgBuyPrice = Number(row.avg_buy_price ?? 0);
       const value = amount * currentPrice;
@@ -42,7 +38,7 @@ export default async function handler(req, res) {
         tokenId: token?.id ?? "",
         tokenName: token?.name ?? "",
         tokenSymbol: token?.symbol ?? "",
-        tokenEmoji: token?.emoji ?? "🌟",
+        tokenEmoji: token?.emoji ?? "\u{1F31F}",
         amount,
         avgBuyPrice,
         currentPrice,

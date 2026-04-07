@@ -169,6 +169,10 @@ export const api = {
   async getCreatorTokens(creatorId: string): Promise<TokenListResponse> {
     return request<TokenListResponse>(`/tokens?creator=${encodeURIComponent(creatorId)}`);
   },
+
+  async getWldRate(): Promise<{ rate: number; ts: number }> {
+    return request<{ rate: number; ts: number }>("/wldRate");
+  },
 };
 
 export type { TokenListResponse, BuyRequest, SellRequest };

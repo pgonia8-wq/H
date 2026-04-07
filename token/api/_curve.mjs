@@ -1,3 +1,5 @@
+import { fetchWldUsdRate } from "./wldRate.mjs";
+
 const TOTAL_SUPPLY  = 100_000_000;
 const a             = 0.0000005;
 const b             = 1.72e-20;
@@ -13,6 +15,14 @@ const CREATOR_LOCK_HOURS  = 24;
 const MAX_CREATOR_HOLD    = 0.10;
 const WLD_USD             = 3.0;
 const MAX_RETRIES         = 3;
+
+export async function getWldUsdRate() {
+  try {
+    return await fetchWldUsdRate();
+  } catch {
+    return WLD_USD;
+  }
+}
 
 export function spotPrice(s) {
   return a + b * s * s;
