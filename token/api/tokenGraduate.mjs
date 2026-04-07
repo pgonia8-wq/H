@@ -24,7 +24,8 @@ export default async function handler(req, res) {
     const totalWld = Number(token.total_wld_in_curve ?? 0);
     const holders  = Number(token.holders ?? 0);
 
-    if (!checkGraduation(totalWld, holders)) {
+    const supply = Number(token.circulating_supply ?? 0);
+    if (!checkGraduation(totalWld, holders, supply)) {
       return res.status(400).json({
         error: "Graduation conditions not met",
         wldProgress: `${totalWld.toFixed(2)}/${GRADUATION_WLD}`,

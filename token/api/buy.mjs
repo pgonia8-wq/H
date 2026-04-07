@@ -15,8 +15,8 @@ export default async function handler(req, res) {
   if (!tokenId || !amountWld || !userId) {
     return res.status(400).json({ error: "Missing tokenId, amountWld, userId" });
   }
-  if (amountWld <= 0 || amountWld > 500) {
-    return res.status(400).json({ error: "amountWld must be between 0 and 500" });
+  if (amountWld <= 0 || amountWld > 120) {
+    return res.status(400).json({ error: "amountWld must be between 0 and 120 WLD" });
   }
 
   const orbOk = await requireOrb(userId, res);
@@ -132,7 +132,7 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
       });
 
-      if (checkGraduation(totalWldInCurve, Number(token.holders ?? 0) + (prevAmount === 0 ? 1 : 0))) {
+      if (checkGraduation(totalWldInCurve, Number(token.holders ?? 0) + (prevAmount === 0 ? 1 : 0), newSupply)) {
         await triggerGraduation(tokenId, token.symbol, totalWldInCurve, newPrice);
       }
 

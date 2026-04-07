@@ -60,10 +60,11 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Cannot sell more than circulating supply" });
       }
 
+      const treasuryBal = Number(token.treasury_balance ?? 0);
       const {
         wldReceived, fee, slippageAmt, totalFees,
         curveReturn, newSupply, newPrice,
-      } = solveSell(tokensToSell, supply);
+      } = solveSell(tokensToSell, supply, treasuryBal);
 
       const totalWldInCurve = Number(token.total_wld_in_curve ?? 0);
       if (curveReturn > totalWldInCurve) {

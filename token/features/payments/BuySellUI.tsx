@@ -351,7 +351,7 @@ export default function BuySellUI({ token, onSuccess, defaultTab, onClose }: Pro
                 <span className="text-muted-foreground font-mono">~{fmtWld(numAmount * token.priceWld, { decimals: 6 })}</span>
               </div>
               <div className="flex justify-between items-center text-[9px]">
-                <span className="text-yellow-400 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> 4% sell fee applied</span>
+                <span className="text-yellow-400 flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5" /> 3% fee + slippage</span>
               </div>
             </>
           )}

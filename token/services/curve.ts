@@ -1,37 +1,58 @@
-const A = 0.000001;
-const B = 5.7e-21;
-const BUY_FEE = 0.025;
-const SELL_FEE = 0.04;
+const INITIAL_PRICE_WLD = 0.00000055;
+const CURVE_K = 2.35e-20;
+const BUY_FEE = 0.02;
+const SELL_FEE = 0.03;
+const BASE_SELL_SLIPPAGE = 0.03;
+const MAX_SELL_SLIPPAGE = 0.10;
+const TOTAL_SUPPLY = 100_000_000;
+const MIN_BUY_TOKENS = 1000;
 
 function spotPrice(s: number): number {
-  return A + B * s * s;
+  return INITIAL_PRICE_WLD + CURVE_K * s * s;
 }
 
 function V(s: number): number {
-  return A * s + (B * s * s * s) / 3;
+  return INITIAL_PRICE_WLD * s + (CURVE_K / 3) * s * s * s;
 }
 
 export function estimateBuy(amountWld: number, currentSupply: number): number {
   if (amountWld <= 0 || currentSupply < 0) return 0;
-  const netWld = amountWld / (1 + BUY_FEE);
-  const targetV = V(currentSupply) + netWld;
-  let s1 = currentSupply + netWld / spotPrice(currentSupply);
-  for (let i = 0; i < 50; i++) {
-    const fVal = V(s1) - targetV;
-    const dVal = spotPrice(s1);
-    if (dVal === 0) break;
-    const step = fVal / dVal;
-    s1 -= step;
-    if (s1 < currentSupply) s1 = currentSupply;
-    if (Math.abs(step) < 0.5) break;
+
+  const netWld = amountWld * (1 - BUY_FEE);
+  let s0 = currentSupply;
+  let s1 = s0 + (netWld / spotPrice(s0)) * 1.02;
+
+  for (let i = 0; i < 12; i++) {
+    const f = V(s1) - (V(s0) + netWld);
+    const df = spotPrice(s1);
+    if (Math.abs(df) < 1e-12) break;
+    s1 -= f / df;
   }
-  s1 = Math.min(s1, 100_000_000);
-  s1 = Math.max(s1, currentSupply);
-  return Math.max(0, Math.floor(s1 - currentSupply));
+
+  if (!isFinite(s1) || s1 <= s0) {
+    s1 = s0 + netWld / spotPrice(s0);
+  }
+
+  if (s1 > TOTAL_SUPPLY) s1 = TOTAL_SUPPLY;
+
+  return Math.max(0, Math.floor(s1 - s0));
 }
 
 export function estimateSell(tokensToSell: number, currentSupply: number): number {
   if (tokensToSell <= 0 || tokensToSell > currentSupply) return 0;
-  const curveReturn = V(currentSupply) - V(currentSupply - tokensToSell);
-  return curveReturn * (1 - SELL_FEE);
+
+  const s0 = currentSupply;
+  const s1 = s0 - tokensToSell;
+
+  let grossWld = V(s0) - V(s1);
+
+  const sellRatio = tokensToSell / currentSupply;
+  const dynamicSlippage = Math.min(
+    BASE_SELL_SLIPPAGE + Math.pow(sellRatio, 0.7) * 0.12,
+    MAX_SELL_SLIPPAGE
+  );
+
+  grossWld *= (1 - dynamicSlippage);
+
+  return grossWld * (1 - SELL_FEE);
 }

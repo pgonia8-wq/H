@@ -135,7 +135,7 @@ export default async function handler(req, res) {
         });
 
         const currentHolders = Number(token.holders ?? 0) + (prevAmount === 0 ? 1 : 0);
-        if (checkGraduation(totalWldInCurve, currentHolders)) {
+        if (checkGraduation(totalWldInCurve, currentHolders, newSupply)) {
           await triggerGraduation(tokenId, token.symbol, totalWldInCurve, newPrice);
         }
 

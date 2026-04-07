@@ -1,21 +1,30 @@
 import { fetchWldUsdRate } from "./wldRate.mjs";
 
-const TOTAL_SUPPLY  = 100_000_000;
-const A             = 0.000001;
-const B             = 5.7e-21;
+const TOTAL_SUPPLY            = 100_000_000;
+const INITIAL_PRICE_WLD       = 0.00000055;
+const CURVE_K                 = 2.35e-20;
 
-const BUY_FEE             = 0.025;
-const SELL_FEE            = 0.04;
-const MAX_SELL_PERCENT    = 0.10;
-const GRADUATION_WLD      = 2000;
-const GRADUATION_HOLDERS  = 300;
-const GRADUATION_BUYERS   = 150;
-const POOL_PERCENT        = 0.70;
-const TREASURY_PERCENT    = 0.30;
-const CREATOR_LOCK_HOURS  = 24;
-const MAX_CREATOR_HOLD    = 0.10;
-const WLD_USD             = 1.0;
-const MAX_RETRIES         = 3;
+const BUY_FEE                 = 0.02;
+const SELL_FEE                = 0.03;
+const BASE_SELL_SLIPPAGE      = 0.03;
+const MAX_SELL_SLIPPAGE       = 0.10;
+
+const GRADUATION_WLD          = 2000;
+const GRADUATION_HOLDERS      = 300;
+const GRADUATION_MIN_SUPPLY   = 25_000_000;
+
+const POOL_PERCENT            = 0.70;
+const TREASURY_PERCENT        = 0.30;
+
+const CREATOR_LOCK_HOURS      = 24;
+const MAX_CREATOR_HOLD        = 0.10;
+
+const MAX_BUY_WLD_PER_TX      = 120;
+const MAX_SELL_PERCENT_PER_TX = 0.025;
+const MIN_BUY_TOKENS          = 1000;
+
+const WLD_USD                 = 1.0;
+const MAX_RETRIES             = 3;
 
 export async function getWldUsdRate() {
   try {
@@ -26,66 +35,95 @@ export async function getWldUsdRate() {
 }
 
 export function spotPrice(s) {
-  return A + B * s * s;
+  return INITIAL_PRICE_WLD + CURVE_K * s * s;
 }
 
 export function V(s) {
-  return A * s + (B * s * s * s) / 3;
+  return INITIAL_PRICE_WLD * s + (CURVE_K / 3) * s * s * s;
 }
 
 export function solveBuy(amountWld, currentSupply) {
-  const netWld = amountWld / (1 + BUY_FEE);
-  const fee    = amountWld - netWld;
-
-  const targetV = V(currentSupply) + netWld;
-
-  let s1 = currentSupply + netWld / spotPrice(currentSupply);
-
-  for (let i = 0; i < 50; i++) {
-    const fVal = V(s1) - targetV;
-    const dVal = spotPrice(s1);
-    if (dVal === 0) break;
-    const step = fVal / dVal;
-    s1 -= step;
-    if (s1 < currentSupply) s1 = currentSupply;
-    if (Math.abs(step) < 0.5) break;
+  if (amountWld <= 0 || amountWld > MAX_BUY_WLD_PER_TX) {
+    throw new Error(`Buy between 0.0001 and ${MAX_BUY_WLD_PER_TX} WLD`);
   }
 
-  s1 = Math.min(s1, TOTAL_SUPPLY);
-  s1 = Math.max(s1, currentSupply);
+  const fee    = amountWld * BUY_FEE;
+  const netWld = amountWld - fee;
 
-  const tokensOut = Math.floor(s1 - currentSupply);
+  let s0 = currentSupply;
+  let s1 = s0 + (netWld / spotPrice(s0)) * 1.02;
+
+  for (let i = 0; i < 12; i++) {
+    const f  = V(s1) - (V(s0) + netWld);
+    const df = spotPrice(s1);
+    if (Math.abs(df) < 1e-12) break;
+    s1 -= f / df;
+  }
+
+  if (!isFinite(s1) || s1 <= s0) {
+    s1 = s0 + netWld / spotPrice(s0);
+  }
+
+  if (s1 > TOTAL_SUPPLY) s1 = TOTAL_SUPPLY;
+
+  const tokensOut = Math.floor(s1 - s0);
+
+  if (tokensOut < MIN_BUY_TOKENS) {
+    throw new Error(`Minimum buy: ${MIN_BUY_TOKENS} tokens`);
+  }
+
+  const newSupply  = s0 + tokensOut;
+  const actualCost = V(newSupply) - V(s0);
 
   return {
     tokensOut,
     fee,
-    netWld,
-    newSupply: currentSupply + tokensOut,
-    newPrice:  spotPrice(currentSupply + tokensOut),
+    netWld: actualCost,
+    newSupply,
+    newPrice: spotPrice(newSupply),
   };
 }
 
-export function solveSell(tokensToSell, currentSupply) {
+export function solveSell(tokensToSell, currentSupply, treasuryBalance) {
+  if (tokensToSell <= 0) throw new Error("Invalid sell amount");
+  if (currentSupply <= 0) throw new Error("Invalid supply");
+
+  if (tokensToSell > currentSupply * MAX_SELL_PERCENT_PER_TX) {
+    throw new Error(`Max sell: ${(MAX_SELL_PERCENT_PER_TX * 100).toFixed(1)}% of supply per tx`);
+  }
+
   const s0 = currentSupply;
   const s1 = s0 - tokensToSell;
   if (s1 < 0) throw new Error("Cannot sell more than circulating supply");
 
-  if (tokensToSell > currentSupply * MAX_SELL_PERCENT) {
-    throw new Error("Sell exceeds max " + (MAX_SELL_PERCENT * 100) + "% of supply per transaction");
-  }
+  let grossWld = V(s0) - V(s1);
+  const curveReturn = grossWld;
 
-  const curveReturn   = V(s0) - V(s1);
-  const fee           = curveReturn * SELL_FEE;
-  const wldReceived   = curveReturn - fee;
+  const sellRatio = tokensToSell / currentSupply;
+  const dynamicSlippage = Math.min(
+    BASE_SELL_SLIPPAGE + Math.pow(sellRatio, 0.7) * 0.12,
+    MAX_SELL_SLIPPAGE
+  );
+
+  grossWld *= (1 - dynamicSlippage);
+  const slippageAmt = curveReturn - grossWld;
+
+  const fee     = grossWld * SELL_FEE;
+  const payout  = grossWld - fee;
+
+  const safePayout = Math.min(payout, treasuryBalance ?? Infinity);
+
+  const safeFee = safePayout / (1 - SELL_FEE) * SELL_FEE;
 
   return {
-    wldReceived,
-    fee,
-    slippageAmt: 0,
-    totalFees: fee,
+    wldReceived: safePayout,
+    fee: safeFee,
+    slippageAmt,
+    totalFees: safeFee + slippageAmt,
     curveReturn,
-    newSupply:  s1,
-    newPrice:   spotPrice(s1),
+    newSupply: s1,
+    newPrice: spotPrice(s1),
+    wasPartial: safePayout < payout,
   };
 }
 
@@ -93,8 +131,12 @@ export function curvePercent(totalWldInCurve) {
   return Math.min(100, (totalWldInCurve / GRADUATION_WLD) * 100);
 }
 
-export function checkGraduation(totalWldInCurve, holders) {
-  return totalWldInCurve >= GRADUATION_WLD && holders >= GRADUATION_HOLDERS;
+export function checkGraduation(totalWldInCurve, holders, currentSupply) {
+  return (
+    (currentSupply ?? 0) >= GRADUATION_MIN_SUPPLY &&
+    totalWldInCurve >= GRADUATION_WLD &&
+    holders >= GRADUATION_HOLDERS
+  );
 }
 
 export function graduationSplit(totalWld) {
@@ -105,10 +147,12 @@ export function graduationSplit(totalWld) {
 }
 
 export {
-  TOTAL_SUPPLY, BUY_FEE, SELL_FEE, MAX_SELL_PERCENT,
-  GRADUATION_WLD, GRADUATION_HOLDERS, GRADUATION_BUYERS,
+  TOTAL_SUPPLY, BUY_FEE, SELL_FEE,
+  BASE_SELL_SLIPPAGE, MAX_SELL_SLIPPAGE,
+  MAX_SELL_PERCENT_PER_TX, MAX_BUY_WLD_PER_TX, MIN_BUY_TOKENS,
+  GRADUATION_WLD, GRADUATION_HOLDERS, GRADUATION_MIN_SUPPLY,
   POOL_PERCENT, TREASURY_PERCENT,
   CREATOR_LOCK_HOURS, MAX_CREATOR_HOLD,
   WLD_USD, MAX_RETRIES,
-  A as INITIAL_PRICE, B as B_COEFFICIENT,
+  INITIAL_PRICE_WLD, CURVE_K,
 };
