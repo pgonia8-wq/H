@@ -37,11 +37,11 @@ export default async function handler(req, res) {
   try {
     const { data: existing } = await supabase
       .from("profiles")
-      .select("id, verified")
+      .select("id, verified, verification_level, orb_verified_at")
       .eq("id", userId)
       .maybeSingle();
 
-    if (existing?.verified === true) {
+    if (existing?.verification_level === "orb" && existing?.orb_verified_at != null) {
       return res.status(200).json({
         success: true,
         nullifier_hash: nullifierHash,

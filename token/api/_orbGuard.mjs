@@ -29,8 +29,7 @@ export async function requireOrb(userId, res) {
     }
 
     const isOrbVerified =
-      (profile.verification_level === "orb" && profile.orb_verified_at != null)
-      || profile.verified === true;
+      profile.verification_level === "orb" && profile.orb_verified_at != null;
 
     if (!isOrbVerified) {
       res.status(403).json({
