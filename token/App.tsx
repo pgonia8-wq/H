@@ -1,5 +1,6 @@
 import { AppProvider, useApp } from "@/context/AppContext";
 import { AnimatePresence, motion } from "framer-motion";
+import { useState } from "react";
 import BottomTabBar from "@/components/BottomTabBar";
 import DiscoveryPage from "@/features/tokens/DiscoveryPage";
 import TokenPage from "@/features/tokens/TokenPage";
@@ -26,11 +27,86 @@ function SplashScreen() {
   );
 }
 
+function OrbGateScreen() {
+  const { requestOrbVerification } = useApp();
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    setError(null);
+    try {
+      const success = await requestOrbVerification();
+      if (!success) {
+        setError("Orb verification failed. Please try again.");
+      }
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+        className="flex flex-col items-center gap-6 px-8 max-w-sm text-center"
+      >
+        <div className="relative w-28 h-28 flex items-center justify-center">
+          <motion.div
+            animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute inset-0 bg-primary/30 rounded-full blur-xl"
+          />
+          <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-primary to-purple-800 shadow-[0_0_40px_rgba(139,92,246,0.5)] border-2 border-primary/40" />
+        </div>
+
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Orb Verification Required</h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Token Market is exclusive to Orb-verified humans. Verify with your World ID to access trading.
+          </p>
+        </div>
+
+        {error && (
+          <p className="text-xs text-red-400 bg-red-400/10 px-4 py-2 rounded-lg">{error}</p>
+        )}
+
+        <button
+          onClick={handleVerify}
+          disabled={verifying}
+          className="w-full py-3.5 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-semibold text-sm transition-all shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(139,92,246,0.5)] active:scale-[0.98]"
+        >
+          {verifying ? (
+            <span className="flex items-center justify-center gap-2">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+              />
+              Verifying...
+            </span>
+          ) : (
+            "Verify with Orb"
+          )}
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
 function MainApp() {
-  const { worldAppReady, screen, isCreatorModalOpen } = useApp();
+  const { worldAppReady, screen, isCreatorModalOpen, user } = useApp();
 
   if (!worldAppReady) {
     return <SplashScreen />;
+  }
+
+  if (user?.verificationLevel !== "orb") {
+    return <OrbGateScreen />;
   }
 
   const renderScreen = () => {
