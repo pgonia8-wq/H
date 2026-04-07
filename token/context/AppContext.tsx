@@ -142,6 +142,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { type, payload } = e.data;
 
       if (type === "WORLD_APP_CONTEXT") {
+          console.log("[TOKEN] WORLD_APP_CONTEXT received:", JSON.stringify(payload));
         contextReceived = true;
         const uid = payload?.userId ?? null;
         if (uid) setApiUserId(uid);
@@ -212,7 +213,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         resolve(false);
       }, 60000);
       window.addEventListener("message", handler);
-      window.parent?.postMessage({ type: "REQUEST_ORB_VERIFY" }, PARENT_ORIGIN);
+      console.log("[TOKEN] Sending REQUEST_ORB_VERIFY to parent, origin:", PARENT_ORIGIN);
+        window.parent?.postMessage({ type: "REQUEST_ORB_VERIFY" }, PARENT_ORIGIN);
     });
   }, []);
 
