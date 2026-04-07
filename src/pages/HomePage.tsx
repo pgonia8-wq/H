@@ -52,6 +52,7 @@ interface HomePageProps {
   userId: string | null;
   wallet: string | null;
   verified: boolean;
+  verificationLevel?: string;
   error: string | null;
   verifying: boolean;
   setUserId: (id: string | null) => void;
@@ -90,6 +91,7 @@ const HomePage: React.FC<HomePageProps> = ({
   userId,
   wallet,
   verified,
+  verificationLevel = "device",
   error,
   verifying,
   setUserId,
@@ -291,7 +293,7 @@ const HomePage: React.FC<HomePageProps> = ({
           userId: userId ?? "",
           username: profile?.username ?? username ?? "",
           profilePicture: profile?.avatar_url ?? "",
-          verificationLevel: verified ? "orb" : "device",
+          verificationLevel: verificationLevel,
           walletAddress: wallet ?? "",
           balanceWld: 0,
           balanceUsdc: 0,
@@ -299,7 +301,7 @@ const HomePage: React.FC<HomePageProps> = ({
       },
       TOKEN_APP_URL || "*"
     );
-  }, [userId, profile, username, verified, wallet]);
+  }, [userId, profile, username, verified, verificationLevel, wallet]);
 
   useEffect(() => {
     const handler = async (e: MessageEvent) => {

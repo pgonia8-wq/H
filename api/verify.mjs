@@ -119,6 +119,7 @@ export default async function handler(req, res) {
           id: nullifierHash,
           tier: "free",
           verified: true,
+          verification_level: payload.verification_level ?? "device",
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
@@ -133,5 +134,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: "Error al guardar perfil" });
   }
 
-  return res.status(200).json({ success: true, nullifier_hash: nullifierHash });
+  return res.status(200).json({ success: true, nullifier_hash: nullifierHash, verification_level: payload.verification_level ?? "device" });
 }
