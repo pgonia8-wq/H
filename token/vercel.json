@@ -40,16 +40,16 @@
       "destination": "/api/airdropGet?id=:id"
     },
     {
+      "source": "/api/user/wallet",
+      "destination": "/api/userWallet"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
     {
       "source": "/(.*)",
       "destination": "/index.html"
-    },
-    {
-      "source": "/api/user/wallet",
-      "destination": "/api/userWallet"
     }
   ],
   "headers": [
