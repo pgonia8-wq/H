@@ -1,10 +1,10 @@
 import { supabase, cors } from "./_supabase.mjs";
-  import { requireOrb } from "./_orbGuard.mjs";
+import { requireOrb } from "./_orbGuard.mjs";
 
-  const AIRDROP_PRICE_WLD = 25;
-  const AIRDROP_POOL = 2500000;
-  const MAX_LINKS = 5;
-  const APP_URL = "https://h-token.vercel.app";
+const AIRDROP_PRICE_WLD = 25;
+const AIRDROP_POOL = 2500000;
+const MAX_LINKS = 5;
+const APP_URL = "https://h-token.vercel.app";
 
   function generateCode() {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -13,7 +13,7 @@ import { supabase, cors } from "./_supabase.mjs";
     return code;
   }
 
-  export default async function handler(req, res) {
+export default async function handler(req, res) {
     cors(res);
     if (req.method === "OPTIONS") return res.status(200).end();
 
