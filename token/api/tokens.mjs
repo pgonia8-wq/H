@@ -72,6 +72,9 @@ export default async function handler(req, res) {
       if (filter === "graduated") query = query.eq("graduated", true);
       if (filter === "new") query = query.order("created_at", { ascending: false });
 
+        const { creator } = req.query;
+        if (creator) query = query.eq("creator_id", creator);
+
       if (sort === "volume") query = query.order("volume_24h", { ascending: false });
       else if (sort === "marketcap") query = query.order("market_cap", { ascending: false });
       else if (sort === "price") query = query.order("price_wld", { ascending: false });
