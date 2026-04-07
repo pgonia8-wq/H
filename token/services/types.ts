@@ -274,21 +274,91 @@ export interface BurnResult {
   message: string;
 }
 
-export interface CreateAirdropRequest {
+export interface AirdropPool {
+  id: string;
   tokenId: string;
-  title: string;
-  description: string;
-  totalAmount: number;
-  dailyAmount: number;
-  maxParticipants: number;
-  cooldownHours: number;
-  durationDays: number;
+  tokenSymbol: string;
+  totalPool: number;
+  allocated: number;
+  available: number;
+  linkCount: number;
+  maxLinks: number;
+  createdAt: string;
+}
+
+export interface AirdropLink {
+  id: string;
+  poolId: string;
+  tokenId: string;
+  tokenSymbol: string;
+  code: string;
+  amount: number;
+  claimedAmount: number;
+  remaining: number;
+  mode: "permanent" | "one_time";
+  isActive: boolean;
+  claims: number;
+  createdAt: string;
+  link: string;
+}
+
+export interface BuyPoolRequest {
+  action: "buy_pool";
+  tokenId: string;
+  creatorId: string;
+  transactionId: string;
+}
+
+export interface BuyPoolResult {
+  success: boolean;
+  poolId: string;
+  totalPool: number;
+  message: string;
+}
+
+export interface CreateLinkRequest {
+  action: "create_link";
+  poolId: string;
+  amount: number;
+  mode: "permanent" | "one_time";
   creatorId: string;
 }
 
-export interface CreateAirdropResult {
+export interface CreateLinkResult {
   success: boolean;
-  airdropId: string;
+  linkId: string;
+  code: string;
+  link: string;
+  amount: number;
+  message: string;
+}
+
+export interface DeleteLinkRequest {
+  linkId: string;
+  creatorId: string;
+}
+
+export interface DeleteLinkResult {
+  success: boolean;
+  returned: number;
+  message: string;
+}
+
+export interface AirdropDataResponse {
+  pools: AirdropPool[];
+  links: AirdropLink[];
+  total: number;
+}
+
+export interface RedeemAirdropRequest {
+  code: string;
+  userId: string;
+}
+
+export interface RedeemAirdropResult {
+  success: boolean;
+  amount: number;
+  tokenSymbol: string;
   message: string;
 }
 
