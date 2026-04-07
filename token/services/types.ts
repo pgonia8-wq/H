@@ -245,6 +245,53 @@ export interface PriceHistoryResponse {
   total: number;
 }
 
+export interface LockRequest {
+  tokenId: string;
+  amount: number;
+  durationDays: number;
+  userId: string;
+}
+
+export interface LockResult {
+  success: boolean;
+  locked: number;
+  totalLocked: number;
+  unlockDate: string;
+  message: string;
+}
+
+export interface BurnRequest {
+  tokenId: string;
+  amount: number;
+  userId: string;
+}
+
+export interface BurnResult {
+  success: boolean;
+  burned: number;
+  totalBurned: number;
+  newSupply: number;
+  message: string;
+}
+
+export interface CreateAirdropRequest {
+  tokenId: string;
+  title: string;
+  description: string;
+  totalAmount: number;
+  dailyAmount: number;
+  maxParticipants: number;
+  cooldownHours: number;
+  durationDays: number;
+  creatorId: string;
+}
+
+export interface CreateAirdropResult {
+  success: boolean;
+  airdropId: string;
+  message: string;
+}
+
 export function formatNum(n: number, decimals = 2): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(decimals) + "M";
   if (n >= 1_000) return (n / 1_000).toFixed(decimals) + "K";
