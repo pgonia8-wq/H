@@ -2,8 +2,8 @@ import { supabase, cors } from "../../_supabase.mjs";
 import { requireOrb } from "../../_orbGuard.mjs";
 import { recordPriceSnapshot } from "../../_snapshot.mjs";
 import {
-  solveSell, curvePercent, spotPrice,
-  CREATOR_LOCK_HOURS, WLD_USD, MAX_RETRIES,
+  solveSell, curvePercent, spotPrice, getWldUsdRate,
+  CREATOR_LOCK_HOURS, MAX_RETRIES,
 } from "../../_curve.mjs";
 
 export default async function handler(req, res) {
@@ -20,6 +20,8 @@ export default async function handler(req, res) {
 
   const orbOk = await requireOrb(userId, res);
   if (!orbOk) return;
+
+  const wldUsd = await getWldUsdRate();
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -67,7 +69,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "Insufficient liquidity in curve" });
       }
 
-      const newPriceUsd = newPrice * WLD_USD;
+      const newPriceUsd = newPrice * wldUsd;
       const newTotalWld = totalWldInCurve - curveReturn;
       const newTreasury = Number(token.treasury_balance ?? 0) + totalFees;
       const cp = curvePercent(newTotalWld);
@@ -82,7 +84,7 @@ export default async function handler(req, res) {
           treasury_balance: newTreasury,
           curve_percent: cp,
           market_cap: newSupply * newPriceUsd,
-          volume_24h: Number(token.volume_24h ?? 0) + wldReceived * WLD_USD,
+          volume_24h: Number(token.volume_24h ?? 0) + wldReceived * wldUsd,
         })
         .eq("id", tokenId)
         .eq("circulating_supply", supply)
@@ -135,7 +137,7 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
       });
 
-      await recordPriceSnapshot(tokenId, newPrice, newPriceUsd, newSupply, wldReceived * WLD_USD, "sell");
+      await recordPriceSnapshot(tokenId, newPrice, newPriceUsd, newSupply, wldReceived * wldUsd, "sell");
 
       return res.status(200).json({
         success: true,

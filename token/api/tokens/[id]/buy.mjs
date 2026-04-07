@@ -2,8 +2,8 @@ import { supabase, cors } from "../../_supabase.mjs";
 import { requireOrb } from "../../_orbGuard.mjs";
 import { recordPriceSnapshot } from "../../_snapshot.mjs";
 import {
-  solveBuy, curvePercent, checkGraduation, spotPrice,
-  TOTAL_SUPPLY, MAX_CREATOR_HOLD, WLD_USD,
+  solveBuy, curvePercent, checkGraduation, spotPrice, getWldUsdRate,
+  TOTAL_SUPPLY, MAX_CREATOR_HOLD,
   GRADUATION_WLD, GRADUATION_HOLDERS, MAX_RETRIES,
 } from "../../_curve.mjs";
 
@@ -23,6 +23,8 @@ export default async function handler(req, res) {
 
   const orbOk = await requireOrb(userId, res);
   if (!orbOk) return;
+
+  const wldUsd = await getWldUsdRate();
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -52,7 +54,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const newPriceUsd = newPrice * WLD_USD;
+      const newPriceUsd = newPrice * wldUsd;
       const totalWldInCurve = Number(token.total_wld_in_curve ?? 0) + netWld;
       const treasuryBalance = Number(token.treasury_balance ?? 0) + fee;
       const cp = curvePercent(totalWldInCurve);
@@ -67,7 +69,7 @@ export default async function handler(req, res) {
           treasury_balance: treasuryBalance,
           curve_percent: cp,
           market_cap: newSupply * newPriceUsd,
-          volume_24h: Number(token.volume_24h ?? 0) + amountWld * WLD_USD,
+          volume_24h: Number(token.volume_24h ?? 0) + amountWld * wldUsd,
         })
         .eq("id", tokenId)
         .eq("circulating_supply", supply)
@@ -133,7 +135,7 @@ export default async function handler(req, res) {
         timestamp: new Date().toISOString(),
       });
 
-      await recordPriceSnapshot(tokenId, newPrice, newPriceUsd, newSupply, amountWld * WLD_USD, "buy");
+      await recordPriceSnapshot(tokenId, newPrice, newPriceUsd, newSupply, amountWld * wldUsd, "buy");
 
       if (checkGraduation(totalWldInCurve, Number(token.holders ?? 0) + (prevAmount === 0 ? 1 : 0))) {
         await triggerGraduation(tokenId, token.symbol, totalWldInCurve, newPrice);

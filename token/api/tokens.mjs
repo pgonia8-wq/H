@@ -2,11 +2,11 @@ import { supabase, cors, mapTokenRow } from "./_supabase.mjs";
 import { requireOrb } from "./_orbGuard.mjs";
 import { recordPriceSnapshot } from "./_snapshot.mjs";
 
-const INITIAL_PRICE = 0.0000005;
+import { getWldUsdRate, INITIAL_PRICE } from "./_curve.mjs";
+
 const TOTAL_SUPPLY = 100_000_000;
 const INITIAL_SUPPLY = 500_000;
 const CREATOR_FEE_WLD = 5;
-const WLD_USD = 3.0;
 
 export default async function handler(req, res) {
   cors(res);
@@ -114,6 +114,8 @@ export default async function handler(req, res) {
   if (!orbOk) return;
 
   try {
+    const wldUsd = await getWldUsdRate();
+
     const { data: profile } = await supabase
       .from("profiles")
       .select("username, avatar_url")
@@ -135,7 +137,7 @@ export default async function handler(req, res) {
       creator_id: creatorId,
       creator_name: creatorName,
       price_wld: INITIAL_PRICE,
-      price_usdc: INITIAL_PRICE * WLD_USD,
+      price_usdc: INITIAL_PRICE * wldUsd,
       market_cap: 0,
       holders: 0,
       curve_percent: 0,
@@ -179,7 +181,7 @@ export default async function handler(req, res) {
     });
 
     await recordPriceSnapshot(
-      inserted.id, INITIAL_PRICE, INITIAL_PRICE * WLD_USD, 0, CREATOR_FEE_WLD, "create"
+      inserted.id, INITIAL_PRICE, INITIAL_PRICE * wldUsd, 0, CREATOR_FEE_WLD, "create"
     );
 
     return res.status(201).json(mapTokenRow(inserted));
