@@ -253,128 +253,258 @@ function BurnPanel({ token, userId, onDone }: { token: Token; userId: string; on
 }
 
 function AirdropPanel({ token, userId, onDone }: { token: Token; userId: string; onDone: () => void }) {
-  const [title, setTitle] = useState(`${token.symbol} Airdrop`);
-  const [description, setDescription] = useState("");
-  const [totalAmount, setTotalAmount] = useState("");
-  const [dailyAmount, setDailyAmount] = useState("");
-  const [maxParticipants, setMaxParticipants] = useState("500");
-  const [cooldownHours, setCooldownHours] = useState("24");
-  const [durationDays, setDurationDays] = useState("30");
-  const [loading, setLoading] = useState(false);
+  const { orbVerified } = useApp();
+  const AIRDROP_COST = 25;
+  const AIRDROP_POOL_SIZE = 2500000;
+  const MAX_LINKS = 5;
+
+  const [pool, setPool] = useState<{ id: string; available: number; linkCount: number } | null>(null);
+  const [links, setLinks] = useState<Array<{ id: string; code: string; amount: number; claimedAmount: number; remaining: number; mode: string; claims: number; link: string; isActive: boolean }>>([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [buyStep, setBuyStep] = useState<"idle" | "paying" | "processing">("idle");
+  const [createMode, setCreateMode] = useState<"permanent" | "one_time">("permanent");
+  const [createAmount, setCreateAmount] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const paymentCancelRef = useRef<(() => void) | null>(null);
 
-  const numTotal = parseFloat(totalAmount) || 0;
-  const numDaily = parseFloat(dailyAmount) || 0;
-  const numMaxPart = parseInt(maxParticipants) || 0;
-
-  const handleCreate = async () => {
-    if (!title.trim()) { setError("Title is required"); return; }
-    if (numTotal <= 0) { setError("Set total airdrop amount"); return; }
-    if (numDaily <= 0) { setError("Set daily claim amount"); return; }
-    if (numMaxPart <= 0) { setError("Set max participants"); return; }
-    setLoading(true); setError(null);
+  const loadData = useCallback(async () => {
     try {
-      const res = await api.createAirdrop({
-        tokenId: token.id, title: title.trim(), description: description.trim(),
-        totalAmount: numTotal, dailyAmount: numDaily, maxParticipants: numMaxPart,
-        cooldownHours: parseInt(cooldownHours) || 24, durationDays: parseInt(durationDays) || 30,
-        creatorId: userId,
-      });
-      if (res.success) { setSuccess(true); setTimeout(onDone, 1500); }
-      else setError(res.message);
-    } catch (e: any) { setError(e.message); }
-    finally { setLoading(false); }
+      const res = await api.getAirdropData(userId);
+      const tokenPool = res.pools.find((p: any) => p.tokenId === token.id);
+      if (tokenPool) {
+        setPool({ id: tokenPool.id, available: tokenPool.available, linkCount: tokenPool.linkCount });
+        setLinks(res.links.filter((l: any) => l.tokenId === token.id));
+      } else {
+        setPool(null);
+        setLinks([]);
+      }
+    } catch {}
+    setLoadingData(false);
+  }, [userId, token.id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const requestPayment = (amountWld: number, description: string): Promise<string> => {
+    const origin = import.meta.env?.VITE_PARENT_ORIGIN || "*";
+    const reference = generatePayReference();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => { window.removeEventListener("message", handler); reject(new Error("Payment timeout")); }, 120000);
+      paymentCancelRef.current = () => { clearTimeout(timeout); window.removeEventListener("message", handler); reject(new Error("Cancelled")); };
+      const handler = (e: MessageEvent) => {
+        if (e.data?.type === "PAYMENT_RESULT") {
+          clearTimeout(timeout);
+          window.removeEventListener("message", handler);
+          paymentCancelRef.current = null;
+          e.data.payload?.success && e.data.payload?.transactionId ? resolve(e.data.payload.transactionId) : reject(new Error(e.data.payload?.error || "Payment failed"));
+        }
+      };
+      window.addEventListener("message", handler);
+      window.parent?.postMessage({ type: "REQUEST_PAYMENT", payload: { reference, to: RECEIVER, amount: amountWld, token: "WLD", description } }, origin);
+    });
   };
 
-  if (success) return (
-    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center py-8 space-y-2">
-      <CheckCircle2 className="w-10 h-10 text-violet-400 mx-auto" />
-      <div className="text-sm font-bold text-foreground">Airdrop Created</div>
-      <div className="text-[11px] text-muted-foreground">{formatCompact(numTotal)} {token.symbol} ready for distribution</div>
-    </motion.div>
+  const handleBuyPool = async () => {
+    if (!orbVerified) { setError("ORB verification required"); return; }
+    setBuyStep("paying"); setError(null);
+    try {
+      const txId = await requestPayment(AIRDROP_COST, `Airdrop pack: ${AIRDROP_POOL_SIZE.toLocaleString()} ${token.symbol}`);
+      setBuyStep("processing");
+      const res = await api.buyAirdropPool({ action: "buy_pool", tokenId: token.id, creatorId: userId, transactionId: txId });
+      if (res.success) { await loadData(); }
+      else { setError(res.message); }
+    } catch (e: any) { setError(e.message); }
+    setBuyStep("idle");
+  };
+
+  const handleCreateLink = async () => {
+    const num = parseInt(createAmount);
+    if (!num || num <= 0) { setError("Enter a valid amount"); return; }
+    if (!pool) return;
+    if (num > pool.available) { setError(`Only ${pool.available.toLocaleString()} tokens available`); return; }
+    setCreating(true); setError(null);
+    try {
+      const res = await api.createAirdropLink({ action: "create_link", poolId: pool.id, amount: num, mode: createMode, creatorId: userId });
+      if (res.success) { setCreateAmount(""); setShowCreate(false); await loadData(); }
+      else setError(res.message);
+    } catch (e: any) { setError(e.message); }
+    setCreating(false);
+  };
+
+  const handleDelete = async (linkId: string) => {
+    setDeleting(linkId); setError(null);
+    try {
+      const res = await api.deleteAirdropLink({ linkId, creatorId: userId });
+      if (res.success) await loadData();
+      else setError(res.message);
+    } catch (e: any) { setError(e.message); }
+    setDeleting(null);
+  };
+
+  const copyLink = (link: string, id: string) => {
+    navigator.clipboard.writeText(link).catch(() => {});
+    setCopied(id);
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  if (loadingData) return (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="w-5 h-5 animate-spin text-violet-400" />
+    </div>
+  );
+
+  if (!pool) return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 mb-1">
+        <Gift className="w-4 h-4 text-violet-400" />
+        <span className="text-sm font-bold text-foreground">Buy Airdrops — {token.symbol}</span>
+      </div>
+
+      <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500/10 to-purple-500/10 border border-violet-500/20 space-y-3">
+        <div className="text-center space-y-1">
+          <div className="text-2xl font-bold font-mono text-foreground">{AIRDROP_POOL_SIZE.toLocaleString()}</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{token.symbol} tokens</div>
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          <div className="px-3 py-1.5 rounded-lg bg-violet-500/15 border border-violet-500/20">
+            <span className="text-sm font-bold font-mono text-violet-400">{AIRDROP_COST} WLD</span>
+          </div>
+        </div>
+        <div className="text-[10px] text-center text-muted-foreground">One-time purchase per token. Create up to {MAX_LINKS} shareable links.</div>
+      </div>
+
+      <div className="p-2.5 rounded-lg bg-violet-500/5 border border-violet-500/10 space-y-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-start gap-2"><Zap className="w-3 h-3 text-violet-400 mt-0.5 shrink-0" /><span>Create links with custom token amounts</span></div>
+        <div className="flex items-start gap-2"><ExternalLink className="w-3 h-3 text-violet-400 mt-0.5 shrink-0" /><span>Share anywhere — social media, DMs, your community</span></div>
+        <div className="flex items-start gap-2"><Shield className="w-3 h-3 text-violet-400 mt-0.5 shrink-0" /><span>Permanent (multi-use) or one-time links</span></div>
+      </div>
+
+      {error && <div className="text-[11px] text-red-400 bg-red-500/8 border border-red-500/15 p-2.5 rounded-lg">{error}</div>}
+
+      <button onClick={handleBuyPool} disabled={buyStep !== "idle"}
+        className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold text-sm shadow-lg shadow-violet-500/20 active:scale-[0.97] transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+        {buyStep === "paying" ? <><Loader2 className="w-4 h-4 animate-spin" /> Confirm in World App...</>
+          : buyStep === "processing" ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
+          : <><Gift className="w-4 h-4" /> Buy Airdrops — {AIRDROP_COST} WLD</>}
+      </button>
+    </div>
   );
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Gift className="w-4 h-4 text-violet-400" />
-        <span className="text-sm font-bold text-foreground">Create Airdrop — {token.symbol}</span>
-      </div>
-
-      <div className="p-2.5 rounded-lg bg-violet-500/8 border border-violet-500/15 text-[10px] text-violet-400 flex items-start gap-2">
-        <Zap className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-        <span>Create a claimable airdrop for verified World ID users. Tokens are distributed from your token's supply pool.</span>
-      </div>
-
-      <div>
-        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Airdrop Title</label>
-        <input value={title} onChange={(e) => { setTitle(e.target.value); setError(null); }}
-          className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-violet-500/30 transition-all" />
-      </div>
-
-      <div>
-        <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Description (optional)</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} placeholder="Describe your airdrop..."
-          className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground placeholder:text-muted-foreground/50 focus:border-violet-500/30 resize-none transition-all" />
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Gift className="w-4 h-4 text-violet-400" />
+          <span className="text-sm font-bold text-foreground">Airdrops — {token.symbol}</span>
+        </div>
+        <div className="text-[9px] text-muted-foreground font-mono">{links.length}/{MAX_LINKS} links</div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Total Pool</label>
-          <input type="number" value={totalAmount} onChange={(e) => { setTotalAmount(e.target.value); setError(null); }}
-            placeholder="100000" className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+        <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/15 text-center">
+          <div className="text-xs font-bold font-mono text-violet-400">{formatCompact(pool.available)}</div>
+          <div className="text-[8px] text-muted-foreground uppercase tracking-wider">Available</div>
         </div>
-        <div>
-          <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Per Claim</label>
-          <input type="number" value={dailyAmount} onChange={(e) => { setDailyAmount(e.target.value); setError(null); }}
-            placeholder="100" className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground font-mono placeholder:text-muted-foreground/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+        <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/15 text-center">
+          <div className="text-xs font-bold font-mono text-foreground">{formatCompact(AIRDROP_POOL_SIZE - pool.available)}</div>
+          <div className="text-[8px] text-muted-foreground uppercase tracking-wider">Allocated</div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Max Users</label>
-          <input type="number" value={maxParticipants} onChange={(e) => setMaxParticipants(e.target.value)}
-            className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-xs text-foreground font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-        </div>
-        <div>
-          <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Cooldown</label>
-          <div className="grid grid-cols-3 gap-1">
-            {["12", "24", "48"].map(h => (
-              <button key={h} onClick={() => setCooldownHours(h)}
-                className={`py-2 rounded-lg text-[9px] font-bold transition-all ${cooldownHours === h ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
-                {h}h
-              </button>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">Duration</label>
-          <div className="grid grid-cols-3 gap-1">
-            {["7", "30", "90"].map(d => (
-              <button key={d} onClick={() => setDurationDays(d)}
-                className={`py-2 rounded-lg text-[9px] font-bold transition-all ${durationDays === d ? "bg-violet-500/20 text-violet-400 border border-violet-500/30" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
-                {d}d
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {numTotal > 0 && numDaily > 0 && (
-        <div className="p-2.5 rounded-lg bg-secondary/20 border border-border/15 space-y-1 text-[10px]">
-          <div className="flex justify-between"><span className="text-muted-foreground">Total claims possible</span><span className="text-foreground font-bold font-mono">{Math.floor(numTotal / numDaily).toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-muted-foreground">Est. per participant</span><span className="text-foreground font-mono">{numMaxPart > 0 ? formatCompact(numTotal / numMaxPart) : "—"} {token.symbol}</span></div>
+      {links.length > 0 && (
+        <div className="space-y-2">
+          {links.map((l) => (
+            <div key={l.id} className={`p-2.5 rounded-xl border ${l.isActive ? "bg-card/40 border-border/20" : "bg-secondary/20 border-border/10 opacity-60"}`}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${l.mode === "one_time" ? "bg-amber-500/15 text-amber-400" : "bg-green-500/15 text-green-400"}`}>
+                    {l.mode === "one_time" ? "1x" : "multi"}
+                  </span>
+                  <span className="text-xs font-bold font-mono text-foreground">{formatCompact(l.amount)} {token.symbol}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => copyLink(l.link, l.id)} className="p-1 rounded-md hover:bg-secondary/40 transition-colors">
+                    {copied === l.id ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5 text-muted-foreground" />}
+                  </button>
+                  <button onClick={() => handleDelete(l.id)} disabled={deleting === l.id}
+                    className="p-1 rounded-md hover:bg-red-500/10 transition-colors">
+                    {deleting === l.id ? <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" /> : <X className="w-3.5 h-3.5 text-muted-foreground hover:text-red-400" />}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                <span className="font-mono bg-secondary/40 px-1.5 py-0.5 rounded text-[8px]">{l.code}</span>
+                <span>{l.claims} claims</span>
+                <span>{formatCompact(l.remaining)} left</span>
+              </div>
+              <div className="mt-1.5 w-full h-1 rounded-full bg-secondary/30 overflow-hidden">
+                <div className="h-full rounded-full bg-violet-500/50 transition-all" style={{ width: `${Math.min(100, ((l.amount - l.remaining) / l.amount) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {error && <div className="text-[11px] text-red-400 bg-red-500/8 border border-red-500/15 p-2.5 rounded-lg">{error}</div>}
+      {links.length < MAX_LINKS && pool.available > 0 && (
+        showCreate ? (
+          <div className="p-3 rounded-xl bg-secondary/20 border border-violet-500/15 space-y-2.5">
+            <div className="text-[10px] font-bold text-foreground">New Link</div>
+            <div>
+              <label className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1 block">Tokens in this link</label>
+              <input type="number" value={createAmount} onChange={(e) => { setCreateAmount(e.target.value); setError(null); }}
+                placeholder={`Max ${pool.available.toLocaleString()}`}
+                className="w-full p-2.5 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground font-mono placeholder:text-muted-foreground/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            </div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {[10, 25, 50, 100].map(p => (
+                <button key={p} onClick={() => setCreateAmount(String(Math.floor(pool.available * p / 100)))}
+                  className="py-1.5 rounded-md text-[9px] font-bold bg-violet-500/8 text-violet-400 border border-violet-500/15 hover:bg-violet-500/15 active:scale-95 transition-all">
+                  {p}%
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1 block">Link Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setCreateMode("permanent")}
+                  className={`p-2 rounded-lg text-[10px] font-bold text-center transition-all ${createMode === "permanent" ? "bg-green-500/15 text-green-400 border border-green-500/25" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
+                  <div>Permanent</div>
+                  <div className="text-[8px] font-normal opacity-70 mt-0.5">Until tokens run out</div>
+                </button>
+                <button onClick={() => setCreateMode("one_time")}
+                  className={`p-2 rounded-lg text-[10px] font-bold text-center transition-all ${createMode === "one_time" ? "bg-amber-500/15 text-amber-400 border border-amber-500/25" : "bg-secondary/30 text-muted-foreground border border-border/20"}`}>
+                  <div>One-Time</div>
+                  <div className="text-[8px] font-normal opacity-70 mt-0.5">Single use only</div>
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowCreate(false); setError(null); }}
+                className="flex-1 py-2.5 rounded-xl bg-secondary/30 text-muted-foreground font-bold text-xs border border-border/20">
+                Cancel
+              </button>
+              <button onClick={handleCreateLink} disabled={creating || !createAmount}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold text-xs shadow-lg disabled:opacity-30 flex items-center justify-center gap-1.5">
+                {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Zap className="w-3.5 h-3.5" /> Create</>}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowCreate(true)}
+            className="w-full py-2.5 rounded-xl border border-dashed border-violet-500/25 text-violet-400 text-xs font-bold hover:bg-violet-500/5 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" /> Create Link ({links.length}/{MAX_LINKS})
+          </button>
+        )
+      )}
 
-      <button onClick={handleCreate} disabled={loading || numTotal <= 0 || numDaily <= 0}
-        className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 text-white font-bold text-sm shadow-lg shadow-violet-500/20 active:scale-[0.97] transition-all disabled:opacity-30 flex items-center justify-center gap-2">
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Gift className="w-4 h-4" /> Create Airdrop</>}
-      </button>
+      {pool.available <= 0 && links.length < MAX_LINKS && (
+        <div className="text-[10px] text-center text-muted-foreground py-2">All tokens allocated. Delete a link to free up tokens.</div>
+      )}
+
+      {error && <div className="text-[11px] text-red-400 bg-red-500/8 border border-red-500/15 p-2.5 rounded-lg">{error}</div>}
     </div>
   );
 }
