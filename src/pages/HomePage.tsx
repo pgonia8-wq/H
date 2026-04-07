@@ -317,7 +317,7 @@ const HomePage: React.FC<HomePageProps> = ({
         if (!win) { console.warn("[H] tokenIframeRef.contentWindow is null"); return; }
         try {
           const verifyRes = await MiniKit.commandsAsync.verify({
-            action: "verify-user",
+            action: "user-orb",
             signal: wallet ?? "",
             verification_level: VerificationLevel.Orb,
           });
