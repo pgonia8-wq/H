@@ -1,5 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
+if (!process.env.SUPABASE_URL) {
+  console.error("[TOKEN_API] ERROR: SUPABASE_URL no está configurada");
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("[TOKEN_API] ERROR: SUPABASE_SERVICE_ROLE_KEY no está configurada");
+}
+
   export const supabase = createClient(
     process.env.SUPABASE_URL ?? "",
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
