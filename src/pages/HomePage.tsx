@@ -56,6 +56,7 @@ interface HomePageProps {
   verifying: boolean;
   setUserId: (id: string | null) => void;
   verifyUser: () => void;
+  verifyOrb: () => Promise<{ success: boolean; proof?: any }>;
 }
 
 interface Notification {
@@ -94,6 +95,7 @@ const HomePage: React.FC<HomePageProps> = ({
   verifying,
   setUserId,
   verifyUser,
+  verifyOrb,
 }) => {
   // ── Post modal ──
   const [optimisticPosts, setOptimisticPosts] = useState<any[]>([]);
@@ -729,8 +731,17 @@ const HomePage: React.FC<HomePageProps> = ({
 
           {/* Token mini-app */}
           <motion.button
-            onClick={() => setShowTokenApp(true)}
-            whileHover={{ scale: 1.08 }}
+            onClick={async () => {
+                const res = await verifyOrb();
+                if (res.success) {
+                  setShowTokenApp(true);
+                  setTimeout(() => {
+                    const win = tokenIframeRef.current?.contentWindow;
+                    if (win) win.postMessage({ type: "ORB_VERIFIED_FROM_H", payload: { success: true, verificationLevel: "orb" } }, TOKEN_APP_URL || "*");
+                  }, 1000);
+                }
+              }}
+              whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
             className={`w-9 h-9 flex items-center justify-center rounded-full text-base transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
             title="Token Market"
