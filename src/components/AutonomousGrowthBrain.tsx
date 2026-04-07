@@ -512,8 +512,6 @@ export default function AutonomousGrowthBrain(): null {
 
       // ── 2. Learning ───────────────────────────────────────────────────────
       const memory = updateMemory(allMetrics);
-        `🎓 [SEEDS] Top: [${memory.topCategories.join(", ")}] | Weak: [${memory.weakCategories.join(", ")}] | Best hours: [${memory.bestHours.join(", ")}]`
-      );
 
       // ── 3. Average score (recent posts) ───────────────────────────────────
       const cutoff = now() - 60 * 60 * 1000;
@@ -531,18 +529,13 @@ export default function AutonomousGrowthBrain(): null {
         state.cycleCount
       );
 
-        `🎯 [SEEDS] Mode: ${mode} | Queue: ${queueSize} | AvgScore: ${avgScore.toFixed(1)} | Hour: ${currentHour()}:00 | Published/h: ${state.publishedThisHour}`
-      );
-       const trends = await getCachedTrends();
+      const trends = await getCachedTrends();
       // ── 5. Decision ───────────────────────────────────────────────────────
        const decision = buildDecision(mode, memory, state, queueSize, trends);
 
       // ── 6. Generate ───────────────────────────────────────────────────────
       if (decision.shouldGenerate && !isPipelineLoading) {
         try {
-            `✍️  [SEEDS] Running pipeline: ${decision.postsToGenerate} posts — ${decision.category} / ${decision.account}`
-          );
-
           const result = await runPipeline({
             category: decision.category,
             account: decision.account,
@@ -565,8 +558,6 @@ export default function AutonomousGrowthBrain(): null {
       // ── 7. Publish (with human-like delay) ───────────────────────────────
       if (decision.shouldPublish && !isPublishLoading) {
         const delayMs = randInt(PUBLISH_DELAY_MIN_MS, PUBLISH_DELAY_MAX_MS);
-          `📤 [SEEDS] Will publish via ${decision.account} in ${Math.round(delayMs / 60000)} min`
-        );
 
         setTimeout(async () => {
           try {
@@ -606,9 +597,6 @@ export default function AutonomousGrowthBrain(): null {
 
       // Trim stored metrics
       save<PostMetrics[]>(STORAGE_METRICS, allMetrics.slice(-MAX_STORED_METRICS));
-
-        `✨ [SEEDS] Cycle #${state.cycleCount + 1} done. Next in ${CYCLE_MIN_MS / 60000}–${CYCLE_MAX_MS / 60000} min.`
-      );
     } catch (err) {
       console.error("💥 [SEEDS] Unhandled cycle error:", err);
     } finally {
