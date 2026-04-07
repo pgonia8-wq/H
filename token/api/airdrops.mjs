@@ -1,7 +1,7 @@
 import { supabase, cors, mapAirdropRow } from "./_supabase.mjs";
-  import { requireOrb } from "./_orbGuard.mjs";
+import { requireOrb } from "./_orbGuard.mjs";
 
-  export default async function handler(req, res) {
+export default async function handler(req, res) {
     cors(res);
     if (req.method === "OPTIONS") return res.status(200).end();
 
