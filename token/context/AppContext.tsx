@@ -134,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             user: s.user ? { ...s.user, verificationLevel: "orb" } : null,
           }));
         }
-      } catch (_) {}
+      } catch (err) { console.warn("[TOKEN] checkOrbFromDb failed:", err); }
     };
 
     const handler = (e: MessageEvent) => {
