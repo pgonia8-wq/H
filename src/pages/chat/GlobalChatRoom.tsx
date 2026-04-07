@@ -694,7 +694,7 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
   };
 
   return (
-    <div className="flex flex-col gap-1.5 px-3 pb-3 flex-shrink-0">
+    <div className="flex flex-col gap-1.5 px-3 pb-[env(safe-area-inset-bottom,12px)] flex-shrink-0">
       {/* Reply preview */}
       <AnimatePresence>
         {replyTo && (
@@ -785,7 +785,7 @@ function ChatInput({ onSend, onTyping, isGold, hasGoldAccess, disabled, replyTo,
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl bg-black/70 backdrop-blur-md">
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
       {children}
     </motion.div>
   );
@@ -848,8 +848,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   // ── Token mini-app ──
   const [showTokenApp,     setShowTokenApp]     = useState(false);
-  // El iframe no se monta hasta 10s después del inicio para no demorar la carga
-  const [tokenPreloaded,   setTokenPreloaded]   = useState(false);
+  const [tokenPreloaded,   setTokenPreloaded]   = useState(true);
   const tokenIframeRef = useRef<HTMLIFrameElement>(null);
   const TOKEN_APP_URL: string =
     (import.meta as any).env?.VITE_TOKEN_APP_URL ?? "";
@@ -871,6 +870,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
   const now = Date.now();
   const allMessages = messages[selectedRoomId] ?? [];
   const activeMessages = allMessages
+    .filter((m) => !m.deletedForAll)
     .filter((m) => !m.ephemeral || now - new Date(m.createdAt).getTime() < 24 * 60 * 60 * 1000)
     .filter((m) => !showSearch || !searchQuery || m.content?.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -896,17 +896,14 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     return `@${userId.slice(0, 8)}`;
   }, [messages, myUsername, currentUserId]);
 
-  // ── Check subscriptions ──
-  // Permite montar el iframe 10s después del inicio (no bloquea la carga inicial)
-  useEffect(() => {
-    const timer = setTimeout(() => setTokenPreloaded(true), 10000);
-    return () => clearTimeout(timer);
-  }, []);
+  const [subsLoading,      setSubsLoading]      = useState(true);
+  const [showConnectedPanel, setShowConnectedPanel] = useState(false);
 
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
     const checkSubscriptions = async () => {
       try {
+        setSubsLoading(true);
         const { data, error } = await supabase.from("subscriptions").select("product")
           .eq("user_id", currentUserId).in("product", ["chat_classic", "chat_gold"]);
         if (error) { console.error("[GlobalChat] Error cargando suscripciones:", error.message); return; }
@@ -918,6 +915,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
         setHasGoldAccess(gold);
       } catch (e) {
         console.error("[GlobalChat] Error inesperado checkSubscriptions:", e);
+      } finally {
+        setSubsLoading(false);
       }
     };
     checkSubscriptions();
@@ -1482,10 +1481,13 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
     }
   };
 
+  const displayUsernameRef = useRef(displayUsername);
+  displayUsernameRef.current = displayUsername;
+
   const handleTyping = useCallback((b: boolean) => {
     if (!b || !realtimeRef.current) return;
-    realtimeRef.current.send({ type: "broadcast", event: "typing", payload: { user: currentUserId, username: displayUsername(currentUserId) } });
-  }, [currentUserId, displayUsername]);
+    realtimeRef.current.send({ type: "broadcast", event: "typing", payload: { user: currentUserId, username: displayUsernameRef.current(currentUserId) } });
+  }, [currentUserId]);
 
   const handleReact = useCallback((messageId: string, emoji: string) => {
     const roomReactions = reactionsPerRoom.get(selectedRoomId) ?? {};
@@ -1586,22 +1588,22 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-2"
+          className="fixed inset-0 z-50"
         >
           <motion.div
-            initial={{ scale: 0.96, opacity: 0, y: 16 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.96, opacity: 0, y: 16 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
             transition={{ type: "spring", damping: 26, stiffness: 300 }}
             className={cx(
-              "relative flex flex-col w-full max-w-md h-[88vh] rounded-2xl overflow-hidden shadow-2xl",
+              "relative flex flex-col w-full h-full overflow-hidden",
               isGold
-                ? "bg-gradient-to-b from-yellow-950 via-amber-950 to-black border border-yellow-500/20"
-                : "bg-gradient-to-b from-[#0e0618] via-[#0b0414] to-black border border-violet-500/20"
+                ? "bg-gradient-to-b from-yellow-950 via-amber-950 to-black"
+                : "bg-gradient-to-b from-[#0e0618] via-[#0b0414] to-black"
             )}
           >
             {/* ══ HEADER ══ */}
-            <div className={cx("flex items-center gap-2 px-3 pt-3 pb-2 border-b flex-shrink-0",
+            <div className={cx("flex items-center gap-2 px-3 pt-[env(safe-area-inset-top,12px)] pb-2 border-b flex-shrink-0",
               isGold ? "border-yellow-500/20" : "border-violet-500/20")}>
 
               {/* Type switch */}
@@ -1658,8 +1660,8 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                            : "text-white/30 hover:text-white/60 hover:bg-white/8")}>
                   <Plus className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => {}}
-                  className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer"
+                <button onClick={() => setShowConnectedPanel(p => !p)}
+                  className="relative p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 transition-colors cursor-pointer"
                   title={`${connected.length + 1} conectados`}>
                   <Users className="h-3.5 w-3.5" />
                   {connected.length > 0 && (
@@ -1683,6 +1685,28 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
               </div>
             </div>
 
+            {/* Connected users panel */}
+            <AnimatePresence>
+              {showConnectedPanel && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                  className={cx("px-3 py-2 border-b flex-shrink-0 overflow-hidden", isGold ? "border-yellow-500/10 bg-yellow-950/30" : "border-violet-500/10 bg-violet-950/20")}>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-xs font-semibold text-white/60">{connected.length + 1} conectados</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 rounded-lg bg-violet-500/20 text-violet-300 text-[11px] font-medium">Tú</span>
+                    {connected.map((u) => (
+                      <span key={u.userId} className="px-2 py-0.5 rounded-lg bg-white/5 text-white/50 text-[11px]">
+                        {u.username || `@${u.userId.slice(0, 8)}`}
+                      </span>
+                    ))}
+                    {connected.length === 0 && <span className="text-[11px] text-white/25">Nadie más en esta sala</span>}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Search bar */}
             <AnimatePresence>
               {showSearch && (
@@ -1702,8 +1726,14 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
             </AnimatePresence>
 
             {/* ══ MESSAGES ══ */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1 scroll-smooth">
-              {noAccess && (
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 scroll-smooth">
+              {subsLoading && (
+                <div className="flex flex-col items-center justify-center h-full gap-3">
+                  <div className="w-8 h-8 rounded-full border-2 border-violet-500/30 border-t-violet-400 animate-spin" />
+                  <p className="text-sm text-white/30">Cargando chat…</p>
+                </div>
+              )}
+              {!subsLoading && noAccess && (
                 <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-4">
                   {roomType === "gold" ? (
                     <>
@@ -1720,7 +1750,14 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
                 </div>
               )}
 
-              {!noAccess && activeMessages.map((msg) => (
+              {!subsLoading && !noAccess && activeMessages.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+                  <MessageSquare className="h-8 w-8 text-white/15" />
+                  <p className="text-sm text-white/25">No hay mensajes aún. ¡Sé el primero!</p>
+                </div>
+              )}
+
+              {!subsLoading && !noAccess && activeMessages.map((msg) => (
                 <MessageBubble
                   key={msg.id} message={msg} isOwn={msg.userId === currentUserId} isGold={isGold}
                   currentUserId={currentUserId} reactions={reactions[msg.id] ?? {}} seenByOthers={seenMsgIds.has(msg.id)}
