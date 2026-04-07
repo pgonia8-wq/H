@@ -44,8 +44,12 @@
       "destination": "/api/userWallet"
     },
     {
-      "source": "/api/seedHBH",
-      "destination": "/api/seedHBH"
+      "source": "/api/tokens/:id/burn",
+      "destination": "/api/tokenBurn?id=:id"
+    },
+    {
+      "source": "/api/tokens/:id/lock",
+      "destination": "/api/tokenLock?id=:id"
     },
     {
       "source": "/api/(.*)",
