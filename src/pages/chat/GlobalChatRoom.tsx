@@ -848,7 +848,7 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   // ── Token mini-app ──
   const [showTokenApp,     setShowTokenApp]     = useState(false);
-  const [tokenPreloaded,   setTokenPreloaded]   = useState(true);
+  const [tokenPreloaded,   setTokenPreloaded]   = useState(false);
   const tokenIframeRef = useRef<HTMLIFrameElement>(null);
   const TOKEN_APP_URL: string =
     (import.meta as any).env?.VITE_TOKEN_APP_URL ?? "";
@@ -898,6 +898,11 @@ export default function GlobalChatRoom({ isOpen, onClose, currentUserId }: Globa
 
   const [subsLoading,      setSubsLoading]      = useState(true);
   const [showConnectedPanel, setShowConnectedPanel] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTokenPreloaded(true), 10000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!currentUserId || !isOpen) return;
