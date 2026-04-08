@@ -46,14 +46,18 @@ export default async function handler(req, res) {
   try {
     const { userId } = req.body;
 
-    if (!userId) {
+    if (!userId || typeof userId !== "string" || userId.trim() === "") {
       return res.status(400).json({ success: false, error: "No userId provided" });
+    }
+
+    if (!/^0x[a-fA-F0-9]{10,}$/.test(userId)) {
+      return res.status(400).json({ success: false, error: "Invalid userId format" });
     }
 
     // Verificar si ya existe
     const { data: existing, error: selectError } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, username, avatar_url, verified, tier, verification_level")
       .eq("id", userId)
       .maybeSingle();
 
