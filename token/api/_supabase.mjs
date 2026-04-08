@@ -18,8 +18,6 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       if (allowed.length > 0 && origin && allowed.includes(origin)) {
         res.setHeader("Access-Control-Allow-Origin", origin);
         res.setHeader("Vary", "Origin");
-      } else if (allowed.length === 0) {
-        res.setHeader("Access-Control-Allow-Origin", "*");
       }
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
