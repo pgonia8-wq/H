@@ -1,35 +1,6 @@
-/* ─────────────────────────────────────────────────────────────────────────────
-   DESTINO: api/upgrade.mjs
-   QUÉ CAMBIÓ (3 bugs):
-
-   [FIX-1] IMPORT ROTO
-     ANTES:  import { supabase } from "../supabaseClient.ts";
-     AHORA:  import { createClient } from "@supabase/supabase-js"; + createClient()
-     POR QUÉ: las funciones serverless de Vercel corren en Node.js puro —
-              no pueden importar archivos .ts del frontend de Vite.
-              En producción este import causa un error de módulo y el endpoint
-              entero falla silenciosamente (el usuario nunca puede hacer upgrade).
-
-   [FIX-2] URL ROTA DE ETHERSCAN (template literal mal escrito)
-     ANTES:  `...txhash=\( {transactionId}&apikey= \){apiKey}`
-     AHORA:  `...txhash=${transactionId}&apikey=${apiKey}`
-     POR QUÉ: el template literal usaba \( \) en lugar de ${ }, lo que hacía
-              que verifyTxOnChain() siempre devolviera false y bloqueara
-              todos los upgrades de tier. Nadie podía comprar premium.
-
-   [FIX-3] API KEY HARDCODEADA EN CÓDIGO FUENTE
-     ANTES:  const apiKey = "B7PCP5XSYD41ZDT96PZ8R1X15CDH5H2US1";
-     AHORA:  const apiKey = process.env.ETHERSCAN_API_KEY ?? "";
-     POR QUÉ: la clave estaba en texto plano en el repositorio público de GitHub.
-              Cualquier persona podía verla. Añade ETHERSCAN_API_KEY en
-              las variables de entorno de Vercel con el valor anterior.
-   ─────────────────────────────────────────────────────────────────────────── */
-
 import { createClient } from "@supabase/supabase-js";
 import { nanoid } from "nanoid";
 
-// [FIX-1] Instanciar Supabase con variables de entorno del servidor (igual que
-//          todos los otros endpoints: verify.mjs, walletVerify.mjs, etc.)
 const supabase = createClient(
   process.env.SUPABASE_URL ?? "",
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
@@ -173,6 +144,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, price, referralToken: newReferralToken });
   } catch (err) {
     console.error("[BACKEND] Error:", err);
-    return res.status(500).json({ success: false, error: err.message || "Server error" });
+    return res.status(500).json({ success: false, error: "Internal server error" });
   }
 }
