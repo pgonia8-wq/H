@@ -1,35 +1,74 @@
 
-  import { useState, useRef, useEffect } from "react";
+  import { useState, useRef, useEffect, memo } from "react";
   import { motion, AnimatePresence } from "framer-motion";
   import {
     X, Send, Crown, Paperclip, Plus, Share2,
     Lock, Globe, Hash, ChevronDown,
     Star, Mic, MicOff, Search, Pin, Edit2, Trash2,
     CornerUpLeft, Check, Image, FileText, Play, Pause,
-    Sparkles, Users, MessageSquare,
+    Sparkles, Users, MessageSquare, Zap, Shield, Flame,
   } from "lucide-react";
   import type { ChatMessage, ChatRoom, RoomType, TypingUser, UserRole } from "./chatTypes";
   import { cx, timeStr, timeAgo, initials, canEditMsg, isImageFile } from "./chatUtils";
   import { EMOJI_LIST, FILE_ACCEPT, FILE_MAX_SIZE } from "./chatTypes";
 
+  const SPRING = { type: "spring" as const, damping: 25, stiffness: 350 };
+  const FADE_UP = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 } };
+
+  export function AnimatedBg({ isGold }: { isGold: boolean }) {
+    return (
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className={cx("absolute -top-1/3 -left-1/3 w-[120%] h-[120%] rounded-full blur-[120px] opacity-20 animate-pulse",
+          isGold ? "bg-amber-500" : "bg-violet-600")}
+          style={{ animationDuration: "8s" }} />
+        <div className={cx("absolute -bottom-1/4 -right-1/4 w-[80%] h-[80%] rounded-full blur-[100px] opacity-15",
+          isGold ? "bg-orange-600" : "bg-fuchsia-700")}
+          style={{ animation: "pulse 12s ease-in-out infinite reverse" }} />
+        <div className={cx("absolute top-1/3 left-1/2 w-[60%] h-[40%] rounded-full blur-[80px] opacity-10",
+          isGold ? "bg-yellow-400" : "bg-cyan-600")}
+          style={{ animation: "pulse 15s ease-in-out infinite 3s" }} />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,rgba(0,0,0,0.6)_100%)]" />
+        <div className="absolute inset-0" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0)`,
+          backgroundSize: "32px 32px"
+        }} />
+      </div>
+    );
+  }
+
+  export function GlassPanel({ children, className, isGold = false, intensity = "medium" }: {
+    children: React.ReactNode; className?: string; isGold?: boolean; intensity?: "light" | "medium" | "heavy";
+  }) {
+    const bg = { light: "bg-white/[0.03]", medium: "bg-white/[0.06]", heavy: "bg-white/[0.1]" }[intensity];
+    const blur = { light: "backdrop-blur-sm", medium: "backdrop-blur-md", heavy: "backdrop-blur-xl" }[intensity];
+    return (
+      <div className={cx("border rounded-3xl shadow-2xl", bg, blur,
+        isGold ? "border-amber-400/10 shadow-amber-900/10" : "border-white/[0.08] shadow-violet-900/10",
+        className)}>
+        {children}
+      </div>
+    );
+  }
+
   export function Overlay({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
     return (
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
-        onClick={onClick}
-      >
-        {children}
+        className="absolute inset-0 z-50 flex items-center justify-center"
+        onClick={onClick}>
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" />
+        <div className="relative z-10">{children}</div>
       </motion.div>
     );
   }
 
   export function CloseBtn({ onClick, testId }: { onClick: () => void; testId?: string }) {
     return (
-      <button onClick={onClick} data-testid={testId}
-        className="absolute top-3 right-3 p-1.5 rounded-xl text-white/30 hover:text-white/70 hover:bg-white/10 transition-all cursor-pointer z-10">
+      <motion.button whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}
+        onClick={onClick} data-testid={testId}
+        className="absolute top-4 right-4 p-2 rounded-2xl bg-white/5 text-white/30 hover:text-white hover:bg-white/10 transition-colors cursor-pointer z-10 border border-white/5">
         <X className="h-4 w-4" />
-      </button>
+      </motion.button>
     );
   }
 
@@ -39,9 +78,9 @@
   }) {
     return (
       <div>
-        <label className="mb-1.5 block text-[11px] font-semibold text-violet-300/80 uppercase tracking-wider">{label}</label>
+        <label className="mb-2 block text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">{label}</label>
         <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} maxLength={maxLength} data-testid={testId}
-          className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-violet-400/50 focus:bg-white/8 focus:ring-1 focus:ring-violet-500/20 transition-all" />
+          className="w-full rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-white/15 outline-none focus:border-violet-400/40 focus:bg-white/[0.06] focus:ring-2 focus:ring-violet-500/10 transition-all duration-300" />
       </div>
     );
   }
@@ -50,30 +89,34 @@
     children: React.ReactNode; onClick?: () => void; disabled?: boolean;
     variant?: "primary" | "ghost" | "outline" | "gold" | "danger"; className?: string; testId?: string;
   }) {
-    const base = "inline-flex items-center justify-center gap-2 rounded-2xl text-sm font-bold transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50";
+    const base = "relative inline-flex items-center justify-center gap-2 rounded-2xl text-sm font-black tracking-wide transition-all duration-300 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-none overflow-hidden";
     const v: Record<string, string> = {
-      primary: "bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 text-white px-5 py-2.5 shadow-lg shadow-violet-600/25 hover:shadow-violet-600/40 hover:brightness-110",
-      ghost:   "text-white/50 hover:text-white hover:bg-white/8 px-3 py-2",
-      outline: "border border-white/15 text-white/60 hover:border-white/30 hover:text-white hover:bg-white/5 px-4 py-2",
-      gold:    "bg-gradient-to-r from-amber-500 via-yellow-400 to-orange-500 text-black font-black px-5 py-2.5 shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:brightness-110",
-      danger:  "text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-2",
+      primary: "bg-gradient-to-r from-violet-600 via-fuchsia-500 to-violet-600 text-white px-6 py-3 shadow-[0_0_30px_rgba(139,92,246,0.3)] hover:shadow-[0_0_50px_rgba(139,92,246,0.5)] hover:scale-[1.02] active:scale-[0.98]",
+      ghost:   "text-white/40 hover:text-white hover:bg-white/8 px-4 py-2.5",
+      outline: "border-2 border-white/10 text-white/50 hover:border-white/25 hover:text-white hover:bg-white/5 px-5 py-2.5",
+      gold:    "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-black px-6 py-3 shadow-[0_0_40px_rgba(245,158,11,0.35)] hover:shadow-[0_0_60px_rgba(245,158,11,0.5)] hover:scale-[1.02] active:scale-[0.98]",
+      danger:  "text-red-400 hover:text-red-300 hover:bg-red-500/10 px-4 py-2.5",
     };
     return (
-      <button className={cx(base, v[variant], className)} onClick={onClick} disabled={disabled} data-testid={testId}>
-        {children}
-      </button>
+      <motion.button whileTap={{ scale: 0.96 }}
+        className={cx(base, v[variant], className)} onClick={onClick} disabled={disabled} data-testid={testId}>
+        {(variant === "primary" || variant === "gold") && (
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full hover:translate-x-full transition-transform duration-700" />
+        )}
+        <span className="relative z-10 flex items-center gap-2">{children}</span>
+      </motion.button>
     );
   }
 
   export function RoleBadge({ role }: { role: UserRole }) {
     if (role === "admin") return (
-      <span className="text-[9px] px-2 py-0.5 rounded-full bg-gradient-to-r from-violet-500/20 to-purple-500/20 text-violet-300 border border-violet-400/20 font-bold tracking-wide">
-        ADMIN
+      <span className="text-[8px] px-2.5 py-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-400/15 font-black tracking-[0.15em] shadow-[0_0_10px_rgba(139,92,246,0.2)]">
+        <Shield className="h-2.5 w-2.5 inline mr-1" />ADMIN
       </span>
     );
     if (role === "gold") return (
-      <span className="text-[9px] px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-400/20 font-bold tracking-wide">
-        GOLD ✦
+      <span className="text-[8px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-400/15 font-black tracking-[0.15em] shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+        <Crown className="h-2.5 w-2.5 inline mr-1" />GOLD
       </span>
     );
     return null;
@@ -82,21 +125,28 @@
   export function Avatar({ src, name, size = "md", ring = false, gold = false, online = false }: {
     src?: string; name: string; size?: "xs" | "sm" | "md" | "lg"; ring?: boolean; gold?: boolean; online?: boolean;
   }) {
-    const sz = { xs: "h-6 w-6 text-[8px]", sm: "h-8 w-8 text-[10px]", md: "h-10 w-10 text-xs", lg: "h-12 w-12 text-sm" }[size];
-    const rg = ring ? (gold ? "ring-2 ring-amber-400/60" : "ring-2 ring-violet-400/60") : "";
+    const sz = { xs: "h-6 w-6 text-[7px]", sm: "h-9 w-9 text-[10px]", md: "h-11 w-11 text-xs", lg: "h-14 w-14 text-sm" }[size];
+    const ringStyle = ring
+      ? gold
+        ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-black/50"
+        : "ring-2 ring-violet-400/50 ring-offset-2 ring-offset-black/50"
+      : "";
     return (
       <div className="relative flex-shrink-0">
         {src ? (
-          <img src={src} alt={name} className={cx(sz, "rounded-2xl object-cover", rg)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <img src={src} alt={name} className={cx(sz, "rounded-2xl object-cover", ringStyle)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
         ) : (
-          <div className={cx(sz, "rounded-2xl flex items-center justify-center font-bold", rg,
-            gold ? "bg-gradient-to-br from-amber-700/60 to-yellow-900/60 text-amber-300"
-                 : "bg-gradient-to-br from-violet-700/60 to-fuchsia-800/60 text-violet-200")}>
+          <div className={cx(sz, "rounded-2xl flex items-center justify-center font-black", ringStyle,
+            gold ? "bg-gradient-to-br from-amber-600/50 via-yellow-700/40 to-orange-800/50 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+                 : "bg-gradient-to-br from-violet-600/40 via-fuchsia-700/30 to-purple-800/40 text-violet-200 shadow-[0_0_15px_rgba(139,92,246,0.15)]")}>
             {initials(name) || "?"}
           </div>
         )}
         {online && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-gray-950 shadow-lg shadow-emerald-400/50" />
+          <motion.span
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-[2.5px] border-gray-950 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
         )}
       </div>
     );
@@ -108,28 +158,31 @@
       ? `${users[0].username} está escribiendo`
       : `${users.map((u) => u.username).join(", ")} están escribiendo`;
     return (
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-        className="flex items-center gap-3 px-4 py-2">
-        <div className="flex gap-1">
+      <motion.div {...FADE_UP} transition={SPRING}
+        className="flex items-center gap-3 px-5 py-2.5 mx-2 mb-1 rounded-2xl bg-white/[0.03] border border-white/5">
+        <div className="flex gap-1.5">
           {[0, 1, 2].map((i) => (
             <motion.span key={i}
-              animate={{ y: [0, -4, 0], opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.15 }}
-              className="w-1.5 h-1.5 rounded-full bg-violet-400"
+              animate={{ y: [0, -6, 0], scale: [0.8, 1.2, 0.8] }}
+              transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
+              className="w-2 h-2 rounded-full bg-gradient-to-t from-violet-500 to-fuchsia-400 shadow-[0_0_6px_rgba(139,92,246,0.5)]"
             />
           ))}
         </div>
-        <span className="text-[11px] text-white/30 italic">{label}</span>
+        <span className="text-[11px] text-white/25 font-medium italic">{label}</span>
       </motion.div>
     );
   }
 
   export function DateSeparator({ label }: { label: string }) {
     return (
-      <div className="flex items-center gap-3 py-3">
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-        <span className="text-[10px] font-semibold text-white/25 uppercase tracking-widest">{label}</span>
-        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+      <div className="flex items-center gap-4 py-4 px-2">
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/8 to-transparent" />
+        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
+          <Sparkles className="h-2.5 w-2.5 text-violet-400/40" />
+          <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em]">{label}</span>
+        </div>
+        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/8 to-transparent" />
       </div>
     );
   }
@@ -139,28 +192,32 @@
   }) {
     const [expanded, setExpanded] = useState(false);
     return (
-      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+      <motion.div {...FADE_UP} transition={SPRING}
         className={cx("border-b flex-shrink-0 overflow-hidden",
-          isGold ? "border-amber-500/10 bg-amber-950/20" : "border-violet-500/10 bg-violet-950/15")}>
+          isGold ? "border-amber-400/8 bg-gradient-to-r from-amber-950/30 to-transparent" : "border-violet-400/8 bg-gradient-to-r from-violet-950/20 to-transparent")}>
         <button onClick={() => setExpanded(e => !e)}
-          className="w-full flex items-center gap-2 px-4 py-2 text-left cursor-pointer hover:bg-white/3 transition-colors">
-          <Pin className={cx("h-3 w-3 flex-shrink-0", isGold ? "text-amber-400" : "text-violet-400")} />
-          <span className="text-[11px] font-semibold text-white/50 flex-1">
-            {messages.length} mensaje{messages.length > 1 ? "s" : ""} fijado{messages.length > 1 ? "s" : ""}
+          className="w-full flex items-center gap-3 px-5 py-3 text-left cursor-pointer hover:bg-white/[0.02] transition-colors">
+          <div className={cx("p-1.5 rounded-xl", isGold ? "bg-amber-500/10" : "bg-violet-500/10")}>
+            <Pin className={cx("h-3 w-3", isGold ? "text-amber-400" : "text-violet-400")} />
+          </div>
+          <span className="text-[11px] font-bold text-white/40 flex-1">
+            {messages.length} fijado{messages.length > 1 ? "s" : ""}
           </span>
-          <ChevronDown className={cx("h-3 w-3 text-white/30 transition-transform", expanded && "rotate-180")} />
+          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown className="h-3 w-3 text-white/20" />
+          </motion.div>
         </button>
         <AnimatePresence>
           {expanded && (
             <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
-              <div className="px-4 pb-2 space-y-1.5 max-h-32 overflow-y-auto">
+              <div className="px-5 pb-3 space-y-2 max-h-36 overflow-y-auto">
                 {messages.map((m) => (
-                  <div key={m.id} className="flex items-start gap-2 group">
-                    <p className="text-[11px] text-white/40 flex-1 line-clamp-2">
-                      <span className="font-semibold text-white/60">{m.username}:</span> {m.content}
+                  <div key={m.id} className="flex items-start gap-2.5 group p-2 rounded-xl hover:bg-white/[0.02] transition-colors">
+                    <p className="text-[11px] text-white/35 flex-1 line-clamp-2 leading-relaxed">
+                      <span className="font-bold text-white/50">{m.username}:</span> {m.content}
                     </p>
                     <button onClick={() => onUnpin(m.id)}
-                      className="opacity-0 group-hover:opacity-100 text-white/20 hover:text-red-400 transition-all cursor-pointer p-0.5">
+                      className="opacity-0 group-hover:opacity-100 text-white/15 hover:text-red-400 transition-all cursor-pointer p-1 rounded-lg hover:bg-red-500/10">
                       <X className="h-3 w-3" />
                     </button>
                   </div>
@@ -179,18 +236,18 @@
     const entries = Object.entries(reactions).filter(([, users]) => users.length > 0);
     if (!entries.length) return null;
     return (
-      <div className="flex flex-wrap gap-1 mt-1">
+      <div className="flex flex-wrap gap-1.5 mt-2 ml-1">
         {entries.map(([emoji, users]) => {
           const isMine = users.includes(currentUserId);
           return (
-            <motion.button key={emoji} whileTap={{ scale: 0.85 }}
+            <motion.button key={emoji} whileTap={{ scale: 0.8 }} whileHover={{ scale: 1.1, y: -2 }}
               onClick={() => onToggle(emoji)}
-              className={cx("flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[11px] border transition-all cursor-pointer",
+              className={cx("flex items-center gap-1.5 px-2 py-1 rounded-xl text-[11px] border transition-all duration-200 cursor-pointer",
                 isMine
-                  ? "bg-violet-500/20 border-violet-400/30 text-violet-300"
-                  : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10")}>
-              <span className="text-xs">{emoji}</span>
-              <span className="font-semibold">{users.length}</span>
+                  ? "bg-violet-500/15 border-violet-400/25 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.15)]"
+                  : "bg-white/[0.03] border-white/8 text-white/35 hover:bg-white/[0.06] hover:border-white/12")}>
+              <span className="text-sm">{emoji}</span>
+              <span className="font-black text-[10px]">{users.length}</span>
             </motion.button>
           );
         })}
@@ -219,7 +276,7 @@
     onCancelEdit: () => void;
   }
 
-  export function MessageBubble({
+  export const MessageBubble = memo(function MessageBubble({
     message, isOwn, isGold, isGrouped, currentUserId, reactions, seenByOthers,
     editingId, editText, setEditText,
     onShare, onReply, onReact, onEdit, onDelete, onPin, onSaveEdit, onCancelEdit,
@@ -232,9 +289,11 @@
 
     if (isDeleted) {
       return (
-        <div className={cx("flex", isOwn ? "justify-end" : "justify-start")}>
-          <div className="px-4 py-2 rounded-2xl bg-white/3 border border-white/5">
-            <span className="text-[11px] text-white/20 italic">Mensaje eliminado</span>
+        <div className={cx("flex px-2", isOwn ? "justify-end" : "justify-start")}>
+          <div className="px-4 py-2.5 rounded-2xl bg-white/[0.02] border border-white/[0.04]">
+            <span className="text-[11px] text-white/15 italic flex items-center gap-1.5">
+              <Trash2 className="h-3 w-3" /> Mensaje eliminado
+            </span>
           </div>
         </div>
       );
@@ -242,54 +301,58 @@
 
     return (
       <motion.div
-        layout
-        initial={{ opacity: 0, y: 6, scale: 0.98 }}
-        animate={{ opacity: isTemp ? 0.6 : 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.2 }}
-        className={cx("flex gap-2.5 group", isOwn ? "flex-row-reverse" : "flex-row", !isGrouped && "mt-3")}
+        layout="position"
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{ opacity: isTemp ? 0.5 : 1, y: 0, scale: 1 }}
+        transition={{ ...SPRING, duration: 0.3 }}
+        className={cx("flex gap-3 px-2 group", isOwn ? "flex-row-reverse" : "flex-row", !isGrouped ? "mt-4" : "mt-0.5")}
         onPointerEnter={() => setShowActions(true)}
         onPointerLeave={() => { setShowActions(false); setShowEmojis(false); }}
       >
         {!isGrouped ? (
-          <Avatar src={message.avatarUrl} name={message.username} size="sm" gold={isGold && !isOwn} />
+          <Avatar src={message.avatarUrl} name={message.username} size="sm" gold={isGold && !isOwn} online={!isOwn} />
         ) : (
-          <div className="w-8" />
+          <div className="w-9" />
         )}
 
-        <div className={cx("flex flex-col max-w-[75%] min-w-0", isOwn ? "items-end" : "items-start")}>
+        <div className={cx("flex flex-col max-w-[78%] min-w-0", isOwn ? "items-end" : "items-start")}>
           {!isGrouped && (
-            <div className={cx("flex items-center gap-2 mb-0.5", isOwn && "flex-row-reverse")}>
-              <span className={cx("text-[11px] font-bold", isOwn ? "text-violet-300/80" : "text-white/50")}>{message.username}</span>
-              <span className="text-[10px] text-white/20">{timeAgo(message.createdAt)}</span>
+            <div className={cx("flex items-center gap-2.5 mb-1 px-1", isOwn && "flex-row-reverse")}>
+              <span className={cx("text-[11px] font-black tracking-wide",
+                isOwn ? (isGold ? "text-amber-300/70" : "text-violet-300/70") : "text-white/45")}>{message.username}</span>
+              <span className="text-[9px] text-white/15 font-medium">{timeAgo(message.createdAt)}</span>
+              {message.ephemeral && <span className="text-[9px] text-violet-400/40" title="Efímero 24h">👻</span>}
             </div>
           )}
 
           {message.replyToContent && (
-            <div className={cx("flex items-center gap-1.5 mb-1 px-3 py-1 rounded-xl text-[10px] border-l-2",
-              isGold ? "bg-amber-900/20 border-amber-400/30 text-amber-300/60" : "bg-violet-900/20 border-violet-400/30 text-violet-300/60")}>
-              <CornerUpLeft className="h-2.5 w-2.5 flex-shrink-0" />
-              <span className="font-semibold">{message.replyToUsername}</span>
-              <span className="truncate opacity-70">{message.replyToContent}</span>
+            <div className={cx("flex items-center gap-2 mb-1.5 px-3.5 py-2 rounded-2xl text-[10px] border-l-[3px]",
+              isGold ? "bg-amber-900/15 border-amber-400/30 text-amber-300/50" : "bg-violet-900/15 border-violet-400/30 text-violet-300/50")}>
+              <CornerUpLeft className="h-3 w-3 flex-shrink-0 opacity-60" />
+              <span className="font-black">{message.replyToUsername}</span>
+              <span className="truncate opacity-60">{message.replyToContent}</span>
             </div>
           )}
 
-          <div className={cx("relative rounded-2xl px-3.5 py-2 text-[13px] leading-relaxed break-words",
+          <div className={cx("relative rounded-[20px] px-4 py-2.5 text-[13.5px] leading-[1.6] break-words transition-all duration-200",
             isOwn
               ? isGold
-                ? "bg-gradient-to-br from-amber-600/40 to-yellow-700/30 text-amber-50 border border-amber-500/15"
-                : "bg-gradient-to-br from-violet-600/40 to-fuchsia-700/30 text-violet-50 border border-violet-500/15"
-              : "bg-white/[0.06] text-white/85 border border-white/[0.06]",
-            isGrouped ? (isOwn ? "rounded-tr-lg" : "rounded-tl-lg") : ""
+                ? "bg-gradient-to-br from-amber-500/25 via-yellow-600/15 to-orange-700/20 text-amber-50/90 border border-amber-400/12 shadow-[0_2px_20px_rgba(245,158,11,0.08)]"
+                : "bg-gradient-to-br from-violet-500/25 via-fuchsia-600/15 to-purple-700/20 text-violet-50/90 border border-violet-400/12 shadow-[0_2px_20px_rgba(139,92,246,0.08)]"
+              : "bg-white/[0.04] text-white/80 border border-white/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.1)]",
+            isGrouped && isOwn && "rounded-tr-lg",
+            isGrouped && !isOwn && "rounded-tl-lg",
+            "hover:shadow-[0_4px_25px_rgba(0,0,0,0.15)]"
           )}>
             {isEditing ? (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 <input value={editText} onChange={(e) => setEditText(e.target.value)} autoFocus
-                  className="bg-transparent border-b border-white/20 text-sm text-white outline-none py-1"
+                  className="bg-transparent border-b border-white/15 text-sm text-white outline-none py-1.5 placeholder-white/20"
                   onKeyDown={(e) => { if (e.key === "Enter") onSaveEdit(message.id); if (e.key === "Escape") onCancelEdit(); }}
                 />
-                <div className="flex gap-2 justify-end">
-                  <button onClick={onCancelEdit} className="text-[10px] text-white/30 hover:text-white/60 cursor-pointer">Cancelar</button>
-                  <button onClick={() => onSaveEdit(message.id)} className="text-[10px] text-violet-400 font-semibold cursor-pointer">Guardar</button>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={onCancelEdit} className="text-[10px] text-white/25 hover:text-white/50 cursor-pointer font-bold">Cancelar</button>
+                  <button onClick={() => onSaveEdit(message.id)} className="text-[10px] text-violet-400 font-black cursor-pointer hover:text-violet-300">Guardar</button>
                 </div>
               </div>
             ) : (
@@ -297,27 +360,32 @@
                 {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
 
                 {message.fileUrl && isImageFile(message.fileType) && (
-                  <a href={message.fileUrl} target="_blank" rel="noreferrer" className="block mt-2">
-                    <img src={message.fileUrl} alt={message.fileName} className="max-w-full max-h-60 rounded-xl object-cover border border-white/10" />
+                  <a href={message.fileUrl} target="_blank" rel="noreferrer" className="block mt-2.5 group/img">
+                    <img src={message.fileUrl} alt={message.fileName}
+                      className="max-w-full max-h-64 rounded-2xl object-cover border border-white/8 shadow-lg group-hover/img:border-white/15 transition-all duration-300" />
                   </a>
                 )}
                 {message.fileUrl && !isImageFile(message.fileType) && (
                   <a href={message.fileUrl} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-                    <FileText className="h-4 w-4 text-violet-400 flex-shrink-0" />
-                    <span className="text-[11px] text-white/60 truncate">{message.fileName || "Archivo"}</span>
+                    className="flex items-center gap-3 mt-2.5 px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/8 hover:bg-white/[0.06] hover:border-white/12 transition-all duration-200 group/file">
+                    <div className="p-2 rounded-xl bg-violet-500/10">
+                      <FileText className="h-4 w-4 text-violet-400" />
+                    </div>
+                    <span className="text-[12px] text-white/50 truncate flex-1 font-medium group-hover/file:text-white/70">{message.fileName || "Archivo"}</span>
                   </a>
                 )}
-                {message.audioUrl && (
-                  <AudioPlayer src={message.audioUrl} isGold={isGold} />
-                )}
-                {message.editedAt && <span className="text-[9px] text-white/20 ml-1">(editado)</span>}
+                {message.audioUrl && <AudioPlayer src={message.audioUrl} isGold={isGold} />}
+                {message.editedAt && <span className="text-[9px] text-white/15 ml-1.5 font-medium">(editado)</span>}
               </>
             )}
 
             {isOwn && message.status === "sent" && (
-              <div className="flex justify-end mt-0.5">
-                <Check className={cx("h-3 w-3", seenByOthers ? "text-violet-400" : "text-white/20")} />
+              <div className="flex justify-end mt-1">
+                <div className={cx("flex items-center gap-0.5",
+                  seenByOthers ? "text-violet-400" : "text-white/15")}>
+                  <Check className="h-3 w-3" />
+                  {seenByOthers && <Check className="h-3 w-3 -ml-1.5" />}
+                </div>
               </div>
             )}
           </div>
@@ -327,47 +395,51 @@
           <AnimatePresence>
             {showActions && !isEditing && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: -2 }}
+                initial={{ opacity: 0, scale: 0.85, y: 4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: -2 }}
-                transition={{ duration: 0.1 }}
-                className={cx("flex items-center gap-0.5 mt-1 px-1.5 py-1 rounded-2xl bg-gray-900/95 border border-white/10 shadow-2xl backdrop-blur-md",
+                exit={{ opacity: 0, scale: 0.85, y: 4 }}
+                transition={{ duration: 0.15 }}
+                className={cx("flex items-center gap-0.5 mt-1.5 px-2 py-1.5 rounded-2xl border shadow-xl",
+                  "bg-gray-950/95 border-white/8 backdrop-blur-xl shadow-black/30",
                   isOwn ? "self-end" : "self-start")}>
                 {showEmojis ? (
-                  <div className="flex gap-0.5 items-center">
+                  <motion.div initial={{ width: 0 }} animate={{ width: "auto" }} className="flex gap-0.5 items-center overflow-hidden">
                     {EMOJI_LIST.map((e) => (
-                      <motion.button key={e} whileTap={{ scale: 1.3 }}
+                      <motion.button key={e} whileTap={{ scale: 1.4 }} whileHover={{ scale: 1.2, y: -3 }}
                         onClick={() => { onReact(message.id, e); setShowEmojis(false); }}
-                        className="text-sm hover:scale-110 transition-transform cursor-pointer px-0.5">{e}</motion.button>
+                        className="text-sm cursor-pointer px-0.5 hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.3)]">{e}</motion.button>
                     ))}
-                    <button onClick={() => setShowEmojis(false)} className="text-white/30 hover:text-white/60 cursor-pointer ml-1">
+                    <button onClick={() => setShowEmojis(false)} className="text-white/20 hover:text-white/50 cursor-pointer ml-1.5 p-1 rounded-lg hover:bg-white/5">
                       <X className="h-3 w-3" />
                     </button>
-                  </div>
+                  </motion.div>
                 ) : (
                   <>
                     {[
-                      { icon: Star, title: "Reaccionar", action: () => setShowEmojis(true) },
-                      { icon: CornerUpLeft, title: "Responder", action: () => onReply(message) },
-                      { icon: Share2, title: "Compartir", action: () => onShare(message) },
-                      { icon: Pin, title: "Fijar", action: () => onPin(message.id) },
-                    ].map(({ icon: Icon, title, action }) => (
-                      <button key={title} onClick={action} title={title}
-                        className="text-white/30 hover:text-white/70 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-all">
-                        <Icon className="h-3 w-3" />
-                      </button>
+                      { icon: Flame, title: "Reaccionar", action: () => setShowEmojis(true), color: "hover:text-orange-400" },
+                      { icon: CornerUpLeft, title: "Responder", action: () => onReply(message), color: "hover:text-cyan-400" },
+                      { icon: Share2, title: "Compartir", action: () => onShare(message), color: "hover:text-emerald-400" },
+                      { icon: Pin, title: "Fijar", action: () => onPin(message.id), color: "hover:text-amber-400" },
+                    ].map(({ icon: Icon, title, action, color }) => (
+                      <motion.button key={title} whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                        onClick={action} title={title}
+                        className={cx("text-white/25 cursor-pointer p-1.5 rounded-xl hover:bg-white/8 transition-all", color)}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </motion.button>
                     ))}
                     {isOwn && canEditMsg(message.createdAt) && (
-                      <button onClick={() => onEdit(message.id)} title="Editar"
-                        className="text-white/30 hover:text-white/70 cursor-pointer p-1 rounded-lg hover:bg-white/10 transition-all">
-                        <Edit2 className="h-3 w-3" />
-                      </button>
+                      <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                        onClick={() => onEdit(message.id)} title="Editar"
+                        className="text-white/25 hover:text-blue-400 cursor-pointer p-1.5 rounded-xl hover:bg-white/8 transition-all">
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </motion.button>
                     )}
                     {isOwn && (
-                      <button onClick={() => onDelete(message.id)} title="Eliminar"
-                        className="text-red-400/40 hover:text-red-400 cursor-pointer p-1 rounded-lg hover:bg-red-400/10 transition-all">
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                        onClick={() => onDelete(message.id)} title="Eliminar"
+                        className="text-red-500/30 hover:text-red-400 cursor-pointer p-1.5 rounded-xl hover:bg-red-500/8 transition-all">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </motion.button>
                     )}
                   </>
                 )}
@@ -377,16 +449,18 @@
         </div>
       </motion.div>
     );
-  }
+  });
 
   function AudioPlayer({ src, isGold }: { src: string; isGold: boolean }) {
     const [playing, setPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [duration, setDuration] = useState(0);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     useEffect(() => {
       const audio = new Audio(src);
       audioRef.current = audio;
+      audio.addEventListener("loadedmetadata", () => setDuration(audio.duration));
       audio.addEventListener("timeupdate", () => {
         if (audio.duration) setProgress((audio.currentTime / audio.duration) * 100);
       });
@@ -400,58 +474,66 @@
       setPlaying(!playing);
     };
 
+    const fmt = (s: number) => { const m = Math.floor(s/60); return `${m}:${String(Math.floor(s%60)).padStart(2,"0")}`; };
+    const bars = Array.from({ length: 28 }, (_, i) => 3 + Math.abs(Math.sin(i * 0.7 + 1.2)) * 14 + Math.sin(i * 1.3) * 4);
+
     return (
-      <div className="flex items-center gap-2 mt-2 px-3 py-2 rounded-xl bg-white/5 border border-white/10">
-        <button onClick={toggle} className={cx("p-1.5 rounded-full cursor-pointer", isGold ? "bg-amber-500/20 text-amber-400" : "bg-violet-500/20 text-violet-400")}>
-          {playing ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-        </button>
-        <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-          <motion.div className={cx("h-full rounded-full", isGold ? "bg-amber-400" : "bg-violet-400")}
-            style={{ width: `${progress}%` }} />
+      <div className={cx("flex items-center gap-3 mt-2.5 px-4 py-3 rounded-2xl border transition-all",
+        isGold ? "bg-amber-500/[0.06] border-amber-400/10" : "bg-violet-500/[0.06] border-violet-400/10")}>
+        <motion.button whileTap={{ scale: 0.85 }} onClick={toggle}
+          className={cx("p-2 rounded-xl cursor-pointer transition-all",
+            isGold
+              ? "bg-gradient-to-br from-amber-500/20 to-yellow-600/10 text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)]"
+              : "bg-gradient-to-br from-violet-500/20 to-fuchsia-600/10 text-violet-400 shadow-[0_0_12px_rgba(139,92,246,0.2)]")}>
+          {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+        </motion.button>
+        <div className="flex-1 flex items-end gap-[2px] h-5">
+          {bars.map((h, i) => {
+            const filled = progress > (i / bars.length) * 100;
+            return (
+              <motion.div key={i}
+                animate={playing ? { scaleY: [1, 0.5 + Math.random(), 1], opacity: [0.6, 1, 0.6] } : {}}
+                transition={playing ? { duration: 0.5 + Math.random() * 0.3, repeat: Infinity, delay: i * 0.03 } : {}}
+                className={cx("w-[3px] rounded-full transition-colors duration-200",
+                  filled
+                    ? isGold ? "bg-amber-400" : "bg-violet-400"
+                    : isGold ? "bg-amber-400/15" : "bg-violet-400/15")}
+                style={{ height: `${h}px` }} />
+            );
+          })}
         </div>
-        <div className="flex gap-px">
-          {Array.from({ length: 20 }, (_, i) => (
-            <div key={i} className={cx("w-0.5 rounded-full transition-all",
-              isGold ? "bg-amber-400/40" : "bg-violet-400/40")}
-              style={{ height: `${4 + Math.sin(i * 0.8) * 4 + Math.random() * 3}px` }} />
-          ))}
-        </div>
+        {duration > 0 && <span className="text-[10px] text-white/20 font-mono font-medium tabular-nums">{fmt(duration)}</span>}
       </div>
     );
   }
 
   export function ShareModal({ message, onClose }: { message: ChatMessage; onClose: () => void }) {
     const text = encodeURIComponent(message.content ?? "");
+    const platforms = [
+      { name: "Twitter", href: `https://twitter.com/intent/tweet?text=${text}`, icon: "𝕏", color: "text-sky-400", bg: "bg-sky-400/10 hover:bg-sky-400/20 border-sky-400/10" },
+      { name: "WhatsApp", href: `https://wa.me/?text=${text}`, icon: "💬", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20 border-emerald-400/10" },
+      { name: "Copiar", href: "#", icon: "📋", color: "text-white/50", bg: "bg-white/5 hover:bg-white/10 border-white/5", onClick: () => { navigator.clipboard?.writeText(message.content ?? ""); onClose(); } },
+    ];
     return (
       <Overlay onClick={onClose}>
-        <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="w-[88%] max-w-xs bg-gray-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl"
+        <motion.div initial={{ scale: 0.9, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 24 }}
+          transition={SPRING}
+          className="w-[85%] max-w-xs bg-gray-950/95 border border-white/8 rounded-3xl p-7 shadow-2xl backdrop-blur-xl"
           onClick={(e) => e.stopPropagation()}>
-          <h3 className="text-sm font-bold text-white mb-5 text-center">Compartir mensaje</h3>
-          <div className="flex gap-4 justify-center">
-            <a href={`https://twitter.com/intent/tweet?text=${text}`} target="_blank" rel="noreferrer"
-              className="flex flex-col items-center gap-2 text-[11px] text-sky-400 hover:text-sky-300 transition-colors group">
-              <div className="p-3 rounded-2xl bg-sky-400/10 group-hover:bg-sky-400/20 transition-colors">
-                <span className="text-xl">𝕏</span>
-              </div>
-              Twitter
-            </a>
-            <a href={`https://wa.me/?text=${text}`} target="_blank" rel="noreferrer"
-              className="flex flex-col items-center gap-2 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors group">
-              <div className="p-3 rounded-2xl bg-emerald-400/10 group-hover:bg-emerald-400/20 transition-colors">
-                <span className="text-xl">💬</span>
-              </div>
-              WhatsApp
-            </a>
-            <button onClick={() => { navigator.clipboard?.writeText(message.content ?? ""); onClose(); }}
-              className="flex flex-col items-center gap-2 text-[11px] text-white/40 hover:text-white/70 cursor-pointer transition-colors group">
-              <div className="p-3 rounded-2xl bg-white/5 group-hover:bg-white/10 transition-colors">
-                <span className="text-xl">📋</span>
-              </div>
-              Copiar
-            </button>
+          <h3 className="text-sm font-black text-white/80 mb-6 text-center tracking-wide">Compartir</h3>
+          <div className="flex gap-5 justify-center">
+            {platforms.map((p) => (
+              <a key={p.name} href={p.href} target={p.href !== "#" ? "_blank" : undefined} rel="noreferrer"
+                onClick={p.onClick}
+                className={cx("flex flex-col items-center gap-2.5 group cursor-pointer")}>
+                <div className={cx("p-4 rounded-2xl border transition-all duration-300 group-hover:scale-105", p.bg)}>
+                  <span className="text-xl">{p.icon}</span>
+                </div>
+                <span className={cx("text-[10px] font-bold tracking-wide", p.color)}>{p.name}</span>
+              </a>
+            ))}
           </div>
-          <button onClick={onClose} className="mt-5 w-full text-xs text-white/20 hover:text-white/50 cursor-pointer transition-colors">Cerrar</button>
+          <button onClick={onClose} className="mt-6 w-full text-[11px] text-white/15 hover:text-white/40 cursor-pointer transition-colors font-bold">Cerrar</button>
         </motion.div>
       </Overlay>
     );
@@ -462,37 +544,58 @@
   }) {
     return (
       <Overlay>
-        <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="w-[90%] max-w-xs relative overflow-hidden rounded-3xl shadow-2xl border border-amber-500/20"
+        <motion.div initial={{ scale: 0.9, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 24 }}
+          transition={SPRING}
+          className="w-[90%] max-w-sm relative overflow-hidden rounded-3xl shadow-[0_0_80px_rgba(245,158,11,0.15)]"
           onClick={(e) => e.stopPropagation()}>
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-950 via-yellow-950 to-orange-950" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-400/10 via-transparent to-transparent" />
-          <div className="relative p-6">
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-950 via-amber-950/80 to-gray-950" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.12),transparent_60%)]" />
+          <div className="absolute inset-0" style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, rgba(245,158,11,0.05) 1px, transparent 0)",
+            backgroundSize: "24px 24px"
+          }} />
+          <div className="relative p-7">
             <CloseBtn onClick={onClose} testId="button-close-gold-modal" />
-            <div className="flex flex-col items-center gap-3 mb-6">
-              <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-400/20 to-yellow-500/10 border border-amber-400/20">
-                <Crown className="h-8 w-8 text-amber-400" />
-              </div>
-              <h2 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-400">Chat Gold</h2>
-              <p className="text-sm text-amber-200/50 text-center leading-relaxed">Salas exclusivas con funciones premium y comunidad selecta.</p>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-400">9.99</span>
-                <span className="text-sm text-amber-400/60 font-medium">WLD/mes</span>
+            <div className="flex flex-col items-center gap-4 mb-7">
+              <motion.div
+                animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.05, 1] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="p-4 rounded-3xl bg-gradient-to-br from-amber-400/15 to-yellow-500/5 border border-amber-400/15 shadow-[0_0_30px_rgba(245,158,11,0.15)]">
+                <Crown className="h-10 w-10 text-amber-400" />
+              </motion.div>
+              <h2 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-400 tracking-tight">Chat Gold</h2>
+              <p className="text-[13px] text-amber-200/35 text-center leading-relaxed max-w-[240px]">Salas exclusivas, funciones premium y comunidad selecta.</p>
+              <div className="flex items-baseline gap-1.5 mt-2">
+                <span className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-200 to-yellow-500">9.99</span>
+                <span className="text-sm text-amber-400/40 font-bold">WLD/mes</span>
               </div>
             </div>
-            <div className="space-y-2 mb-6">
-              {["Hasta 5 salas privadas", "Audio y archivos premium", "Badge Gold exclusivo"].map((f) => (
-                <div key={f} className="flex items-center gap-2.5 text-[12px] text-amber-200/60">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
-                  {f}
+            <div className="space-y-3 mb-7 px-2">
+              {[
+                { icon: Zap, text: "Hasta 5 salas privadas" },
+                { icon: Mic, text: "Audio y archivos premium" },
+                { icon: Crown, text: "Badge Gold exclusivo" },
+                { icon: Shield, text: "Prioridad en soporte" },
+              ].map((f) => (
+                <div key={f.text} className="flex items-center gap-3 text-[12px] text-amber-200/45 font-medium">
+                  <div className="p-1.5 rounded-xl bg-amber-400/8">
+                    <f.icon className="h-3.5 w-3.5 text-amber-400/60" />
+                  </div>
+                  {f.text}
                 </div>
               ))}
             </div>
             <Btn variant="gold" onClick={onSubscribe} disabled={loading} className="w-full" testId="button-subscribe-gold">
-              {loading ? "Procesando..." : "Suscribirse con WLD"}
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full" />
+                  Procesando…
+                </div>
+              ) : "Suscribirse con WLD"}
             </Btn>
             <button onClick={onClose} data-testid="button-cancel-gold"
-              className="mt-3 w-full text-xs text-amber-200/20 hover:text-amber-200/50 cursor-pointer transition-colors">
+              className="mt-4 w-full text-[11px] text-amber-200/15 hover:text-amber-200/40 cursor-pointer transition-colors font-bold tracking-wide">
               Ahora no
             </button>
           </div>
@@ -506,27 +609,28 @@
   }) {
     return (
       <Overlay>
-        <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="w-[90%] max-w-xs bg-gray-900/95 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative"
+        <motion.div initial={{ scale: 0.9, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 24 }}
+          transition={SPRING}
+          className="w-[90%] max-w-xs bg-gray-950/95 border border-white/8 rounded-3xl p-7 shadow-2xl backdrop-blur-xl relative"
           onClick={(e) => e.stopPropagation()}>
           <CloseBtn onClick={onClose} />
-          <div className="flex items-center gap-3 mb-4">
-            <div className={cx("p-2.5 rounded-2xl", isGoldPrice ? "bg-amber-500/10" : "bg-violet-500/10")}>
-              <Plus className={cx("h-5 w-5", isGoldPrice ? "text-amber-400" : "text-violet-400")} />
+          <div className="flex items-center gap-4 mb-5">
+            <div className={cx("p-3 rounded-2xl border", isGoldPrice ? "bg-amber-500/8 border-amber-400/10" : "bg-violet-500/8 border-violet-400/10")}>
+              <Plus className={cx("h-6 w-6", isGoldPrice ? "text-amber-400" : "text-violet-400")} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Sala adicional</h2>
-              <p className="text-[11px] text-white/40">Has alcanzado el límite</p>
+              <h2 className="text-base font-black text-white/80">Sala adicional</h2>
+              <p className="text-[11px] text-white/25 font-medium mt-0.5">Has alcanzado el límite</p>
             </div>
           </div>
-          <p className="text-sm text-white/50 mb-5 leading-relaxed">
+          <p className="text-[13px] text-white/40 mb-6 leading-relaxed">
             Crea una sala extra por{" "}
             <span className={cx("font-black", isGoldPrice ? "text-amber-400" : "text-violet-400")}>{amount} WLD</span>
           </p>
           <Btn variant="primary" onClick={onPay} disabled={loading} className="w-full" testId="button-pay-extra-room">
-            {loading ? "Procesando..." : `Pagar ${amount} WLD`}
+            {loading ? "Procesando…" : `Pagar ${amount} WLD`}
           </Btn>
-          <button onClick={onClose} className="mt-3 w-full text-xs text-white/20 hover:text-white/50 cursor-pointer transition-colors">Cancelar</button>
+          <button onClick={onClose} className="mt-4 w-full text-[11px] text-white/15 hover:text-white/40 cursor-pointer transition-colors font-bold">Cancelar</button>
         </motion.div>
       </Overlay>
     );
@@ -545,35 +649,36 @@
 
     return (
       <Overlay>
-        <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="w-[92%] max-w-sm bg-gray-900/95 border border-white/10 rounded-3xl p-5 shadow-2xl backdrop-blur-xl relative"
+        <motion.div initial={{ scale: 0.9, opacity: 0, y: 24 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 24 }}
+          transition={SPRING}
+          className="w-[92%] max-w-sm bg-gray-950/95 border border-white/8 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative"
           onClick={(e) => e.stopPropagation()}>
           <CloseBtn onClick={onClose} />
-          <h2 className="text-base font-bold text-white mb-4">Crear sala</h2>
+          <h2 className="text-base font-black text-white/80 mb-5 tracking-wide">Crear sala</h2>
 
-          <div className={cx("flex items-center gap-2 px-3 py-2 rounded-2xl mb-4 border",
+          <div className={cx("flex items-center gap-2.5 px-4 py-2.5 rounded-2xl mb-5 border",
             isGoldRoom
-              ? "bg-amber-400/10 border-amber-400/20 text-amber-300"
-              : "bg-violet-400/10 border-violet-400/20 text-violet-300")}>
-            {isGoldRoom ? <Crown className="h-3.5 w-3.5" /> : <Hash className="h-3.5 w-3.5" />}
-            <span className="text-xs font-bold">{isGoldRoom ? "Sala Gold" : "Sala Clásica"}</span>
+              ? "bg-amber-400/8 border-amber-400/12 text-amber-300/70"
+              : "bg-violet-400/8 border-violet-400/12 text-violet-300/70")}>
+            {isGoldRoom ? <Crown className="h-4 w-4" /> : <Hash className="h-4 w-4" />}
+            <span className="text-[11px] font-black tracking-wide">{isGoldRoom ? "Sala Gold" : "Sala Clásica"}</span>
           </div>
 
           <ModalInput label="Nombre" value={name} onChange={setName} placeholder="mi-sala-genial" maxLength={40} testId="input-room-name" />
-          <div className="mt-3">
+          <div className="mt-4">
             <ModalInput label="Descripción" value={description} onChange={setDescription} placeholder="Para hablar de…" maxLength={120} />
           </div>
 
           <button onClick={() => setIsPrivate(p => !p)}
-            className="mt-4 flex items-center gap-2.5 text-sm text-white/40 hover:text-white/70 cursor-pointer transition-all group">
-            <div className={cx("p-1.5 rounded-xl transition-colors",
-              isPrivate ? "bg-violet-500/15 text-violet-400" : "bg-white/5 text-white/30")}>
-              {isPrivate ? <Lock className="h-3.5 w-3.5" /> : <Globe className="h-3.5 w-3.5" />}
+            className="mt-5 flex items-center gap-3 text-sm text-white/35 hover:text-white/60 cursor-pointer transition-all group">
+            <div className={cx("p-2 rounded-xl border transition-all",
+              isPrivate ? "bg-violet-500/10 border-violet-400/15 text-violet-400" : "bg-white/[0.03] border-white/8 text-white/25")}>
+              {isPrivate ? <Lock className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
             </div>
-            <span className="text-[12px] font-medium">{isPrivate ? "Sala privada" : "Sala pública"}</span>
+            <span className="text-[12px] font-bold">{isPrivate ? "Sala privada" : "Sala pública"}</span>
           </button>
 
-          <Btn variant="primary" disabled={!name.trim()} className="w-full mt-5" testId="button-confirm-create-room"
+          <Btn variant="primary" disabled={!name.trim()} className="w-full mt-6" testId="button-confirm-create-room"
             onClick={() => onCreate({ name: name.trim(), type: forcedType, isPrivate, description: description.trim() || undefined })}>
             Crear sala
           </Btn>
@@ -637,76 +742,95 @@
       setFile(f);
     };
 
+    const hasContent = text.trim() || file;
+
     return (
-      <div className={cx("flex-shrink-0 border-t px-3 py-2 pb-[env(safe-area-inset-bottom,8px)]",
-        isGold ? "border-amber-500/10 bg-amber-950/20" : "border-white/5 bg-black/40")}>
+      <div className={cx("flex-shrink-0 border-t px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]",
+        isGold
+          ? "border-amber-400/8 bg-gradient-to-t from-amber-950/40 to-transparent backdrop-blur-xl"
+          : "border-white/[0.04] bg-gradient-to-t from-black/60 to-transparent backdrop-blur-xl")}>
 
         <AnimatePresence>
           {replyTo && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/8 overflow-hidden">
-              <CornerUpLeft className="h-3 w-3 text-violet-400 flex-shrink-0" />
-              <span className="text-[11px] text-white/40 truncate flex-1">
-                <b className="text-white/60">{replyTo.username}:</b> {replyTo.content}
+            <motion.div {...FADE_UP} transition={{ duration: 0.2 }}
+              className="flex items-center gap-2.5 mb-2.5 px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
+              <CornerUpLeft className="h-3.5 w-3.5 text-violet-400/60 flex-shrink-0" />
+              <span className="text-[11px] text-white/35 truncate flex-1 font-medium">
+                <b className="text-white/55">{replyTo.username}:</b> {replyTo.content}
               </span>
-              <button onClick={onCancelReply} className="text-white/20 hover:text-white/50 cursor-pointer flex-shrink-0">
+              <motion.button whileTap={{ scale: 0.8 }} onClick={onCancelReply}
+                className="text-white/15 hover:text-white/50 cursor-pointer flex-shrink-0 p-1 rounded-lg hover:bg-white/5">
                 <X className="h-3 w-3" />
-              </button>
+              </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
 
         {file && (
-          <div className="flex items-center gap-2 mb-2 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
-            {isImageFile(file.type) ? <Image className="h-3.5 w-3.5 text-violet-400" /> : <FileText className="h-3.5 w-3.5 text-violet-400" />}
-            <span className="text-[11px] text-violet-300 truncate flex-1">{file.name}</span>
-            <button onClick={() => setFile(null)} className="text-white/30 hover:text-white/60 cursor-pointer">
+          <motion.div {...FADE_UP}
+            className={cx("flex items-center gap-2.5 mb-2.5 px-4 py-2.5 rounded-2xl border",
+              isGold ? "bg-amber-500/8 border-amber-400/10" : "bg-violet-500/8 border-violet-400/10")}>
+            {isImageFile(file.type) ? <Image className="h-4 w-4 text-violet-400" /> : <FileText className="h-4 w-4 text-violet-400" />}
+            <span className={cx("text-[11px] truncate flex-1 font-medium", isGold ? "text-amber-300/60" : "text-violet-300/60")}>{file.name}</span>
+            <motion.button whileTap={{ scale: 0.8 }} onClick={() => setFile(null)}
+              className="text-white/20 hover:text-white/50 cursor-pointer p-1 rounded-lg hover:bg-white/5">
               <X className="h-3 w-3" />
-            </button>
-          </div>
+            </motion.button>
+          </motion.div>
         )}
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <input ref={fileRef} type="file" accept={FILE_ACCEPT} onChange={handleFile} className="hidden" />
-          <button onClick={() => fileRef.current?.click()} disabled={disabled}
-            className={cx("p-2 rounded-xl transition-all cursor-pointer", isGold ? "text-amber-400/40 hover:text-amber-400 hover:bg-amber-400/10" : "text-white/25 hover:text-white/60 hover:bg-white/8")}>
-            <Paperclip className="h-4 w-4" />
-          </button>
+
+          <motion.button whileTap={{ scale: 0.85 }} onClick={() => fileRef.current?.click()} disabled={disabled}
+            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer border",
+              isGold ? "text-amber-400/30 hover:text-amber-400 border-amber-400/0 hover:border-amber-400/10 hover:bg-amber-400/8"
+                     : "text-white/20 hover:text-white/60 border-white/0 hover:border-white/8 hover:bg-white/5")}>
+            <Paperclip className="h-4.5 w-4.5" />
+          </motion.button>
 
           <div className="flex-1 relative">
             <input ref={inputRef} value={text}
               onChange={(e) => { setText(e.target.value); onTyping(); }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
-              placeholder={recording ? "Grabando audio…" : "Escribe un mensaje…"}
+              placeholder={recording ? "🔴 Grabando audio…" : "Escribe un mensaje…"}
               disabled={disabled || recording}
-              className={cx("w-full rounded-2xl border px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none transition-all",
+              className={cx("w-full rounded-2xl border px-5 py-3 text-[14px] text-white placeholder-white/15 outline-none transition-all duration-300 font-medium",
                 isGold
-                  ? "bg-amber-900/20 border-amber-500/15 focus:border-amber-400/40 focus:bg-amber-900/30 focus:ring-1 focus:ring-amber-500/15"
-                  : "bg-white/[0.04] border-white/8 focus:border-violet-400/40 focus:bg-white/[0.06] focus:ring-1 focus:ring-violet-500/15")} />
+                  ? "bg-amber-900/15 border-amber-500/10 focus:border-amber-400/30 focus:bg-amber-900/25 focus:shadow-[0_0_20px_rgba(245,158,11,0.08)]"
+                  : "bg-white/[0.03] border-white/[0.06] focus:border-violet-400/30 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(139,92,246,0.08)]")} />
           </div>
 
-          <button onClick={() => setEphemeral(e => !e)} title="Mensaje efímero (24h)"
-            className={cx("p-2 rounded-xl transition-all cursor-pointer text-[11px]",
-              ephemeral ? (isGold ? "text-amber-400 bg-amber-400/15" : "text-violet-400 bg-violet-400/15") : "text-white/20 hover:text-white/40 hover:bg-white/5")}>
+          <motion.button whileTap={{ scale: 0.85 }} onClick={() => setEphemeral(e => !e)} title="Mensaje efímero (24h)"
+            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer text-sm border",
+              ephemeral
+                ? isGold
+                  ? "text-amber-400 bg-amber-400/12 border-amber-400/15 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                  : "text-violet-400 bg-violet-400/12 border-violet-400/15 shadow-[0_0_10px_rgba(139,92,246,0.15)]"
+                : "text-white/15 hover:text-white/35 border-transparent hover:bg-white/5")}>
             👻
-          </button>
+          </motion.button>
 
-          {text.trim() || file ? (
-            <motion.button whileTap={{ scale: 0.9 }} onClick={handleSubmit} disabled={disabled}
-              className={cx("p-2.5 rounded-2xl transition-all cursor-pointer shadow-lg",
+          {hasContent ? (
+            <motion.button
+              whileTap={{ scale: 0.85 }}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              onClick={handleSubmit} disabled={disabled}
+              className={cx("p-3 rounded-2xl transition-all cursor-pointer",
                 isGold
-                  ? "bg-gradient-to-r from-amber-500 to-yellow-400 text-black shadow-amber-500/25"
-                  : "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-violet-500/25")}>
-              <Send className="h-4 w-4" />
+                  ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-black shadow-[0_0_25px_rgba(245,158,11,0.35)]"
+                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.35)]")}>
+              <Send className="h-4.5 w-4.5" />
             </motion.button>
           ) : (
-            <motion.button whileTap={{ scale: 0.9 }}
+            <motion.button whileTap={{ scale: 0.85 }}
               onClick={recording ? stopRec : startRec} disabled={disabled}
-              className={cx("p-2.5 rounded-2xl transition-all cursor-pointer",
+              className={cx("p-3 rounded-2xl transition-all cursor-pointer",
                 recording
-                  ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/30"
-                  : isGold ? "text-amber-400/40 hover:text-amber-400 hover:bg-amber-400/10" : "text-white/25 hover:text-white/60 hover:bg-white/8")}>
-              {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-pulse"
+                  : isGold ? "text-amber-400/30 hover:text-amber-400 hover:bg-amber-400/8" : "text-white/20 hover:text-white/60 hover:bg-white/5")}>
+              {recording ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}
             </motion.button>
           )}
         </div>
@@ -718,13 +842,14 @@
     if (count <= 0) return null;
     return (
       <motion.button
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
+        initial={{ opacity: 0, y: -15, scale: 0.9 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -15, scale: 0.9 }}
+        transition={SPRING}
         onClick={onClick}
-        className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-full bg-violet-600/90 text-white text-[11px] font-bold shadow-lg shadow-violet-600/30 cursor-pointer hover:bg-violet-500/90 transition-colors backdrop-blur-sm border border-violet-400/20"
+        className="absolute top-20 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-gradient-to-r from-violet-600/90 to-fuchsia-600/90 text-white text-[11px] font-black shadow-[0_4px_30px_rgba(139,92,246,0.4)] cursor-pointer hover:shadow-[0_4px_40px_rgba(139,92,246,0.6)] transition-shadow backdrop-blur-sm border border-violet-400/20 tracking-wide"
       >
-        ↓ {count} mensaje{count > 1 ? "s" : ""} nuevo{count > 1 ? "s" : ""}
+        ↓ {count} nuevo{count > 1 ? "s" : ""}
       </motion.button>
     );
   }

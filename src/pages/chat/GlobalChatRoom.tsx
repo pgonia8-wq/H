@@ -30,7 +30,7 @@
   import { useState, useEffect, useRef, useCallback } from "react";
   import { motion, AnimatePresence } from "framer-motion";
   import {
-    X, Crown, Hash, Search, Plus, Users, MessageSquare, Sparkles, Lock, ChevronUp,
+    X, Crown, Hash, Search, Plus, Users, MessageSquare, Sparkles, Lock, ChevronUp, Zap, Flame,
   } from "lucide-react";
   import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
   import { supabase } from "../../supabaseClient";
@@ -42,7 +42,7 @@
   import {
     Avatar, Btn, MessageBubble, ChatInput, TypingIndicator, PinnedBar,
     ShareModal, GoldSubscribeModal, ExtraRoomPayModal, CreateRoomModal,
-    DateSeparator, UnreadBanner,
+    DateSeparator, UnreadBanner, AnimatedBg, GlassPanel,
   } from "./chatComponents";
 
   const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
@@ -386,12 +386,12 @@
                       const active = roomType === t;
                       return (
                         <button key={t} onClick={() => handleSwitchType(t)}
-                          className={cx("flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-[11px] font-bold transition-all cursor-pointer",
+                          className={cx("flex items-center gap-1.5 px-4 py-2 rounded-2xl text-[11px] font-black tracking-wide transition-all duration-300 cursor-pointer",
                             active
                               ? t === "gold"
-                                ? "bg-gradient-to-r from-amber-500/20 to-yellow-500/10 text-amber-300 border border-amber-400/20 shadow-sm shadow-amber-500/10"
-                                : "bg-gradient-to-r from-violet-500/20 to-purple-500/10 text-violet-300 border border-violet-400/20 shadow-sm shadow-violet-500/10"
-                              : "text-white/25 hover:text-white/50 hover:bg-white/5")}>
+                                ? "bg-gradient-to-r from-amber-500/20 to-yellow-600/10 text-amber-300 border border-amber-400/15 shadow-[0_0_20px_rgba(245,158,11,0.12)]"
+                                : "bg-gradient-to-r from-violet-500/20 to-fuchsia-500/10 text-violet-300 border border-violet-400/15 shadow-[0_0_20px_rgba(139,92,246,0.12)]"
+                              : "text-white/20 hover:text-white/45 hover:bg-white/[0.04] border border-transparent")}>
                           {t === "gold" ? <Crown className="h-3 w-3" /> : <Hash className="h-3 w-3" />}
                           {t === "classic" ? "Clásico" : "Gold"}
                         </button>
@@ -402,10 +402,12 @@
                   <div className="flex-1 flex items-center gap-1 overflow-x-auto scrollbar-none min-w-0 mx-1">
                     {filteredRooms.map((r) => (
                       <button key={r.id} onClick={() => switchRoom(r.id)} title={r.name}
-                        className={cx("flex-shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-semibold transition-all cursor-pointer whitespace-nowrap",
+                        className={cx("flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all duration-200 cursor-pointer whitespace-nowrap",
                           r.id === selectedRoomId
-                            ? isGold ? "bg-amber-400/15 text-amber-300" : "bg-violet-400/15 text-violet-300"
-                            : "text-white/20 hover:text-white/50 hover:bg-white/5")}>
+                            ? isGold
+                              ? "bg-amber-400/10 text-amber-300 border border-amber-400/10 shadow-[0_0_10px_rgba(245,158,11,0.08)]"
+                              : "bg-violet-400/10 text-violet-300 border border-violet-400/10 shadow-[0_0_10px_rgba(139,92,246,0.08)]"
+                            : "text-white/15 hover:text-white/40 hover:bg-white/[0.03] border border-transparent")}>
                         {r.isPrivate && <Lock className="h-2.5 w-2.5 flex-shrink-0" />}
                         {r.name.length > 12 ? r.name.slice(0, 12) + "…" : r.name}
                       </button>
@@ -446,7 +448,7 @@
                 <AnimatePresence>
                   {showConnectedPanel && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      className={cx("px-4 py-2.5 border-b flex-shrink-0 overflow-hidden",
+                      className={cx("relative z-10 px-5 py-3 border-b flex-shrink-0 overflow-hidden",
                         isGold ? "border-amber-500/5 bg-amber-950/20" : "border-white/5 bg-white/[0.02]")}>
                       <div className="flex items-center gap-2 mb-2">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50" />
@@ -469,9 +471,9 @@
                 <AnimatePresence>
                   {showSearch && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      className="px-3 py-2 border-b border-white/5 flex-shrink-0">
+                      className="relative z-10 px-4 py-2.5 border-b border-white/[0.04] flex-shrink-0">
                       <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar mensajes…"
-                        className="w-full bg-white/[0.04] border border-white/8 rounded-2xl px-4 py-2 text-sm text-white placeholder-white/15 outline-none focus:border-violet-400/30 focus:ring-1 focus:ring-violet-500/15 transition-all" autoFocus />
+                        className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl px-5 py-3 text-sm text-white placeholder-white/15 outline-none focus:border-violet-400/25 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(139,92,246,0.06)] transition-all duration-300 font-medium" autoFocus />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -483,7 +485,7 @@
 
                 {/* ═══ MESSAGES ═══ */}
                 <div ref={scrollRef} onScroll={handleScroll}
-                  className="flex-1 overflow-y-auto px-4 py-3 scroll-smooth relative">
+                  className="relative z-10 flex-1 overflow-y-auto px-3 py-4 scroll-smooth">
 
                   {hasMore[selectedRoomId] && (
                     <button onClick={loadMore}
@@ -494,12 +496,17 @@
                   )}
 
                   {subsLoading && (
-                    <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <div className="flex flex-col items-center justify-center h-full gap-5">
                       <div className="relative">
-                        <div className="w-10 h-10 rounded-full border-2 border-violet-500/20 border-t-violet-400 animate-spin" />
-                        <Sparkles className="h-4 w-4 text-violet-400 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                        <div className={cx("w-14 h-14 rounded-full border-[3px] animate-spin",
+                          isGold ? "border-amber-500/10 border-t-amber-400" : "border-violet-500/10 border-t-violet-400")} />
+                        <div className={cx("absolute inset-0 w-14 h-14 rounded-full border-[3px] animate-spin",
+                          isGold ? "border-transparent border-b-yellow-500/40" : "border-transparent border-b-fuchsia-500/40")}
+                          style={{ animationDirection: "reverse", animationDuration: "1.5s" }} />
+                        <Sparkles className={cx("h-5 w-5 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse",
+                          isGold ? "text-amber-400" : "text-violet-400")} />
                       </div>
-                      <p className="text-sm text-white/20 font-medium">Cargando chat…</p>
+                      <p className={cx("text-sm font-bold tracking-wide", isGold ? "text-amber-300/25" : "text-violet-300/25")}>Cargando chat…</p>
                     </div>
                   )}
 
@@ -507,14 +514,16 @@
                     <div className="flex flex-col items-center justify-center h-full gap-5 text-center px-6">
                       {roomType === "gold" ? (
                         <>
-                          <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-400/10 to-yellow-500/5 border border-amber-400/10">
-                            <Crown className="h-10 w-10 text-amber-400/60" />
+                          <div className="p-5 rounded-3xl bg-gradient-to-br from-amber-400/8 to-yellow-500/[0.03] border border-amber-400/8 shadow-[0_0_40px_rgba(245,158,11,0.08)]">
+                            <Crown className="h-12 w-12 text-amber-400/50" />
                           </div>
-                          <div>
-                            <p className="text-base font-bold text-amber-200/60 mb-1">Chat Gold</p>
-                            <p className="text-sm text-amber-200/30">Accede a salas exclusivas y funciones premium</p>
+                          <div className="text-center">
+                            <p className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 to-yellow-400 mb-1.5">Chat Gold</p>
+                            <p className="text-[13px] text-amber-200/25 leading-relaxed max-w-[220px]">Salas exclusivas y funciones premium para la comunidad selecta</p>
                           </div>
-                          <Btn variant="gold" onClick={() => setShowGoldModal(true)}>Obtener Gold</Btn>
+                          <Btn variant="gold" onClick={() => setShowGoldModal(true)} className="mt-2">
+                            <Zap className="h-4 w-4" /> Obtener Gold
+                          </Btn>
                         </>
                       ) : (
                         <>
@@ -528,11 +537,15 @@
                   )}
 
                   {!subsLoading && !noAccess && activeMessages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-                      <div className="p-4 rounded-3xl bg-white/[0.02] border border-white/5">
-                        <MessageSquare className="h-8 w-8 text-white/10" />
+                    <div className="flex flex-col items-center justify-center h-full gap-5 text-center">
+                      <div className={cx("p-5 rounded-3xl border",
+                        isGold ? "bg-amber-500/[0.04] border-amber-400/8" : "bg-violet-500/[0.04] border-violet-400/8")}>
+                        <MessageSquare className={cx("h-10 w-10", isGold ? "text-amber-400/20" : "text-violet-400/20")} />
                       </div>
-                      <p className="text-sm text-white/15 font-medium">¡Sé el primero en escribir!</p>
+                      <div>
+                        <p className={cx("text-sm font-black tracking-wide mb-1", isGold ? "text-amber-200/25" : "text-white/20")}>¡Sé el primero en escribir!</p>
+                        <p className="text-[11px] text-white/10 font-medium">Los mensajes aparecerán aquí</p>
+                      </div>
                     </div>
                   )}
 
@@ -570,7 +583,7 @@
                 <AnimatePresence>
                   {errorToast && (
                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                      className="absolute bottom-20 left-3 right-3 z-40 px-4 py-3 rounded-2xl bg-red-950/90 border border-red-500/20 text-[12px] text-red-200 shadow-2xl backdrop-blur-md flex items-center justify-between gap-3">
+                      className="absolute bottom-20 left-4 right-4 z-40 px-5 py-3.5 rounded-2xl bg-red-950/90 border border-red-500/15 text-[12px] text-red-200 shadow-[0_4px_30px_rgba(239,68,68,0.15)] backdrop-blur-xl flex items-center justify-between gap-3 font-medium">
                       <span>⚠ {errorToast}</span>
                       <button onClick={() => setErrorToast(null)} className="text-red-400/60 hover:text-red-300 flex-shrink-0 cursor-pointer"><X className="h-3 w-3" /></button>
                     </motion.div>
@@ -579,8 +592,10 @@
 
                 {/* ═══ INPUT ═══ */}
                 {!noAccess && (
+                  <div className="relative z-10">
                   <ChatInput onSend={handleSend} onTyping={emitTyping} isGold={isGold} hasGoldAccess={hasGoldAccess}
                     disabled={!selectedRoomId} replyTo={replyTo} onCancelReply={() => setReplyTo(null)} onShowToast={showError} />
+                  </div>
                 )}
 
                 {/* Modals */}
@@ -609,7 +624,7 @@
               <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 28, stiffness: 300 }} className="w-full h-full flex flex-col">
                 <div className="flex items-center justify-between px-4 pt-[env(safe-area-inset-top,12px)] pb-2 bg-black border-b border-white/5">
-                  <span className="text-sm font-bold text-white/60">Token Market</span>
+                  <span className="text-sm font-black text-white/60 tracking-wide">Token Market</span>
                   <button onClick={() => setShowTokenApp(false)}
                     className="p-1.5 rounded-xl text-white/30 hover:text-white/60 hover:bg-white/8 cursor-pointer transition-all">
                     <X className="h-4 w-4" />
