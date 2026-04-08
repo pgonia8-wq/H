@@ -1,14 +1,18 @@
 import { supabase, cors } from "./_supabase.mjs";
+  import { requireOrb } from "./_orbGuard.mjs";
 
-export default async function handler(req, res) {
-    cors(res);
-    if (req.method === "OPTIONS") return res.status(200).end();
-    if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  export default async function handler(req, res) {
+      cors(res);
+      if (req.method === "OPTIONS") return res.status(200).end();
+      if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-    const { code, userId } = req.body ?? {};
-    if (!code || !userId) return res.status(400).json({ error: "code and userId required" });
+      const { code, userId } = req.body ?? {};
+      if (!code || !userId) return res.status(400).json({ error: "code and userId required" });
 
-    try {
+      const orbOk = await requireOrb(userId, res);
+      if (!orbOk) return;
+
+      try {
       const { data: link, error: lErr } = await supabase
         .from("airdrop_links")
         .select("*")
@@ -123,7 +127,7 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error("[POST /api/airdropRedeem]", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
   
