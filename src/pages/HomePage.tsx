@@ -314,37 +314,33 @@ const HomePage: React.FC<HomePageProps> = ({
       }
 
       if (type === "REQUEST_ORB_VERIFY") {
-        console.log("[H] REQUEST_ORB_VERIFY received from token");
-        const win = tokenIframeRef.current?.contentWindow;
-        if (!win) { console.warn("[H] tokenIframeRef.contentWindow is null"); return; }
-        try {
-          const verifyRes = await MiniKit.commandsAsync.verify({
-            action: "user-orb",
-            signal: wallet ?? "",
-            verification_level: VerificationLevel.Orb,
-          });
-          const proof = verifyRes?.finalPayload;
+          console.log("[H] REQUEST_ORB_VERIFY received from token");
+          const win = tokenIframeRef.current?.contentWindow;
+          if (!win) { console.warn("[H] tokenIframeRef.contentWindow is null"); return; }
+          try {
+            const verifyRes = await MiniKit.commandsAsync.verify({
+              action: "user-orb",
+              signal: wallet ?? "",
+              verification_level: VerificationLevel.Orb,
+            });
+            const proof = verifyRes?.finalPayload;
             if (proof?.status === "error") {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: proof.error_code || "minikit_error" } }, TOKEN_APP_URL || "*");
             } else if (proof && proof.verification_level === "orb") {
-              const orbRes = await fetch(
-                (TOKEN_APP_URL || "") + "/api/verifyOrb",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ payload: proof, userId: userId ?? "" }),
-                }
-              );
-              const orbData = await orbRes.json();
-              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: !!orbData.success, orbVerified: !!orbData.orbVerified } }, TOKEN_APP_URL || "*");
+              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true } }, TOKEN_APP_URL || "*");
+              fetch((TOKEN_APP_URL || "") + "/api/verifyOrb", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ payload: proof, userId: userId ?? "" }),
+              }).catch((err) => console.warn("[H] verifyOrb backend error:", err));
             } else {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: "ORB verification not completed" } }, TOKEN_APP_URL || "*");
             }
-        } catch (err: any) {
-          win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: err.message } }, TOKEN_APP_URL || "*");
+          } catch (err: any) {
+            win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: err.message } }, TOKEN_APP_URL || "*");
+          }
+          return;
         }
-        return;
-      }
 
       if (type === "REQUEST_PAYMENT") {
         const win = tokenIframeRef.current?.contentWindow;
