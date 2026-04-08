@@ -233,7 +233,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
               });
             } else {
               await supabase.rpc("increment_post_views", {
-                post_id_input: post.id
+                pid: post.id
               });
             }
           } catch (err) {
