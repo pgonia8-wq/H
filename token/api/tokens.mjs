@@ -10,7 +10,7 @@ const INITIAL_SUPPLY = 500_000;
 const CREATOR_FEE_WLD = 5;
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === "OPTIONS") return res.status(200).end();
 
   if (req.method === "GET") {
@@ -112,6 +112,24 @@ export default async function handler(req, res) {
   if (!name || !symbol || !creatorId) {
     return res.status(400).json({ error: "Missing required fields: name, symbol, creatorId" });
   }
+
+  
+    const BLOCKED_WORDS = /\b(scam|rug|porn|xxx|nazi|kill|terror|fraud)\b/i;
+    const nameClean = (name || "").trim();
+    const symbolClean = (symbol || "").trim();
+    const descClean = (description || "").trim();
+    if (nameClean.length < 2 || nameClean.length > 32) {
+      return res.status(400).json({ error: "Token name must be 2-32 characters" });
+    }
+    if (symbolClean.length < 2 || symbolClean.length > 10) {
+      return res.status(400).json({ error: "Symbol must be 2-10 characters" });
+    }
+    if (!/^[A-Za-z0-9 _-]+$/.test(symbolClean)) {
+      return res.status(400).json({ error: "Symbol must be alphanumeric" });
+    }
+    if (BLOCKED_WORDS.test(nameClean) || BLOCKED_WORDS.test(symbolClean) || BLOCKED_WORDS.test(descClean)) {
+      return res.status(400).json({ error: "Content contains prohibited words" });
+    }
 
   const orbOk = await requireOrb(creatorId, res);
   if (!orbOk) return;
