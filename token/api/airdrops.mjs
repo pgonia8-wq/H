@@ -41,7 +41,7 @@ import { supabase, cors, mapAirdropRow } from "./_supabase.mjs";
         return res.status(200).json({ airdrops: result, total: result.length });
       } catch (err) {
         console.error("[GET /api/airdrops]", err.message);
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
 
@@ -82,7 +82,7 @@ import { supabase, cors, mapAirdropRow } from "./_supabase.mjs";
         return res.status(201).json({ success: true, airdropId: inserted.id, message: totalAmount.toLocaleString() + " " + token.symbol + " airdrop created" });
       } catch (err) {
         console.error("[POST /api/airdrops]", err.message);
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
     return res.status(405).json({ error: "Method not allowed" });
