@@ -119,6 +119,7 @@ export default async function handler(req, res) {
           id: nullifierHash,
           tier: "free",
           verified: true,
+          verification_level: "device",
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" }
