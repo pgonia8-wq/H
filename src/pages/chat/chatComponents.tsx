@@ -122,37 +122,33 @@
     return null;
   }
 
-  export function Avatar({ src, name, size = "md", ring = false, gold = false, online = false }: {
-    src?: string; name: string; size?: "xs" | "sm" | "md" | "lg"; ring?: boolean; gold?: boolean; online?: boolean;
-  }) {
-    const sz = { xs: "h-6 w-6 text-[7px]", sm: "h-9 w-9 text-[10px]", md: "h-11 w-11 text-xs", lg: "h-14 w-14 text-sm" }[size];
-    const ringStyle = ring
-      ? gold
-        ? "ring-2 ring-amber-400/50 ring-offset-2 ring-offset-black/50"
-        : "ring-2 ring-violet-400/50 ring-offset-2 ring-offset-black/50"
-      : "";
-    return (
-      <div className="relative flex-shrink-0">
-        {src ? (
-          <img src={src} alt={name} className={cx(sz, "rounded-2xl object-cover", ringStyle)} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-        ) : (
-          <div className={cx(sz, "rounded-2xl flex items-center justify-center font-black", ringStyle,
-            gold ? "bg-gradient-to-br from-amber-600/50 via-yellow-700/40 to-orange-800/50 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.15)]"
-                 : "bg-gradient-to-br from-violet-600/40 via-fuchsia-700/30 to-purple-800/40 text-violet-200 shadow-[0_0_15px_rgba(139,92,246,0.15)]")}>
-            {initials(name) || "?"}
-          </div>
-        )}
-        {online && (
-          <motion.span
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-[2.5px] border-gray-950 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
-        )}
-      </div>
-    );
-  }
+  export function Avatar({ src, name, size = "md", ring = false, gold = false }: {
+      src?: string; name: string; size?: "xs" | "sm" | "md" | "lg"; ring?: boolean; gold?: boolean;
+    }) {
+      const [imgFailed, setImgFailed] = useState(false);
+      const sz = { xs: "h-6 w-6 text-[9px]", sm: "h-8 w-8 text-[11px]", md: "h-10 w-10 text-sm", lg: "h-14 w-14 text-base" }[size];
+      const ringStyle = ring
+        ? gold ? "ring-2 ring-yellow-400" : "ring-2 ring-violet-400"
+        : "";
+      const showImg = src && !imgFailed;
+      return (
+        <div className="relative flex-shrink-0">
+          {showImg ? (
+            <img src={src} alt={name}
+              className={cx(sz, "rounded-full object-cover", ringStyle)}
+              onError={() => setImgFailed(true)} />
+          ) : (
+            <div className={cx(sz, "rounded-full flex items-center justify-center flex-shrink-0", ringStyle,
+              gold ? "bg-gradient-to-br from-yellow-800/80 to-amber-900/80 text-yellow-300 font-bold"
+                   : "bg-gradient-to-br from-violet-800/80 to-fuchsia-900/80 text-violet-200 font-semibold")}>
+              {initials(name) || "?"}
+            </div>
+          )}
+        </div>
+      );
+    }
 
-  export function TypingIndicator({ users }: { users: TypingUser[] }) {
+    export function TypingIndicator({ users }: { users: TypingUser[] }) {
     if (!users.length) return null;
     const label = users.length === 1
       ? `${users[0].username} está escribiendo`
@@ -309,7 +305,7 @@
         onClick={() => { if (!isEditing) setShowActions(prev => !prev); }}
       >
         {!isGrouped ? (
-          <Avatar src={message.avatarUrl} name={message.username} size="sm" gold={isGold && !isOwn} online={!isOwn} />
+          <Avatar src={message.avatarUrl} name={message.username} size="sm" ring gold={isGold} />
         ) : (
           <div className="w-9" />
         )}
@@ -706,7 +702,7 @@
     const mediaRecRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const fileRef = useRef<HTMLInputElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
 
     const INPUT_EMOJIS = ["😀","😂","🥹","😍","🤩","😎","🥺","😭","🔥","❤️","💯","👍","👎","🙌","🎉","💀","🤔","😈","👀","💜","⚡","🫡","🤝","✨"];
 
@@ -727,7 +723,7 @@
 
     const startRec = async () => {
       if (!hasGoldAccess) {
-        onShowToast("🎙️ Enviar audios es exclusivo de Gold. ¡Hazte premium!");
+        onShowToast("¡Hazte Gold para enviar audios! 🎙️");
         return;
       }
       try {
@@ -763,142 +759,93 @@
     const hasContent = text.trim() || file;
 
     return (
-      <div className={cx("flex-shrink-0 border-t px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]",
-        isGold
-          ? "border-amber-400/12 bg-gradient-to-t from-amber-950/40 to-transparent backdrop-blur-xl"
-          : "border-white/[0.06] bg-gradient-to-t from-black/60 to-transparent backdrop-blur-xl")}>
+      <div className="flex flex-col gap-1.5 px-3 pb-[env(safe-area-inset-bottom,12px)] flex-shrink-0">
 
         <AnimatePresence>
           {replyTo && (
-            <motion.div {...FADE_UP} transition={{ duration: 0.2 }}
-              className="flex items-center gap-2.5 mb-2.5 px-4 py-2 rounded-2xl bg-white/[0.06] border border-white/[0.08] overflow-hidden">
-              <CornerUpLeft className="h-3.5 w-3.5 text-violet-400/60 flex-shrink-0" />
-              <span className="text-[11px] text-white/50 truncate flex-1 font-medium">
-                <b className="text-white/75">{replyTo.username}:</b> {replyTo.content}
-              </span>
-              <motion.button whileTap={{ scale: 0.8 }} onClick={onCancelReply}
-                className="text-white/30 hover:text-white/60 cursor-pointer flex-shrink-0 p-1 rounded-lg hover:bg-white/5">
-                <X className="h-3 w-3" />
-              </motion.button>
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs">
+              <CornerUpLeft className="h-3 w-3 text-violet-400 flex-shrink-0" />
+              <span className="text-violet-300 font-semibold truncate">{replyTo.username}:</span>
+              <span className="text-white/40 truncate flex-1">{replyTo.content ?? "📎 archivo"}</span>
+              <button onClick={onCancelReply} className="text-white/30 hover:text-white/60 cursor-pointer flex-shrink-0"><X className="h-3 w-3" /></button>
             </motion.div>
           )}
         </AnimatePresence>
 
         {file && (
-          <motion.div {...FADE_UP}
-            className={cx("flex items-center gap-2.5 mb-2.5 px-4 py-2.5 rounded-2xl border",
-              isGold ? "bg-amber-500/10 border-amber-400/12" : "bg-violet-500/10 border-violet-400/12")}>
-            {isImageFile(file.type) ? <Image className="h-4 w-4 text-violet-400" /> : <FileText className="h-4 w-4 text-violet-400" />}
-            <span className={cx("text-[11px] truncate flex-1 font-medium", isGold ? "text-amber-300/80" : "text-violet-300/80")}>{file.name}</span>
-            <motion.button whileTap={{ scale: 0.8 }} onClick={() => setFile(null)}
-              className="text-white/30 hover:text-white/60 cursor-pointer p-1 rounded-lg hover:bg-white/5">
-              <X className="h-3 w-3" />
-            </motion.button>
-          </motion.div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-xs">
+            <FileText className="h-3 w-3 text-violet-400 flex-shrink-0" />
+            <span className="text-violet-300 truncate flex-1">{file.name}</span>
+            <button onClick={() => setFile(null)} className="text-white/30 hover:text-white/60 cursor-pointer flex-shrink-0"><X className="h-3 w-3" /></button>
+          </div>
         )}
 
         <AnimatePresence>
           {showEmojiPicker && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden mb-2">
-              <div className={cx("flex flex-wrap gap-1 p-3 rounded-2xl border",
-                isGold ? "bg-amber-950/40 border-amber-400/10" : "bg-white/[0.04] border-white/[0.06]")}>
-                {INPUT_EMOJIS.map((e) => (
-                  <motion.button key={e} whileTap={{ scale: 1.3 }}
-                    onClick={() => insertEmoji(e)}
-                    className="text-xl w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 cursor-pointer transition-colors">
-                    {e}
-                  </motion.button>
-                ))}
-              </div>
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+              className="flex flex-wrap gap-1 px-2 py-1.5 rounded-xl bg-gray-900/90 border border-white/10">
+              {INPUT_EMOJIS.map((e) => (
+                <button key={e} onClick={() => insertEmoji(e)}
+                  className="text-lg hover:scale-125 transition-transform cursor-pointer">{e}</button>
+              ))}
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-end gap-2">
           <input ref={fileRef} type="file" accept={hasGoldAccess ? FILE_ACCEPT : "image/png,image/jpeg,image/jpg,image/gif,image/webp"} onChange={handleFile} className="hidden" />
 
-          <motion.button whileTap={{ scale: 0.85 }} onClick={() => fileRef.current?.click()} disabled={disabled}
-            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer",
-              isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10"
-                     : "text-white/35 hover:text-white/60 hover:bg-white/8")}>
-            <Paperclip className="h-[18px] w-[18px]" />
-          </motion.button>
+          <button onClick={() => fileRef.current?.click()} disabled={disabled}
+            className="flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30">
+            <Paperclip className="h-4 w-4" />
+          </button>
 
-          <motion.button whileTap={{ scale: 0.85 }} onClick={() => setShowEmojiPicker(p => !p)} disabled={disabled}
-            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer",
-              showEmojiPicker
-                ? isGold ? "text-amber-400 bg-amber-400/15" : "text-violet-400 bg-violet-400/15"
-                : isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10"
-                         : "text-white/35 hover:text-white/60 hover:bg-white/8")}>
-            <Smile className="h-[18px] w-[18px]" />
-          </motion.button>
+          <button onClick={() => setShowEmojiPicker(e => !e)} disabled={disabled}
+            className="flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-30 text-lg">
+            😊
+          </button>
 
           <div className="flex-1 relative">
-            <input ref={inputRef} value={text}
+            <textarea ref={inputRef} value={text} rows={1}
               onChange={(e) => { setText(e.target.value); onTyping(); }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
               placeholder={recording ? "🔴 Grabando audio…" : "Escribe un mensaje…"}
               disabled={disabled || recording}
-              className={cx("w-full rounded-2xl border px-4 py-3 text-[14px] text-white placeholder-white/35 outline-none transition-all duration-300 font-medium",
+              className={cx("w-full resize-none rounded-xl border px-3 py-2 text-sm text-white placeholder-white/25 outline-none transition-colors max-h-24 overflow-y-auto",
                 isGold
-                  ? "bg-amber-900/25 border-amber-500/15 focus:border-amber-400/40 focus:bg-amber-900/30 focus:shadow-[0_0_20px_rgba(245,158,11,0.1)]"
-                  : "bg-white/[0.06] border-white/[0.08] focus:border-violet-400/40 focus:bg-white/[0.07] focus:shadow-[0_0_20px_rgba(139,92,246,0.1)]")} />
+                  ? "bg-amber-900/25 border-amber-500/15 focus:border-amber-400/40"
+                  : "bg-white/5 border-white/10 focus:border-violet-500/50")} />
           </div>
 
-          {hasGoldAccess && (
-            <motion.button whileTap={{ scale: 0.85 }} onClick={() => setEphemeral(e => !e)} title="Mensaje efímero (24h)"
-              className={cx("p-2.5 rounded-2xl transition-all cursor-pointer text-sm",
-                ephemeral
-                  ? isGold
-                    ? "text-amber-400 bg-amber-400/15 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
-                    : "text-violet-400 bg-violet-400/15 shadow-[0_0_10px_rgba(139,92,246,0.15)]"
-                  : "text-white/25 hover:text-white/45 hover:bg-white/5")}>
-              👻
-            </motion.button>
-          )}
+          <button onClick={() => setEphemeral(e => !e)} disabled={disabled} title="Mensaje efímero (24h)"
+            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30",
+              ephemeral ? "text-purple-400 bg-purple-400/15" : "text-white/25 hover:text-white/50 hover:bg-white/8")}>
+            <Sparkles className="h-4 w-4" />
+          </button>
 
-          {hasContent ? (
-            <motion.button
-              whileTap={{ scale: 0.85 }}
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              onClick={handleSubmit} disabled={disabled}
-              className={cx("p-3 rounded-2xl transition-all cursor-pointer",
-                isGold
-                  ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-black shadow-[0_0_25px_rgba(245,158,11,0.35)]"
-                  : "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.35)]")}>
-              <Send className="h-[18px] w-[18px]" />
-            </motion.button>
-          ) : (
-            <motion.button whileTap={{ scale: 0.85 }}
-              onClick={recording ? stopRec : startRec} disabled={disabled}
-              className={cx("p-3 rounded-2xl transition-all cursor-pointer relative",
-                recording
-                  ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-pulse"
-                  : hasGoldAccess
-                    ? isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10" : "text-white/35 hover:text-white/60 hover:bg-white/8"
-                    : "text-white/15 cursor-pointer")}>
-              {recording ? <MicOff className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
-              {!hasGoldAccess && !recording && (
-                <Lock className="h-2 w-2 absolute -top-0.5 -right-0.5 text-amber-400/60" />
-              )}
-            </motion.button>
-          )}
+          <button onClick={recording ? stopRec : startRec}
+            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer",
+              recording ? "text-red-400 bg-red-400/20 animate-pulse"
+                : hasGoldAccess ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-400/10"
+                : "text-white/20 hover:text-white/40 hover:bg-white/5")}>
+            {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            {!hasGoldAccess && !recording && (
+              <Lock className="h-2.5 w-2.5 absolute -top-0.5 -right-0.5 text-yellow-400/70" />
+            )}
+          </button>
+
+          <button onClick={handleSubmit} disabled={disabled || (!text.trim() && !file)}
+            data-testid="button-send-message"
+            className={cx("flex-shrink-0 h-10 w-10 rounded-xl flex items-center justify-center shadow-lg transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed active:scale-95",
+              isGold
+                ? "bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500 shadow-yellow-500/40"
+                : "bg-gradient-to-br from-violet-600 via-fuchsia-600 to-fuchsia-700 shadow-fuchsia-600/40")}>
+            <Send className="h-4 w-4 text-white" />
+          </button>
         </div>
 
-        {!hasGoldAccess && (
-          <div className="flex items-center justify-center gap-2 mt-2 py-1.5">
-            <Crown className="h-3 w-3 text-amber-400/40" />
-            <span className="text-[9px] text-amber-300/30 font-bold tracking-wide">
-              GOLD: audios · archivos · efímeros · más salas
-            </span>
-          </div>
-        )}
+        
       </div>
     );
   }
