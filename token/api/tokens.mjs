@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         return res.status(200).json(mapped);
       } catch (err) {
         console.error("[GET /api/tokens?id=]", err.message);
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
 
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error("[GET /api/tokens]", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
 
@@ -208,6 +208,6 @@ export default async function handler(req, res) {
     return res.status(201).json(mapTokenRow(inserted));
   } catch (err) {
     console.error("[POST /api/tokens]", err.message);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
