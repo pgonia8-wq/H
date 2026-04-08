@@ -622,16 +622,6 @@ const HomePage: React.FC<HomePageProps> = ({
             : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
         }}
       >
-        {/* Logo */}
-        <motion.img
-          src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/avatars/logoh-carbono.png`}
-          className="w-10 h-10 object-contain rounded-xl"
-          alt="Humans Logo"
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400, damping: 22 }}
-        />
-
         {/* Controles centrales */}
         <div className="flex items-center gap-1.5">
           {/* Nuevo Post */}
