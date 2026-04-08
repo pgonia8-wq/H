@@ -135,53 +135,52 @@
     const [messages, setMessages] = useState<Record<string, ChatMessage[]>>({});
     const [hasMore, setHasMore] = useState<Record<string, boolean>>({});
 
-    const fetchMessages = useCallback(async (roomId: string, before?: string) => {
-      if (!roomId) return;
-      try {
-        let data: Record<string, unknown>[] | null = null;
-        let error: { message: string } | null = null;
+    const enrichWithProfiles = useCallback(async (msgs: ChatMessage[]): Promise<ChatMessage[]> => {
+        const needIds = [...new Set(msgs.filter(m => !m.avatarUrl).map(m => m.userId))];
+        if (!needIds.length) return msgs;
+        try {
+          const { data } = await supabase.from("profiles").select("id, username, avatar_url").in("id", needIds);
+          if (!data?.length) return msgs;
+          const profileMap = new Map(data.map((p: Record<string, unknown>) => [String(p.id), p]));
+          return msgs.map(m => {
+            if (m.avatarUrl) return m;
+            const p = profileMap.get(m.userId) as { username?: string; avatar_url?: string } | undefined;
+            if (!p) return m;
+            return { ...m, avatarUrl: p.avatar_url ? String(p.avatar_url) : m.avatarUrl, username: m.username.startsWith("@") && p.username ? String(p.username) : m.username };
+          });
+        } catch { return msgs; }
+      }, []);
 
+      
+    const fetchMessages = useCallback(async (roomId: string, before?: string) => {
+        if (!roomId) return;
         try {
           let q = supabase
-            .from("global_chat_messages")
-            .select("*, profiles:sender_id(username, avatar_url)")
-            .eq("room_id", roomId)
-            .order("created_at", { ascending: false })
-            .limit(MESSAGES_PER_PAGE);
-          if (before) q = q.lt("created_at", before);
-          const res = await q;
-          data = res.data as Record<string, unknown>[] | null;
-          error = res.error;
-        } catch {}
-
-        if (error) {
-          let q2 = supabase
             .from("global_chat_messages")
             .select("*")
             .eq("room_id", roomId)
             .order("created_at", { ascending: false })
             .limit(MESSAGES_PER_PAGE);
-          if (before) q2 = q2.lt("created_at", before);
-          const res2 = await q2;
-          data = res2.data as Record<string, unknown>[] | null;
-          if (res2.error) { console.error("[Chat] Error messages:", res2.error.message); return; }
-        }
+          if (before) q = q.lt("created_at", before);
+          const { data, error } = await q;
+          if (error) { console.error("[Chat] Error messages:", error.message); return; }
 
-        const parsed = (data ?? []).map((r) => rowToMessage(r as Record<string, unknown>)).reverse();
-        setHasMore(prev => ({ ...prev, [roomId]: (data?.length ?? 0) >= MESSAGES_PER_PAGE }));
+          let parsed = (data ?? []).map((r) => rowToMessage(r as Record<string, unknown>)).reverse();
+          parsed = await enrichWithProfiles(parsed);
+          setHasMore(prev => ({ ...prev, [roomId]: (data?.length ?? 0) >= MESSAGES_PER_PAGE }));
 
-        if (before) {
-          setMessages(prev => ({
-            ...prev,
-            [roomId]: [...parsed, ...(prev[roomId] ?? [])],
-          }));
-        } else {
-          setMessages(prev => ({ ...prev, [roomId]: parsed }));
+          if (before) {
+            setMessages(prev => ({
+              ...prev,
+              [roomId]: [...parsed, ...(prev[roomId] ?? [])],
+            }));
+          } else {
+            setMessages(prev => ({ ...prev, [roomId]: parsed }));
+          }
+        } catch (e) {
+          console.error("[Chat] Error fetchMessages:", e);
         }
-      } catch (e) {
-        console.error("[Chat] Error fetchMessages:", e);
-      }
-    }, []);
+      }, [enrichWithProfiles]);
 
     useEffect(() => {
       if (!isOpen || !selectedRoomId) return;
@@ -217,49 +216,38 @@
     }, []);
 
     const refetchAndMerge = useCallback(async (roomId: string) => {
-      if (!roomId) return;
-      try {
-        let data: Record<string, unknown>[] | null = null;
-        const res1 = await supabase
-          .from("global_chat_messages")
-          .select("*, profiles:sender_id(username, avatar_url)")
-          .eq("room_id", roomId)
-          .order("created_at", { ascending: false })
-          .limit(MESSAGES_PER_PAGE);
-        if (res1.error) {
-          const res2 = await supabase
+        if (!roomId) return;
+        try {
+          const { data, error } = await supabase
             .from("global_chat_messages")
             .select("*")
             .eq("room_id", roomId)
             .order("created_at", { ascending: false })
             .limit(MESSAGES_PER_PAGE);
-          if (res2.error) return;
-          data = res2.data as Record<string, unknown>[] | null;
-        } else {
-          data = res1.data as Record<string, unknown>[] | null;
-        }
-        const fresh = (data ?? []).map(r => rowToMessage(r as Record<string, unknown>)).reverse();
-        const freshIds = new Set(fresh.map(m => m.id));
-        setMessages(prev => {
-          const existing = prev[roomId] ?? [];
-          const existingMap = new Map(existing.map(m => [m.id, m]));
-          const enrichedFresh = fresh.map(m => {
-            const prev2 = existingMap.get(m.id) ?? existing.find(e => e.userId === m.userId && e.id.startsWith("temp-"));
-            if (prev2 && (!m.avatarUrl || !m.username || m.username.startsWith("@"))) {
-              return { ...m, avatarUrl: m.avatarUrl ?? prev2.avatarUrl, username: m.username.startsWith("@") ? prev2.username : m.username };
-            }
-            return m;
+          if (error) return;
+          let fresh = (data ?? []).map(r => rowToMessage(r as Record<string, unknown>)).reverse();
+          fresh = await enrichWithProfiles(fresh);
+          const freshIds = new Set(fresh.map(m => m.id));
+          setMessages(prev => {
+            const existing = prev[roomId] ?? [];
+            const existingMap = new Map(existing.map(m => [m.id, m]));
+            const enrichedFresh = fresh.map(m => {
+              if (!m.avatarUrl) {
+                const prev2 = existingMap.get(m.id) ?? existing.find(e => e.userId === m.userId && e.id.startsWith("temp-"));
+                if (prev2?.avatarUrl) return { ...m, avatarUrl: prev2.avatarUrl };
+              }
+              return m;
+            });
+            const merged = [
+              ...existing.filter(m => !m.id.startsWith("temp-") && !freshIds.has(m.id)),
+              ...enrichedFresh,
+            ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            return { ...prev, [roomId]: merged };
           });
-          const merged = [
-            ...existing.filter(m => !m.id.startsWith("temp-") && !freshIds.has(m.id)),
-            ...enrichedFresh,
-          ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-          return { ...prev, [roomId]: merged };
-        });
-      } catch (e) {
-        console.error("[Chat] Error refetch:", e);
-      }
-    }, []);
+        } catch (e) {
+          console.error("[Chat] Error refetch:", e);
+        }
+      }, [enrichWithProfiles]);
 
     return { messages, hasMore, addMessage, removeTemp, updateMessage, refetchAndMerge, loadMore, setMessages };
   }
