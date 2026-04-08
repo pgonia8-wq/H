@@ -104,9 +104,9 @@ export default async function handler(req, res) {
   const isPending = txStatus === "pending" || txStatus === "";
 
   if (!txOk) {
-    return res.status(502).json({ error: "No se pudo verificar el pago con Worldcoin. Intenta de nuevo.", details: txData });
+    return res.status(502).json({ error: "No se pudo verificar el pago con Worldcoin. Intenta de nuevo." });
   } else if (txStatus === "failed") {
-    return res.status(402).json({ error: "Transacción de pago fallida", details: txData });
+    return res.status(402).json({ error: "Transacción de pago fallida" });
   } else if (isPending) {
     return res.status(202).json({ error: "Pago pendiente de confirmación. Intenta de nuevo en unos segundos.", transactionStatus: "pending" });
   }
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
       console.error("[SUBSCRIBE] Error:", insertError.message);
       return res.status(500).json({
         error: "Error al activar suscripción en base de datos",
-        details: insertError.message,
+        
       });
     }
   } catch (dbErr) {
