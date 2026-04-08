@@ -17,6 +17,7 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "./_rateLimit.mjs";
 
 // [C2] Validar variables de entorno al inicio — aparece en logs de Vercel
 if (!process.env.SUPABASE_URL) {
@@ -38,6 +39,10 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (rateLimit(req, { max: 10, windowMs: 60000 }).limited) {
+    return res.status(429).json({ success: false, error: "Demasiadas solicitudes. Intenta en un minuto." });
+  }
 
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, error: "Method not allowed" });
