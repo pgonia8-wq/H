@@ -23,7 +23,7 @@ import { supabase, cors, mapAirdropRow } from "./_supabase.mjs";
       return res.status(200).json(mapAirdropRow(data));
     } catch (err) {
       console.error("[airdropGet]", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
   
