@@ -1,10 +1,12 @@
-import { supabase } from "./_supabase.mjs";
+import { supabase, rateLimit } from "./_supabase.mjs";
 
 export async function requireOrb(userId, res) {
   if (!userId || typeof userId !== "string") {
     res.status(401).json({ error: "userId required", orbRequired: true });
     return false;
   }
+
+  if (!rateLimit(userId, res)) return false;
 
   try {
     const { data: profile, error } = await supabase
