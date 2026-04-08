@@ -304,11 +304,7 @@
         className={cx("flex gap-3 px-2 group", isOwn ? "flex-row-reverse" : "flex-row", !isGrouped ? "mt-4" : "mt-0.5")}
         onClick={() => { if (!isEditing) setShowActions(prev => !prev); }}
       >
-        {!isGrouped ? (
           <Avatar src={message.avatarUrl} name={message.username} size="sm" ring gold={isGold} />
-        ) : (
-          <div className="w-9" />
-        )}
 
         <div className={cx("flex flex-col max-w-[78%] min-w-0", isOwn ? "items-end" : "items-start")}>
           {!isGrouped && (
@@ -760,6 +756,7 @@
 
     return (
       <div className="flex flex-col gap-1.5 px-3 pb-[env(safe-area-inset-bottom,12px)] flex-shrink-0">
+        <style>{`@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }`}</style>
 
         <AnimatePresence>
           {replyTo && (
@@ -818,14 +815,20 @@
                   : "bg-white/5 border-white/10 focus:border-violet-500/50")} />
           </div>
 
-          <button onClick={() => setEphemeral(e => !e)} disabled={disabled} title="Mensaje efímero (24h)"
-            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30",
-              ephemeral ? "text-purple-400 bg-purple-400/15" : "text-white/25 hover:text-white/50 hover:bg-white/8")}>
-            <Sparkles className="h-4 w-4" />
+          <button onClick={() => {
+              if (!hasGoldAccess) { onShowToast("¡Hazte Gold para usar mensajes efímeros! 👻"); return; }
+              setEphemeral(e => !e);
+            }} disabled={disabled} title="Mensaje efímero (24h)"
+            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 text-lg relative",
+              ephemeral ? "bg-purple-400/20" : "hover:bg-white/8")}>
+            👻
+            {!hasGoldAccess && (
+              <Lock className="h-2.5 w-2.5 absolute -top-0.5 -right-0.5 text-yellow-400/70" />
+            )}
           </button>
 
           <button onClick={recording ? stopRec : startRec}
-            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer",
+            className={cx("flex-shrink-0 h-9 w-9 rounded-xl flex items-center justify-center transition-colors cursor-pointer relative",
               recording ? "text-red-400 bg-red-400/20 animate-pulse"
                 : hasGoldAccess ? "text-yellow-400/80 hover:text-yellow-300 hover:bg-yellow-400/10"
                 : "text-white/20 hover:text-white/40 hover:bg-white/5")}>
@@ -844,6 +847,32 @@
             <Send className="h-4 w-4 text-white" />
           </button>
         </div>
+
+        {!hasGoldAccess && (
+          <div className="overflow-hidden mt-1.5 rounded-lg bg-gradient-to-r from-yellow-500/10 via-amber-500/15 to-yellow-500/10 border border-yellow-500/20 py-1">
+            <div className="flex whitespace-nowrap" style={{ animation: "marquee 12s linear infinite" }}>
+              <span className="text-[10px] font-bold text-yellow-400/80 mx-3">⭐ HAZTE GOLD</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Audios</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Archivos</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Efímeros</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">5 salas</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] font-bold text-yellow-400/80 mx-3">⭐ HAZTE GOLD</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Audios</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Archivos</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">Efímeros</span>
+              <span className="text-[10px] text-yellow-300/50 mx-1">•</span>
+              <span className="text-[10px] text-yellow-300/60 mx-1">5 salas</span>
+            </div>
+          </div>
+        )}
 
         
       </div>
