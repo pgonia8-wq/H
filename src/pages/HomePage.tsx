@@ -328,6 +328,7 @@ const HomePage: React.FC<HomePageProps> = ({
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: proof.error_code || "minikit_error" } }, TOKEN_APP_URL || "*");
             } else if (proof && proof.verification_level === "orb") {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true, proof, userId: userId ?? "" } }, TOKEN_APP_URL || "*");
+              fetchOrUpsertProfile();
             } else {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: "ORB verification not completed" } }, TOKEN_APP_URL || "*");
             }
