@@ -8,6 +8,7 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 import crypto from "node:crypto";
+import { rateLimit } from "./_rateLimit.mjs";
 
 export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
@@ -21,6 +22,10 @@ export default async function handler(req, res) {
 
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  if (rateLimit(req, { max: 30, windowMs: 60000 }).limited) {
+    return res.status(429).json({ error: "Demasiadas solicitudes. Intenta en un minuto." });
   }
 
   try {
