@@ -73,14 +73,22 @@ async function createReferralToken(userId) {
 
 // Verifica tx on chain (Etherscan API for Optimism)
 async function verifyTxOnChain(transactionId) {
-  // [FIX-3] Clave desde variable de entorno — añadir ETHERSCAN_API_KEY en Vercel
-  const apiKey = process.env.ETHERSCAN_API_KEY ?? "";
-  // [FIX-2] Template literal corregido: ${} en lugar de \( \)
-  const resp = await fetch(`https://api-optimistic.etherscan.io/api?module=transaction&action=gettxreceiptstatus&txhash=${transactionId}&apikey=${apiKey}`);
-  const data = await resp.json();
-  return data.status === "1" && data.result?.status === "1";
-}
-
+    const apiKey = process.env.ETHERSCAN_API_KEY ?? "";
+    if (!apiKey) {
+      console.error("[UPGRADE] ETHERSCAN_API_KEY not configured");
+      return { success: false, error: "ETHERSCAN_API_KEY not configured" };
+    }
+    try {
+      const resp = await fetch(`https://api-optimistic.etherscan.io/api?module=transaction&action=gettxreceiptstatus&txhash=${transactionId}&apikey=${apiKey}`);
+      const data = await resp.json();
+      const ok = data.status === "1" && data.result?.status === "1";
+      return { success: ok, error: ok ? null : "Transaction not successful on chain" };
+    } catch (err) {
+      console.error("[UPGRADE] Etherscan API error:", err.message);
+      return { success: false, error: "Failed to verify transaction on chain" };
+    }
+  }
+  
 // Handler principal
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -116,9 +124,28 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: "Upgrade ya procesado" });
     }
 
-    const isTxSuccess = await verifyTxOnChain(transactionId);
-    if (!isTxSuccess) {
-      return res.status(400).json({ success: false, error: "Transacción no exitosa on chain" });
+    const txResult = await verifyTxOnChain(transactionId);
+    if (!txResult.success) {
+      return res.status(400).json({ success: false, error: txResult.error || "Transaction verification failed" });
+    }
+
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("wallet")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (userProfile?.wallet) {
+      try {
+        const txResp = await fetch(`https://api-optimistic.etherscan.io/api?module=proxy&action=eth_getTransactionByHash&txhash=${transactionId}&apikey=${process.env.ETHERSCAN_API_KEY}`);
+        const txDetail = await txResp.json();
+        const txFrom = txDetail?.result?.from?.toLowerCase();
+        if (txFrom && txFrom !== userProfile.wallet.toLowerCase()) {
+          return res.status(403).json({ success: false, error: "Transaction sender does not match user wallet" });
+        }
+      } catch (e) {
+        console.warn("[UPGRADE] Could not verify tx ownership:", e.message);
+      }
     }
 
     const price = await getUpgradePrice(tier);
