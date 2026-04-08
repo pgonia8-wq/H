@@ -6,7 +6,7 @@
     Lock, Globe, Hash, ChevronDown,
     Star, Mic, MicOff, Search, Pin, Edit2, Trash2,
     CornerUpLeft, Check, Image, FileText, Play, Pause,
-    Sparkles, Users, MessageSquare, Zap, Shield, Flame,
+    Sparkles, Users, MessageSquare, Zap, Shield, Flame, Smile, Volume2,
   } from "lucide-react";
   import type { ChatMessage, ChatRoom, RoomType, TypingUser, UserRole } from "./chatTypes";
   import { cx, timeStr, timeAgo, initials, canEditMsg, isImageFile } from "./chatUtils";
@@ -571,10 +571,12 @@
             </div>
             <div className="space-y-3 mb-7 px-2">
               {[
-                { icon: Zap, text: "Hasta 5 salas privadas" },
-                { icon: Mic, text: "Audio y archivos premium" },
+                { icon: Zap, text: "Crea hasta 5 salas privadas" },
+                { icon: Mic, text: "Envía audios y cualquier archivo" },
+                { icon: Sparkles, text: "Mensajes efímeros (24h)" },
                 { icon: Crown, text: "Badge Gold exclusivo" },
-                { icon: Shield, text: "Prioridad en soporte" },
+                { icon: Shield, text: "Nombre con efecto dorado" },
+                { icon: Flame, text: "Prioridad en soporte" },
               ].map((f) => (
                 <div key={f.text} className="flex items-center gap-3 text-[12px] text-amber-200/65 font-medium">
                   <div className="p-1.5 rounded-xl bg-amber-400/8">
@@ -700,10 +702,13 @@
     const [file, setFile] = useState<File | null>(null);
     const [recording, setRecording] = useState(false);
     const [ephemeral, setEphemeral] = useState(false);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const mediaRecRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
     const fileRef = useRef<HTMLInputElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    const INPUT_EMOJIS = ["😀","😂","🥹","😍","🤩","😎","🥺","😭","🔥","❤️","💯","👍","👎","🙌","🎉","💀","🤔","😈","👀","💜","⚡","🫡","🤝","✨"];
 
     const handleSubmit = () => {
       if (!text.trim() && !file) return;
@@ -711,10 +716,20 @@
       setText("");
       setFile(null);
       setEphemeral(false);
+      setShowEmojiPicker(false);
+      inputRef.current?.focus();
+    };
+
+    const insertEmoji = (emoji: string) => {
+      setText(prev => prev + emoji);
       inputRef.current?.focus();
     };
 
     const startRec = async () => {
+      if (!hasGoldAccess) {
+        onShowToast("🎙️ Enviar audios es exclusivo de Gold. ¡Hazte premium!");
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
@@ -738,6 +753,10 @@
       const f = e.target.files?.[0];
       if (!f) return;
       if (f.size > FILE_MAX_SIZE) { onShowToast("Archivo muy grande (máx 10 MB)"); return; }
+      if (!hasGoldAccess && !f.type.startsWith("image/")) {
+        onShowToast("📎 Enviar archivos es exclusivo de Gold. En Classic solo puedes enviar imágenes.");
+        return;
+      }
       setFile(f);
     };
 
@@ -746,19 +765,19 @@
     return (
       <div className={cx("flex-shrink-0 border-t px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]",
         isGold
-          ? "border-amber-400/8 bg-gradient-to-t from-amber-950/40 to-transparent backdrop-blur-xl"
-          : "border-white/[0.04] bg-gradient-to-t from-black/60 to-transparent backdrop-blur-xl")}>
+          ? "border-amber-400/12 bg-gradient-to-t from-amber-950/40 to-transparent backdrop-blur-xl"
+          : "border-white/[0.06] bg-gradient-to-t from-black/60 to-transparent backdrop-blur-xl")}>
 
         <AnimatePresence>
           {replyTo && (
             <motion.div {...FADE_UP} transition={{ duration: 0.2 }}
-              className="flex items-center gap-2.5 mb-2.5 px-4 py-2 rounded-2xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
+              className="flex items-center gap-2.5 mb-2.5 px-4 py-2 rounded-2xl bg-white/[0.06] border border-white/[0.08] overflow-hidden">
               <CornerUpLeft className="h-3.5 w-3.5 text-violet-400/60 flex-shrink-0" />
               <span className="text-[11px] text-white/50 truncate flex-1 font-medium">
-                <b className="text-white/55">{replyTo.username}:</b> {replyTo.content}
+                <b className="text-white/75">{replyTo.username}:</b> {replyTo.content}
               </span>
               <motion.button whileTap={{ scale: 0.8 }} onClick={onCancelReply}
-                className="text-white/15 hover:text-white/50 cursor-pointer flex-shrink-0 p-1 rounded-lg hover:bg-white/5">
+                className="text-white/30 hover:text-white/60 cursor-pointer flex-shrink-0 p-1 rounded-lg hover:bg-white/5">
                 <X className="h-3 w-3" />
               </motion.button>
             </motion.div>
@@ -768,24 +787,55 @@
         {file && (
           <motion.div {...FADE_UP}
             className={cx("flex items-center gap-2.5 mb-2.5 px-4 py-2.5 rounded-2xl border",
-              isGold ? "bg-amber-500/8 border-amber-400/10" : "bg-violet-500/8 border-violet-400/10")}>
+              isGold ? "bg-amber-500/10 border-amber-400/12" : "bg-violet-500/10 border-violet-400/12")}>
             {isImageFile(file.type) ? <Image className="h-4 w-4 text-violet-400" /> : <FileText className="h-4 w-4 text-violet-400" />}
             <span className={cx("text-[11px] truncate flex-1 font-medium", isGold ? "text-amber-300/80" : "text-violet-300/80")}>{file.name}</span>
             <motion.button whileTap={{ scale: 0.8 }} onClick={() => setFile(null)}
-              className="text-white/20 hover:text-white/50 cursor-pointer p-1 rounded-lg hover:bg-white/5">
+              className="text-white/30 hover:text-white/60 cursor-pointer p-1 rounded-lg hover:bg-white/5">
               <X className="h-3 w-3" />
             </motion.button>
           </motion.div>
         )}
 
-        <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept={FILE_ACCEPT} onChange={handleFile} className="hidden" />
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden mb-2">
+              <div className={cx("flex flex-wrap gap-1 p-3 rounded-2xl border",
+                isGold ? "bg-amber-950/40 border-amber-400/10" : "bg-white/[0.04] border-white/[0.06]")}>
+                {INPUT_EMOJIS.map((e) => (
+                  <motion.button key={e} whileTap={{ scale: 1.3 }}
+                    onClick={() => insertEmoji(e)}
+                    className="text-xl w-9 h-9 flex items-center justify-center rounded-xl hover:bg-white/10 cursor-pointer transition-colors">
+                    {e}
+                  </motion.button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="flex items-center gap-1.5">
+          <input ref={fileRef} type="file" accept={hasGoldAccess ? FILE_ACCEPT : "image/png,image/jpeg,image/jpg,image/gif,image/webp"} onChange={handleFile} className="hidden" />
 
           <motion.button whileTap={{ scale: 0.85 }} onClick={() => fileRef.current?.click()} disabled={disabled}
-            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer border",
-              isGold ? "text-amber-400/30 hover:text-amber-400 border-amber-400/0 hover:border-amber-400/10 hover:bg-amber-400/8"
-                     : "text-white/20 hover:text-white/60 border-white/0 hover:border-white/8 hover:bg-white/5")}>
-            <Paperclip className="h-4.5 w-4.5" />
+            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer",
+              isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10"
+                     : "text-white/35 hover:text-white/60 hover:bg-white/8")}>
+            <Paperclip className="h-[18px] w-[18px]" />
+          </motion.button>
+
+          <motion.button whileTap={{ scale: 0.85 }} onClick={() => setShowEmojiPicker(p => !p)} disabled={disabled}
+            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer",
+              showEmojiPicker
+                ? isGold ? "text-amber-400 bg-amber-400/15" : "text-violet-400 bg-violet-400/15"
+                : isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10"
+                         : "text-white/35 hover:text-white/60 hover:bg-white/8")}>
+            <Smile className="h-[18px] w-[18px]" />
           </motion.button>
 
           <div className="flex-1 relative">
@@ -794,21 +844,23 @@
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
               placeholder={recording ? "🔴 Grabando audio…" : "Escribe un mensaje…"}
               disabled={disabled || recording}
-              className={cx("w-full rounded-2xl border px-5 py-3 text-[14px] text-white placeholder-white/35 outline-none transition-all duration-300 font-medium",
+              className={cx("w-full rounded-2xl border px-4 py-3 text-[14px] text-white placeholder-white/35 outline-none transition-all duration-300 font-medium",
                 isGold
-                  ? "bg-amber-900/25 border-amber-500/15 focus:border-amber-400/40 focus:bg-amber-900/25 focus:shadow-[0_0_20px_rgba(245,158,11,0.08)]"
-                  : "bg-white/[0.06] border-white/[0.08] focus:border-violet-400/40 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(139,92,246,0.08)]")} />
+                  ? "bg-amber-900/25 border-amber-500/15 focus:border-amber-400/40 focus:bg-amber-900/30 focus:shadow-[0_0_20px_rgba(245,158,11,0.1)]"
+                  : "bg-white/[0.06] border-white/[0.08] focus:border-violet-400/40 focus:bg-white/[0.07] focus:shadow-[0_0_20px_rgba(139,92,246,0.1)]")} />
           </div>
 
-          <motion.button whileTap={{ scale: 0.85 }} onClick={() => setEphemeral(e => !e)} title="Mensaje efímero (24h)"
-            className={cx("p-2.5 rounded-2xl transition-all cursor-pointer text-sm border",
-              ephemeral
-                ? isGold
-                  ? "text-amber-400 bg-amber-400/12 border-amber-400/15 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
-                  : "text-violet-400 bg-violet-400/12 border-violet-400/15 shadow-[0_0_10px_rgba(139,92,246,0.15)]"
-                : "text-white/15 hover:text-white/35 border-transparent hover:bg-white/5")}>
-            👻
-          </motion.button>
+          {hasGoldAccess && (
+            <motion.button whileTap={{ scale: 0.85 }} onClick={() => setEphemeral(e => !e)} title="Mensaje efímero (24h)"
+              className={cx("p-2.5 rounded-2xl transition-all cursor-pointer text-sm",
+                ephemeral
+                  ? isGold
+                    ? "text-amber-400 bg-amber-400/15 shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                    : "text-violet-400 bg-violet-400/15 shadow-[0_0_10px_rgba(139,92,246,0.15)]"
+                  : "text-white/25 hover:text-white/45 hover:bg-white/5")}>
+              👻
+            </motion.button>
+          )}
 
           {hasContent ? (
             <motion.button
@@ -820,19 +872,33 @@
                 isGold
                   ? "bg-gradient-to-br from-amber-400 to-yellow-500 text-black shadow-[0_0_25px_rgba(245,158,11,0.35)]"
                   : "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-[0_0_25px_rgba(139,92,246,0.35)]")}>
-              <Send className="h-4.5 w-4.5" />
+              <Send className="h-[18px] w-[18px]" />
             </motion.button>
           ) : (
             <motion.button whileTap={{ scale: 0.85 }}
               onClick={recording ? stopRec : startRec} disabled={disabled}
-              className={cx("p-3 rounded-2xl transition-all cursor-pointer",
+              className={cx("p-3 rounded-2xl transition-all cursor-pointer relative",
                 recording
                   ? "bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-pulse"
-                  : isGold ? "text-amber-400/30 hover:text-amber-400 hover:bg-amber-400/8" : "text-white/20 hover:text-white/60 hover:bg-white/5")}>
-              {recording ? <MicOff className="h-4.5 w-4.5" /> : <Mic className="h-4.5 w-4.5" />}
+                  : hasGoldAccess
+                    ? isGold ? "text-amber-400/50 hover:text-amber-400 hover:bg-amber-400/10" : "text-white/35 hover:text-white/60 hover:bg-white/8"
+                    : "text-white/15 cursor-pointer")}>
+              {recording ? <MicOff className="h-[18px] w-[18px]" /> : <Mic className="h-[18px] w-[18px]" />}
+              {!hasGoldAccess && !recording && (
+                <Lock className="h-2 w-2 absolute -top-0.5 -right-0.5 text-amber-400/60" />
+              )}
             </motion.button>
           )}
         </div>
+
+        {!hasGoldAccess && (
+          <div className="flex items-center justify-center gap-2 mt-2 py-1.5">
+            <Crown className="h-3 w-3 text-amber-400/40" />
+            <span className="text-[9px] text-amber-300/30 font-bold tracking-wide">
+              GOLD: audios · archivos · efímeros · más salas
+            </span>
+          </div>
+        )}
       </div>
     );
   }
