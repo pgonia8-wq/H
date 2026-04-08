@@ -327,12 +327,7 @@ const HomePage: React.FC<HomePageProps> = ({
             if (proof?.status === "error") {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: proof.error_code || "minikit_error" } }, TOKEN_APP_URL || "*");
             } else if (proof && proof.verification_level === "orb") {
-              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true } }, TOKEN_APP_URL || "*");
-              fetch((TOKEN_APP_URL || "") + "/api/verifyOrb", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ payload: proof, userId: userId ?? "" }),
-              }).catch((err) => console.warn("[H] verifyOrb backend error:", err));
+              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true, proof, userId: userId ?? "" } }, TOKEN_APP_URL || "*");
             } else {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: "ORB verification not completed" } }, TOKEN_APP_URL || "*");
             }
