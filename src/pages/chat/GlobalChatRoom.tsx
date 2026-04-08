@@ -109,7 +109,7 @@
       console.error("[Chat]", msg);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
       setErrorToast(msg);
-      errorTimerRef.current = setTimeout(() => setErrorToast(null), 5000);
+      errorTimerRef.current = setTimeout(() => setErrorToast(null), 4000);
     }, []);
 
     const scrollToBottom = useCallback((smooth = true) => {
@@ -552,7 +552,7 @@
                   {!subsLoading && !noAccess && activeMessages.map((msg, idx) => {
                     const prev = activeMessages[idx - 1];
                     const showDate = !prev || isDifferentDay(prev.createdAt, msg.createdAt);
-                    const grouped = !showDate && shouldGroupWithPrev(msg, prev);
+                    const grouped = false;
                     return (
                       <div key={msg.id}>
                         {showDate && <DateSeparator label={dateSeparator(msg.createdAt)} />}
@@ -583,9 +583,9 @@
                 <AnimatePresence>
                   {errorToast && (
                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                      className="absolute bottom-20 left-4 right-4 z-40 px-5 py-3.5 rounded-2xl bg-red-950/95 border border-red-500/25 text-[12px] text-red-200 shadow-[0_4px_30px_rgba(239,68,68,0.15)] backdrop-blur-xl flex items-center justify-between gap-3 font-medium">
-                      <span>⚠ {errorToast}</span>
-                      <button onClick={() => setErrorToast(null)} className="text-red-400/60 hover:text-red-300 flex-shrink-0 cursor-pointer"><X className="h-3 w-3" /></button>
+                      className="absolute bottom-20 left-4 right-4 z-50 px-5 py-3.5 rounded-2xl bg-gray-950/98 border border-amber-400/30 text-[13px] text-white shadow-[0_4px_40px_rgba(0,0,0,0.5)] backdrop-blur-xl flex items-center justify-between gap-3 font-semibold">
+                      <span>{errorToast}</span>
+                      <button onClick={() => setErrorToast(null)} className="text-white/40 hover:text-white/70 flex-shrink-0 cursor-pointer"><X className="h-3 w-3" /></button>
                     </motion.div>
                   )}
                 </AnimatePresence>
