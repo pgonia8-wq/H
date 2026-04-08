@@ -55,7 +55,7 @@ async function verifyWorldcoinPayment(transactionId) {
     return { ok: res.ok, data };
   } catch (err) {
     console.error("[SUBSCRIBE] Error al verificar transacción con Worldcoin:", err.message);
-    return { ok: false, data: { error: err.message } };
+    return { ok: false, data: { error: "Internal server error" } };
   }
 }
 
