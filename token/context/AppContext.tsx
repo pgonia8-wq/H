@@ -209,11 +209,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         clearTimeout(timeout);
         const p = e.data.payload;
         if (p?.success && p?.orbVerified) {
-          setState((s) => ({
-            ...s,
-            user: s.user ? { ...s.user, verificationLevel: "orb" } : null,
-          }));
-          resolve(true);
+            setState((s) => ({
+              ...s,
+              user: s.user ? { ...s.user, verificationLevel: "orb" } : null,
+            }));
+            if (p.proof && p.userId) {
+              const base = window.location.origin;
+              fetch(base + "/api/verifyOrb", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ payload: p.proof, userId: p.userId }),
+              }).catch((err) => console.warn("[TOKEN] verifyOrb save error:", err));
+            }
+            resolve(true);
         } else {
           resolve(false);
         }
