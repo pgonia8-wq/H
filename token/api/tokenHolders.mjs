@@ -48,7 +48,7 @@ import { supabase, cors } from "./_supabase.mjs";
       return res.status(200).json(result);
     } catch (err) {
       console.error("[tokenHolders]", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
   
