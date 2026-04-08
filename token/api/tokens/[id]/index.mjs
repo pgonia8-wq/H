@@ -51,7 +51,7 @@ import { supabase, cors, mapTokenRow } from "../../_supabase.mjs";
       return res.status(200).json(token);
     } catch (err) {
       console.error("[GET /api/tokens/:id]", err.message);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: "Internal server error" });
     }
   }
   
