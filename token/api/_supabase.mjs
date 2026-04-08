@@ -12,11 +12,18 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
   );
 
-  export function cors(res) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  }
+  export function cors(res, req) {
+      const origin = req?.headers?.origin || "";
+      const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+      if (allowed.length > 0 && origin && allowed.includes(origin)) {
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Vary", "Origin");
+      } else if (allowed.length === 0) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+      }
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    }
 
   export function mapTokenRow(row) {
     return {
@@ -104,5 +111,26 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       pnlPercent: Number(row.pnl_percent ?? 0),
       updatedAt: row.updated_at,
     };
+  }
+
+
+  const rateLimitMap = new Map();
+  const RATE_LIMIT_WINDOW = 60000;
+  const RATE_LIMIT_MAX = 60;
+
+  export function rateLimit(userId, res) {
+    if (!userId) return true;
+    const now = Date.now();
+    const entry = rateLimitMap.get(userId);
+    if (!entry || now - entry.ts > RATE_LIMIT_WINDOW) {
+      rateLimitMap.set(userId, { ts: now, count: 1 });
+      return true;
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX) {
+      res.status(429).json({ error: "Too many requests. Try again later." });
+      return false;
+    }
+    return true;
   }
   
