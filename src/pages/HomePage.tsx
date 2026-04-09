@@ -503,46 +503,19 @@ const HomePage: React.FC<HomePageProps> = ({
 
       setOptimisticPosts((prev) => [tempPost, ...prev]);
 
-      // 3. Intentar Edge Function primero
-      let posted = false;
-      try {
-        const { error: fnError } = await supabase.functions.invoke("publish-post-user", {
-          body: { content: newPostContent, image_url: imageUrl },
-        });
-        if (!fnError) {
-          posted = true;
-        } else {
-          console.warn("[HOME] Edge Function falló, usando INSERT directo:", fnError.message);
-        }
-      } catch (fnErr: any) {
-        console.warn("[HOME] Edge Function no disponible, usando INSERT directo:", fnErr?.message);
-      }
-
-      // 4. Fallback: INSERT directo si la Edge Function falló
-      //    Solo columnas existentes en la tabla posts
-      if (!posted) {
-        const now = new Date().toISOString();
-        const { error: insertError } = await supabase.from("posts").insert({
+      // 3. Crear post via API (usa service_role, evita RLS)
+      const createRes = await fetch("/api/createPost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           user_id: userId,
           content: newPostContent,
           image_url: imageUrl,
-          timestamp: now,
-          created_at: now,
-          deleted_flag: false,
-          visibility_score: 0,
-          likes: 0,
-          comments: 0,
-          reposts: 0,
-          tips_total: 0,
-          boost_score: 0,
-          views: 0,
-          likes_count: 0,
-          replies_count: 0,
-          is_ad: false,
-          monetized: false,
-          is_boosted: false,
-        });
-        if (insertError) throw insertError;
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok) {
+        throw new Error(createData.error || "Error al publicar");
       }
 
       // 5. Limpiar UI

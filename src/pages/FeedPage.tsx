@@ -452,9 +452,9 @@ const FeedPage: React.FC<FeedPageProps> = ({
         }`}
       >
         {([
-          { key: "global",    label: "Global" },
-          { key: "following", label: "Siguiendo" },
-          { key: "mine",      label: "Mis posts" },
+          { key: "global",    label: t("tab_global") },
+          { key: "following", label: t("tab_following") },
+          { key: "mine",      label: t("tab_mine") },
         ] as { key: FeedTab; label: string }[]).map(({ key, label }) => (
           <button
             key={key}
@@ -510,7 +510,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
             >
               <Star size={26} className="text-yellow-300 drop-shadow" />
               <span className="text-white text-lg tracking-wide">Premium</span>
-              <span className="text-indigo-200 text-xs font-normal">Acceso prioritario</span>
+              <span className="text-indigo-200 text-xs font-normal">{t("acceso_prioritario")}</span>
             </motion.button>
 
             <motion.button
@@ -525,7 +525,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
             >
               <Crown size={26} className="text-white drop-shadow" />
               <span className="text-white text-lg tracking-wide">Premium+</span>
-              <span className="text-yellow-100 text-xs font-normal">Nivel máximo VIP</span>
+              <span className="text-yellow-100 text-xs font-normal">{t("nivel_maximo_vip")}</span>
             </motion.button>
           </motion.div>
         )}
@@ -543,10 +543,10 @@ const FeedPage: React.FC<FeedPageProps> = ({
           </span>
           <p className={`text-sm font-medium ${isDark ? "text-gray-400" : "text-gray-500"}`}>
             {activeTab === "following"
-              ? "Sigue a alguien para ver sus posts aquí"
+              ? t("no_posts_following")
               : activeTab === "mine"
-              ? "Aún no has publicado nada"
-              : "No hay posts todavía"}
+              ? t("no_posts_mine")
+              : t("no_posts_global")}
           </p>
         </div>
       ) : (
