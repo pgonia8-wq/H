@@ -24,17 +24,30 @@ import React, { useState, useEffect, useRef } from "react";
         const storedId = localStorage.getItem("userId");
         if (storedId) {
           setUserId(storedId);
-          setVerified(true);
         }
 
         try {
-          MiniKit.install({ appId: APP_ID });
-
-          const installed = MiniKit.isInstalled();
-
-          if (!installed) {
-            console.warn("[APP] MiniKit no está disponible");
-            return;
+          if (!MiniKit.isInstalled()) {
+            console.warn("[APP] MiniKit no está disponible — esperando init de World App");
+            const waitForMiniKit = () =>
+              new Promise<boolean>((resolve) => {
+                let attempts = 0;
+                const interval = setInterval(() => {
+                  attempts++;
+                  if (MiniKit.isInstalled()) {
+                    clearInterval(interval);
+                    resolve(true);
+                  } else if (attempts > 20) {
+                    clearInterval(interval);
+                    resolve(false);
+                  }
+                }, 250);
+              });
+            const ready = await waitForMiniKit();
+            if (!ready) {
+              console.warn("[APP] MiniKit no respondió después de 5s");
+              return;
+            }
           }
 
           setMiniKitReady(true);
@@ -49,10 +62,28 @@ import React, { useState, useEffect, useRef } from "react";
 
           if (!storedId) {
             await runVerification();
+          } else {
+            try {
+              const checkRes = await fetch(`/api/verify?userId=${storedId}`);
+              if (checkRes.ok) {
+                const checkData = await checkRes.json();
+                if (checkData.valid) {
+                  setVerified(true);
+                } else {
+                  localStorage.removeItem("userId");
+                  setUserId(null);
+                  await runVerification();
+                }
+              } else {
+                setVerified(true);
+              }
+            } catch {
+              setVerified(true);
+            }
           }
         } catch (err) {
-          console.error("[APP] Error instalando MiniKit:", err);
-          setError("Error instalando MiniKit");
+          console.error("[APP] Error inicializando MiniKit:", err);
+          setError("Error inicializando MiniKit");
         }
       };
 
@@ -81,29 +112,25 @@ import React, { useState, useEffect, useRef } from "react";
           });
 
           const payload = auth?.finalPayload;
-          const address = payload?.address || payload?.wallet_address || null;
-          const message = payload?.message;
-          const signature = payload?.signature;
 
-          if (address && message && signature) {
+          if (payload?.status === "error") {
+            console.warn("[APP] WalletAuth error:", payload);
+          } else if (payload?.address && payload?.message && payload?.signature) {
             try {
               const vRes = await fetch("/api/walletVerify", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message, signature, address, userId }),
+                body: JSON.stringify({ payload, nonce, userId }),
               });
               const vData = await vRes.json();
               if (vData.success) {
-                setWallet(address);
+                setWallet(vData.address);
               } else {
                 console.warn("[APP] Wallet verify rejected:", vData.error);
               }
             } catch (e) {
-              console.warn("[APP] Wallet verify unreachable, allowing wallet:", e);
-              setWallet(address);
+              console.warn("[APP] Wallet verify unreachable:", e);
             }
-          } else if (address) {
-            setWallet(address);
           } else {
             console.warn("[APP] WalletAuth success pero sin address");
           }

@@ -9,16 +9,13 @@ export function useMiniKitUser() {
 
   useEffect(() => {
     try {
-      MiniKit.install();
-      const installed = MiniKit.isInstalled();
-
-      if (installed) {
+      if (MiniKit.isInstalled()) {
         const w = MiniKit.walletAddress;
         if (w) setWallet(w);
       }
     } catch (err) {
-      console.error("MiniKit install error:", err);
-      setError("Error al instalar MiniKit");
+      console.error("MiniKit read error:", err);
+      setError("Error al leer estado de MiniKit");
     }
   }, []);
 
