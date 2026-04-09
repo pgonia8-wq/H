@@ -58,15 +58,17 @@ import React, { useState, useEffect, useRef } from "react";
           setMiniKitReady(true);
           console.log("[ERUDA:MINIKIT] ✅ MiniKit ready");
 
+          console.log("[ERUDA:MINIKIT] MiniKit.user raw:", JSON.stringify(MiniKit.user));
+          console.log("[ERUDA:MINIKIT] MiniKit keys:", Object.keys(MiniKit).filter(k => typeof (MiniKit as any)[k] !== 'function').join(', '));
           if (MiniKit.user) {
-            console.log("[ERUDA:MINIKIT] User:", JSON.stringify({ username: MiniKit.user.username, avatar: !!MiniKit.user.avatar_url }));
+            console.log("[ERUDA:MINIKIT] User:", JSON.stringify({ username: MiniKit.user.username, avatar: !!MiniKit.user.avatar_url, walletAddress: MiniKit.user.walletAddress }));
             const u = MiniKit.user.username || null;
             const a = MiniKit.user.avatar_url || null;
             setUsername(u);
             setAvatar(a);
             if (u) setGlobalUsername(u);
           } else {
-            console.log("[ERUDA:MINIKIT] No MiniKit.user available");
+            console.log("[ERUDA:MINIKIT] No MiniKit.user — username will come from walletAuth or profile");
           }
 
           if (!storedId) {
@@ -168,12 +170,16 @@ import React, { useState, useEffect, useRef } from "react";
             console.warn("[ERUDA:WALLET] ⚠ WalletAuth success pero sin address. Payload:", JSON.stringify(payload));
           }
 
+          console.log("[ERUDA:WALLET] MiniKit.user after walletAuth:", JSON.stringify(MiniKit.user));
           if (MiniKit.user) {
             const u = MiniKit.user.username || null;
             const a = MiniKit.user.avatar_url || null;
+            console.log("[ERUDA:WALLET] Extracted username:", u, "avatar:", !!a);
             setUsername(u);
             setAvatar(a);
             if (u) setGlobalUsername(u);
+          } else {
+            console.log("[ERUDA:WALLET] ⚠ MiniKit.user still null after walletAuth — username not available from MiniKit");
           }
         } catch (err: any) {
           console.error("[ERUDA:WALLET] ❌ Error walletAuth:", err);
