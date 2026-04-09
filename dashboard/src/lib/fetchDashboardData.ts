@@ -1,8 +1,7 @@
 import { supabase } from "../../../src/supabaseClient";
 import { getFlag } from "./utils";
+import { calculatePostEarnings } from "../../../src/lib/economy";
 import type { AdMetric, AudienceGroup, ChartPoint, DashboardData, Post, PostEarning, PostStats } from "./types";
-
-const LIKE_VALUE_WLD = 0.001;
 
 function emptyData(): DashboardData {
   return {
@@ -38,10 +37,7 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
     likes: p.likes ?? 0,
     tips_total: p.tips_total ?? 0,
     boost_score: p.boost_score ?? 0,
-    estimated_wld:
-      ((p.tips_total ?? 0) * 0.70) +
-      ((p.likes ?? 0) * LIKE_VALUE_WLD) +
-      ((p.boost_score ?? 0) * 0.01),
+    estimated_wld: calculatePostEarnings(p, userId),
   }));
 
   const totalEstimatedWLD = postEarnings.reduce(

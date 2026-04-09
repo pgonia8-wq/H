@@ -7,6 +7,7 @@ import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
 import { useLanguage } from "../LanguageContext";
 import GlobalChatRoom from "../pages/chat/GlobalChatRoom";
 import ProfileModal from "./ProfileModal";
+import { LIKE_VALUE_WLD, calculatePostEarnings, incrementLikeCount } from "../lib/economy";
 
 // [E3] Helper para generar UUID v4 válido para referencias de pago Worldcoin
 function generatePayReference(): string {
@@ -41,7 +42,6 @@ interface PostCardProps {
 }
 
 const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
-const LIKE_VALUE_WLD = 0.001;
 const CPC_BY_COUNTRY: Record<string, number> = {
   US: 0.08,
   GB: 0.07,
@@ -323,6 +323,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         await supabase.from("posts").update({ likes: likes + 1 }).eq("id", post.id);
         setLiked(true);
         setLikes((prev: number) => prev + 1);
+        incrementLikeCount(currentUserId);
         setShowWldAnimation(true);
         setTimeout(() => setShowWldAnimation(false), 1200);
         if (!hasSeenTooltip) {
@@ -710,11 +711,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   );
 
   const isBoosted = post?.is_boosted && post?.boosted_until && new Date(post.boosted_until) > new Date();
-  const estimatedEarnings = (
-    ((post?.tips_total ?? 0) * 0.70) +
-    ((post?.likes ?? 0) * LIKE_VALUE_WLD) +
-    ((post?.boost_score ?? 0) * 0.01)
-  );
+  const estimatedEarnings = calculatePostEarnings(post, currentUserId);
 
   return (
     <div
