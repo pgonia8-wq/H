@@ -1,26 +1,12 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   DESTINO: api/walletVerify.mjs
-   ESTADO: El código del archivo ya fue corregido en sesión anterior.
-           El único cambio pendiente NO está en este archivo sino en
-           package.json (raíz):
-
-   [W-CRÍTICO] ethers NO está en dependencies del package.json raíz.
-               → fixes/package.json añade "ethers": "^6.13.0" a dependencies.
-               → Sin esto, Vercel falla con "Cannot find module 'ethers'"
-                 y TODA la autenticación de wallet explota en producción.
-
-   BUGS QUE YA TIENE CORREGIDOS (documentados en el archivo original):
-   [W1] Import roto de verifySignedNonce desde nonce.mjs (no existía)
-        → reimplementado inline con ethers.verifyMessage()
-   [W2] Validación de campos del body (message, signature, address)
-   [W3] Env vars validadas con null-coalescing
-   [W4] Verificación de expiración del nonce (TTL 5 minutos sobre timestamp)
-   [W5] CORS con "*" para World App WebView
+   api/walletVerify.mjs
+   Verifica firma SIWE de World App Safe wallets usando verifySiweMessage()
+   de @worldcoin/minikit-js. Recibe payload completo + nonce del frontend.
    ─────────────────────────────────────────────────────────────────────────── */
 
 import { createClient } from "@supabase/supabase-js";
 import { rateLimit } from "./_rateLimit.mjs";
-import { ethers } from "ethers";
+import { verifySiweMessage } from "@worldcoin/minikit-js";
 
 if (!process.env.SUPABASE_URL) {
   console.error("[WALLET_VERIFY] ERROR: SUPABASE_URL no configurada");
@@ -33,18 +19,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL ?? "",
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 );
-
-const NONCE_TTL_MS = 5 * 60 * 1000;
-
-function verifySignedNonce(message, signature) {
-  try {
-    const recovered = ethers.verifyMessage(message, signature);
-    return { success: true, address: recovered };
-  } catch (err) {
-    console.error("[WALLET_VERIFY] Error al recuperar firma:", err.message);
-    return { success: false, address: null, error: "Internal server error" };
-  }
-}
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -61,56 +35,37 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { message, signature, address, userId } = body;
+  const { payload, nonce, userId } = body;
 
-  if (!message || typeof message !== "string") {
-    return res.status(400).json({ success: false, error: "message es requerido" });
+  if (!payload || typeof payload !== "object") {
+    return res.status(400).json({ success: false, error: "payload es requerido (MiniAppWalletAuthSuccessPayload)" });
   }
-  if (!signature || typeof signature !== "string") {
-    return res.status(400).json({ success: false, error: "signature es requerida" });
+  if (!nonce || typeof nonce !== "string") {
+    return res.status(400).json({ success: false, error: "nonce es requerido" });
   }
-  if (!address || typeof address !== "string") {
-    return res.status(400).json({ success: false, error: "address es requerida" });
+  if (!payload.message || !payload.signature || !payload.address) {
+    return res.status(400).json({ success: false, error: "payload incompleto: message, signature y address son requeridos" });
   }
 
+  try {
+    const validMessage = await verifySiweMessage(payload, nonce);
 
-  // Verificar expiración del nonce (TTL 5 minutos)
-  const tsMatch = message.match(/Timestamp:\s*(\d{4}-\d{2}-\d{2}T[\d:.Z]+)/);
-  if (tsMatch) {
-    const msgTime = new Date(tsMatch[1]).getTime();
-    if (Date.now() - msgTime > NONCE_TTL_MS) {
-      console.warn("[WALLET_VERIFY] Nonce expirado. Mensaje tiene más de 5 minutos.");
-      return res.status(400).json({ success: false, error: "Nonce expirado. Solicita uno nuevo." });
+    if (!validMessage.isValid) {
+      return res.status(401).json({ success: false, error: "Firma SIWE inválida" });
     }
-  } else {
-    console.warn("[WALLET_VERIFY] El mensaje no contiene Timestamp — no se puede verificar expiración.");
+  } catch (err) {
+    console.error("[WALLET_VERIFY] verifySiweMessage error:", err.message);
+    return res.status(401).json({ success: false, error: "Error verificando firma SIWE: " + err.message });
   }
 
-  // Verificar firma ECDSA
-  const verifyResult = verifySignedNonce(message, signature);
-  if (!verifyResult.success) {
-    console.error("[WALLET_VERIFY] Firma inválida:", verifyResult.error);
-    return res.status(401).json({ success: false, error: "Firma inválida" });
-  }
+  const verifiedAddress = payload.address;
 
-  const recoveredAddress = verifyResult.address;
-
-  if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
-    return res.status(401).json({
-      success: false,
-      error: "La firma no corresponde a la dirección proporcionada",
-      expected: address,
-      recovered: recoveredAddress,
-    });
-  }
-
-  // Actualizar perfil en Supabase si se proporcionó userId
   if (userId) {
     try {
       const { error: updateErr } = await supabase
         .from("profiles")
         .update({
-          wallet_address: address,
+          wallet_address: verifiedAddress,
           wallet_verified: true,
           wallet_verified_at: new Date().toISOString(),
         })
@@ -120,7 +75,7 @@ export default async function handler(req, res) {
         console.error("[WALLET_VERIFY] Error:", updateErr.message);
         return res.status(200).json({
           success: true,
-          address: recoveredAddress,
+          address: verifiedAddress,
           warning: "Firma válida pero no se pudo actualizar el perfil: " + updateErr.message,
         });
       }
@@ -131,6 +86,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     success: true,
-    address: recoveredAddress,
+    address: verifiedAddress,
   });
 }

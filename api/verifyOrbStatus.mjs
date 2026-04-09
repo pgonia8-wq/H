@@ -61,6 +61,28 @@ import { createClient } from "@supabase/supabase-js";
       return res.status(200).json({ success: true, message: "Already orb-verified" });
     }
 
+    const { data: deviceProfile } = await supabase
+      .from("profiles")
+      .select("nullifier_hash")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (deviceProfile?.nullifier_hash) {
+      const { data: orbConflict } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("nullifier_hash", proof.nullifier_hash)
+        .neq("id", userId)
+        .maybeSingle();
+
+      if (orbConflict) {
+        return res.status(403).json({
+          success: false,
+          error: "This orb proof is already linked to a different account",
+        });
+      }
+    }
+
     let verifyData;
     try {
       const verifyResponse = await fetch(

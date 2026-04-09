@@ -147,20 +147,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const uid = payload?.userId ?? null;
         if (uid) setApiUserId(uid);
         const parentLevel = payload?.verificationLevel ?? "device";
-        setState((s) => ({
+        setState((s) => {
+          const currentLevel = s.user?.verificationLevel;
+          const finalLevel = currentLevel === "orb" ? "orb" : parentLevel;
+          return {
           ...s,
           user: {
             id: payload?.userId ?? s.user?.id ?? "usr_guest",
             username: payload?.username ?? s.user?.username ?? "guest",
             profilePicture: payload?.profilePicture ?? "",
             avatarUrl: payload?.avatarUrl ?? "",
-            verificationLevel: parentLevel,
+            verificationLevel: finalLevel,
           },
           walletAddress: payload?.walletAddress ?? s.walletAddress,
           balanceWld: payload?.balanceWld ?? s.balanceWld,
           balanceUsdc: payload?.balanceUsdc ?? s.balanceUsdc,
           worldAppReady: true,
-        }));
+        };});
         if (uid) checkOrbFromDb(uid, parentLevel);
         }
 

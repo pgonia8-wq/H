@@ -330,7 +330,7 @@ const HomePage: React.FC<HomePageProps> = ({
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: proof.error_code || "minikit_error" } }, TOKEN_APP_URL || "*");
             } else if (proof && proof.verification_level === "orb") {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true, proof, userId: userId ?? "" } }, TOKEN_APP_URL || "*");
-                fetch("/api/verifyOrbStatus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, proof }) }).then(r => r.json()).then(result => { if (!result.success) { console.error("[H] orb backend err:", result.error); } else { console.log("[H] orb saved via backend"); fetchOrUpsertProfile(); setTimeout(() => injectTokenContext(), 500); } }).catch(err => console.error("[H] orb fetch err:", err.message));
+                fetch("/api/verifyOrbStatus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, proof }) }).then(r => r.json()).then(async (result) => { if (!result.success) { console.error("[H] orb backend err:", result.error); } else { console.log("[H] orb saved via backend"); await fetchOrUpsertProfile(); win.postMessage({ type: "ORB_VERIFIED_FROM_H", payload: { success: true, verificationLevel: "orb" } }, TOKEN_APP_URL || "*"); } }).catch(err => console.error("[H] orb fetch err:", err.message));
             } else {
               win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: "ORB verification not completed" } }, TOKEN_APP_URL || "*");
             }

@@ -31,6 +31,11 @@ export default function UserProfilePage() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (user?.verificationLevel === "orb") {
+      setOrbVerified(true);
+      setOrbLoading(false);
+      return;
+    }
     if (user?.id && user.id !== "usr_guest") {
       api.checkOrbStatus(user.id).then((res) => {
         setOrbVerified(res.orbVerified);
@@ -39,7 +44,7 @@ export default function UserProfilePage() {
     } else {
       setOrbLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.verificationLevel]);
 
   const loadData = useCallback(async (showRefresh = false) => {
     if (!user?.id || user.id === "usr_guest") { setLoading(false); return; }

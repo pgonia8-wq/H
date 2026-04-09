@@ -1,14 +1,17 @@
 /* ─────────────────────────────────────────────────────────────────────────────
-   DESTINO: api/nonce.mjs
-   ESTADO: Sin cambios. Correcto tal como está.
-   NOTA: El nonce se genera con crypto.randomBytes(32) — criptográficamente
-   seguro. Se entrega al cliente para que lo firme con su wallet. No se
-   persiste en servidor porque walletVerify.mjs verifica la firma (no el
-   nonce en sí), y valida el timestamp del mensaje para evitar replay.
+   api/nonce.mjs
+   Genera nonce con crypto.randomUUID() y lo persiste en tabla nonces de
+   Supabase con TTL de 5 minutos para prevenir replay attacks.
    ─────────────────────────────────────────────────────────────────────────── */
 
 import crypto from "node:crypto";
 import { rateLimit } from "./_rateLimit.mjs";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL ?? "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+);
 
 export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
@@ -29,7 +32,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const nonce = crypto.randomBytes(32).toString("hex");
+    const nonce = crypto.randomUUID().replace(/-/g, "");
+
+    await supabase.from("nonces").insert({
+      nonce,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      used: false,
+    });
+
     return res.status(200).json({ nonce });
   } catch (err) {
     console.error("[NONCE] Error:", err);

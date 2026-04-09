@@ -73,23 +73,35 @@ export default async function handler(req, res) {
   if (!userId || typeof userId !== "string") {
     return res.status(400).json({ error: "userId es requerido" });
   }
-  if (!action || !["chat_gold", "extra_room"].includes(action)) {
-    return res.status(400).json({ error: `action inválida: "${action}". Valores válidos: chat_gold, extra_room` });
+  const VALID_ACTIONS = ["chat_gold", "extra_room", "tip", "boost", "chat_classic", "campaign_budget"];
+  if (!action || !VALID_ACTIONS.includes(action)) {
+    return res.status(400).json({ error: `action inválida: "${action}". Valores válidos: ${VALID_ACTIONS.join(", ")}` });
   }
+
+  const reference = body.reference;
 
   // Anti-replay
   try {
-    const table = action === "chat_gold" ? "subscriptions" : "room_credits";
-    const { data: existingTx, error: checkErr } = await supabase
-      .from(table)
-      .select("id")
-      .eq("transaction_id", transactionId)
-      .maybeSingle();
+    const replayTables = {
+      chat_gold: "subscriptions",
+      chat_classic: "subscriptions",
+      extra_room: "room_credits",
+      boost: "boosts",
+      campaign_budget: "campaigns",
+    };
+    const replayTable = replayTables[action];
+    if (replayTable) {
+      const { data: existingTx, error: checkErr } = await supabase
+        .from(replayTable)
+        .select("id")
+        .eq("transaction_id", transactionId)
+        .maybeSingle();
 
-    if (checkErr) {
-      console.error("[VERIFY_PAYMENT] Anti-replay check failed:", checkErr.message);
-    } else if (existingTx) {
-      return res.status(200).json({ success: true, message: "Acceso ya otorgado", replayed: true });
+      if (checkErr) {
+        console.error("[VERIFY_PAYMENT] Anti-replay check failed:", checkErr.message);
+      } else if (existingTx) {
+        return res.status(200).json({ success: true, message: "Acceso ya otorgado", replayed: true });
+      }
     }
   } catch (e) {
     console.error("[VERIFY_PAYMENT] Anti-replay error:", e.message);
@@ -105,9 +117,58 @@ export default async function handler(req, res) {
     return res.status(402).json({ error: "Transacción de pago fallida en Worldcoin", txStatus });
   }
 
+  if (reference && txData?.reference && txData.reference !== reference) {
+    return res.status(400).json({ error: "Reference mismatch — posible manipulación de pago" });
+  }
+
   // Aplicar acción en Supabase
   try {
-    if (action === "chat_gold") {
+    if (action === "tip") {
+      const { postId, amount } = body;
+      if (!postId) {
+        return res.status(400).json({ error: "postId requerido para tip" });
+      }
+      const { error: tipErr } = await supabase.from("tips").insert({
+        from_user_id: userId,
+        to_post_id: postId,
+        amount: amount || 0,
+        created_at: new Date().toISOString(),
+      });
+      if (tipErr) {
+        console.error("[VERIFY_PAYMENT] Tip error:", tipErr.message);
+        return res.status(500).json({ error: tipErr.message });
+      }
+    } else if (action === "boost") {
+      const { postId } = body;
+      const { error: boostErr } = await supabase.from("boosts").insert({
+        user_id: userId,
+        post_id: postId || null,
+        transaction_id: transactionId,
+        created_at: new Date().toISOString(),
+      });
+      if (boostErr) {
+        console.error("[VERIFY_PAYMENT] Boost error:", boostErr.message);
+        return res.status(500).json({ error: boostErr.message });
+      }
+    } else if (action === "chat_classic") {
+      const { error: classicErr } = await supabase
+        .from("subscriptions")
+        .upsert(
+          {
+            user_id: userId,
+            product: "chat_classic",
+            transaction_id: transactionId,
+            active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,product" }
+        );
+      if (classicErr) {
+        console.error("[VERIFY_PAYMENT] chat_classic error:", classicErr.message);
+        return res.status(500).json({ error: classicErr.message });
+      }
+    } else if (action === "chat_gold") {
       const { error: upsertErr } = await supabase
         .from("subscriptions")
         .upsert(
@@ -139,6 +200,24 @@ export default async function handler(req, res) {
       if (insertErr) {
         console.error("[VERIFY_PAYMENT] Error:", insertErr.message);
         return res.status(500).json({ error: insertErr.message });
+      }
+    } else if (action === "campaign_budget") {
+      const { campaignName, budget } = body;
+      if (!campaignName || !budget || typeof budget !== "number" || budget <= 0) {
+        return res.status(400).json({ error: "campaignName and positive budget required" });
+      }
+      const { error: campErr } = await supabase.from("campaigns").insert({
+        user_id: userId,
+        name: campaignName,
+        budget,
+        spent: 0,
+        status: "active",
+        transaction_id: transactionId,
+        created_at: new Date().toISOString(),
+      });
+      if (campErr) {
+        console.error("[VERIFY_PAYMENT] Campaign error:", campErr.message);
+        return res.status(500).json({ error: campErr.message });
       }
     }
   } catch (e) {

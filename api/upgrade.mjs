@@ -42,7 +42,7 @@ async function createReferralToken(userId) {
   return token;
 }
 
-// Verifica tx on chain (Etherscan API for Optimism)
+// Verifica tx on-chain (Etherscan API for Optimism — token creation chain)
 async function verifyTxOnChain(transactionId) {
     const apiKey = process.env.ETHERSCAN_API_KEY ?? "";
     if (!apiKey) {
