@@ -24,6 +24,15 @@ export interface PostStats {
   impressions: number;
 }
 
+export interface PostEarning {
+  id: string;
+  content: string;
+  likes: number;
+  tips_total: number;
+  boost_score: number;
+  estimated_wld: number;
+}
+
 export interface ChartPoint {
   date: string;
   earnings: number;
@@ -45,12 +54,14 @@ export interface ActivityItem {
 
 export interface DashboardData {
   totalEarnings: number;
+  totalEstimatedWLD: number;
   impressions: number;
   clicks: number;
   ctr: number;
   activeAds: number;
   chartData: ChartPoint[];
   topPosts: PostStats[];
+  postEarnings: PostEarning[];
   countries: AudienceGroup[];
   languages: AudienceGroup[];
   interests: AudienceGroup[];

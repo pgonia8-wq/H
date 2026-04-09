@@ -41,6 +41,7 @@ interface PostCardProps {
 }
 
 const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
+const LIKE_VALUE_WLD = 0.001;
 const CPC_BY_COUNTRY: Record<string, number> = {
   US: 0.08,
   GB: 0.07,
@@ -708,11 +709,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     </div>
   );
 
-  const isBoosted = post.is_boosted && post.boosted_until && new Date(post.boosted_until) > new Date();
+  const isBoosted = post?.is_boosted && post?.boosted_until && new Date(post.boosted_until) > new Date();
   const estimatedEarnings = (
-    ((post.tips_total || 0) * 0.70) +
-    ((post.likes || 0) * 0.001) +
-    ((post.boost_score || 0) * 0.01)
+    ((post?.tips_total ?? 0) * 0.70) +
+    ((post?.likes ?? 0) * LIKE_VALUE_WLD) +
+    ((post?.boost_score ?? 0) * 0.01)
   );
 
   return (
@@ -880,14 +881,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
                 </svg>
                 {likes > 0 && <span>{likes}</span>}
               </button>
-              {showWldAnimation && (
+              {showWldAnimation && LIKE_VALUE_WLD > 0 && (
                 <span
-                  className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-400 pointer-events-none"
+                  className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-400 pointer-events-none whitespace-nowrap"
                   style={{
                     animation: "wldFloat 1.2s ease-out forwards",
                   }}
                 >
-                  +WLD
+                  +{LIKE_VALUE_WLD} WLD
                 </span>
               )}
               {showLikeTooltip && (

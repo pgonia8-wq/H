@@ -1,16 +1,20 @@
 import { supabase } from "../../../src/supabaseClient";
 import { getFlag } from "./utils";
-import type { AdMetric, AudienceGroup, ChartPoint, DashboardData, Post, PostStats } from "./types";
+import type { AdMetric, AudienceGroup, ChartPoint, DashboardData, Post, PostEarning, PostStats } from "./types";
+
+const LIKE_VALUE_WLD = 0.001;
 
 function emptyData(): DashboardData {
   return {
     totalEarnings: 0,
+    totalEstimatedWLD: 0,
     impressions: 0,
     clicks: 0,
     ctr: 0,
     activeAds: 0,
     chartData: [],
     topPosts: [],
+    postEarnings: [],
     countries: [],
     languages: [],
     interests: [],
@@ -22,11 +26,28 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
 
   const { data: posts, error: postsError } = await supabase
     .from("posts")
-    .select("id, content")
+    .select("id, content, likes, tips_total, boost_score")
     .eq("user_id", userId);
 
   if (postsError) throw new Error(postsError.message);
-  if (!posts?.length) return emptyData();
+  if (!Array.isArray(posts) || posts.length === 0) return emptyData();
+
+  const postEarnings: PostEarning[] = posts.map((p: any) => ({
+    id: p.id,
+    content: p.content ?? "",
+    likes: p.likes ?? 0,
+    tips_total: p.tips_total ?? 0,
+    boost_score: p.boost_score ?? 0,
+    estimated_wld:
+      ((p.tips_total ?? 0) * 0.70) +
+      ((p.likes ?? 0) * LIKE_VALUE_WLD) +
+      ((p.boost_score ?? 0) * 0.01),
+  }));
+
+  const totalEstimatedWLD = postEarnings.reduce(
+    (sum, p) => sum + (p.estimated_wld ?? 0),
+    0
+  );
 
   const postIds = posts.map((p: Post) => p.id);
 
@@ -36,14 +57,16 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
     .in("post_id", postIds);
 
   if (metricsError) throw new Error(metricsError.message);
-  if (!metrics?.length) return emptyData();
 
-  const clicks = metrics.filter((m: AdMetric) => m.type === "click").length;
-  const impressions = metrics.filter((m: AdMetric) => m.type === "impression").length;
-  const totalEarnings = metrics.reduce(
-  (s, m) => s + (m.creator_earning || 0),
-  0
-);
+  const safeMetrics = Array.isArray(metrics) ? metrics : [];
+
+  const clicks = safeMetrics.filter((m: AdMetric) => m.type === "click").length;
+  const impressions = safeMetrics.filter((m: AdMetric) => m.type === "impression").length;
+  const adEarnings = safeMetrics.reduce(
+    (s: number, m: AdMetric) => s + (m.creator_earning || 0),
+    0
+  );
+  const totalEarnings = adEarnings + totalEstimatedWLD;
   const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
 
   const postMap = new Map<string, PostStats>();
@@ -51,14 +74,21 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
     postMap.set(p.id, { id: p.id, content: p.content, earnings: 0, clicks: 0, impressions: 0 })
   );
 
-  metrics.forEach((m: AdMetric) => {
+  safeMetrics.forEach((m: AdMetric) => {
     const ps = postMap.get(m.post_id);
     if (!ps) return;
     if (m.type === "click") {
-  ps.clicks++;
-  ps.earnings += m.creator_earning || 0;
-}
+      ps.clicks++;
+      ps.earnings += m.creator_earning || 0;
+    }
     if (m.type === "impression") ps.impressions++;
+  });
+
+  postEarnings.forEach((pe) => {
+    const ps = postMap.get(pe.id);
+    if (ps) {
+      ps.earnings += pe.estimated_wld;
+    }
   });
 
   const topPosts = Array.from(postMap.values())
@@ -66,7 +96,7 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
     .slice(0, 5);
 
   const byDay = new Map<string, number>();
-  metrics.forEach((m: AdMetric) => {
+  safeMetrics.forEach((m: AdMetric) => {
     if (m.value > 0) {
       const day = new Date(m.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       byDay.set(day, (byDay.get(day) || 0) + m.value);
@@ -78,7 +108,7 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
 
   function groupBy(field: "country" | "language" | "interests", withFlag = false): AudienceGroup[] {
     const map = new Map<string, number>();
-    metrics.filter((m: AdMetric) => m.type === "click").forEach((m: AdMetric) => {
+    safeMetrics.filter((m: AdMetric) => m.type === "click").forEach((m: AdMetric) => {
       const k = (m[field] as string) || "Unknown";
       map.set(k, (map.get(k) || 0) + 1);
     });
@@ -97,14 +127,14 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
   const languages = groupBy("language");
   const interests = groupBy("interests");
 
-  const activity = [...metrics]
+  const activity = [...safeMetrics]
     .sort((a: AdMetric, b: AdMetric) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10)
     .map((m: AdMetric, i: number) => ({ ...m, id: String(i) }));
 
   const activeAds = new Set(
-    metrics.filter((m: AdMetric) => m.type === "impression").map((m: AdMetric) => m.post_id)
+    safeMetrics.filter((m: AdMetric) => m.type === "impression").map((m: AdMetric) => m.post_id)
   ).size;
 
-  return { totalEarnings, impressions, clicks, ctr, activeAds, chartData, topPosts, countries, languages, interests, activity };
+  return { totalEarnings, totalEstimatedWLD, impressions, clicks, ctr, activeAds, chartData, topPosts, postEarnings, countries, languages, interests, activity };
 }

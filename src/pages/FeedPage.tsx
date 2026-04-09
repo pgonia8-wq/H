@@ -484,7 +484,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
           </svg>
         </div>
         <p className={`text-xs font-medium leading-snug ${isDark ? "text-emerald-300/80" : "text-emerald-700"}`}>
-          {t ? t("earn_wld_banner") || "Gana WLD publicando y conectando con humanos reales" : "Gana WLD publicando y conectando con humanos reales"}
+          {(() => { const txt = t ? t("earn_wld_banner") : null; return (txt && txt !== "earn_wld_banner") ? txt : "Gana WLD publicando y conectando con humanos reales"; })()}
         </p>
       </div>
 
