@@ -170,16 +170,41 @@ import React, { useState, useEffect, useRef } from "react";
             console.warn("[ERUDA:WALLET] ⚠ WalletAuth success pero sin address. Payload:", JSON.stringify(payload));
           }
 
-          console.log("[ERUDA:WALLET] MiniKit.user after walletAuth:", JSON.stringify(MiniKit.user));
-          if (MiniKit.user) {
+          // Fetch username + avatar from Worldcoin public API using wallet address
+          const resolvedAddress = wallet || payload?.address || MiniKit.walletAddress;
+          if (resolvedAddress) {
+            try {
+              console.log("[ERUDA:WALLET] Fetching username from Worldcoin API for:", resolvedAddress.slice(0, 10) + "...");
+              const wcRes = await fetch(`https://usernames.worldcoin.org/api/v1/${resolvedAddress}`);
+              if (wcRes.ok) {
+                const wcData = await wcRes.json();
+                console.log("[ERUDA:WALLET] Worldcoin username API:", JSON.stringify(wcData));
+                const u = wcData.username || null;
+                const a = wcData.profilePictureUrl || null;
+                if (u) {
+                  setUsername(u);
+                  setGlobalUsername(u);
+                  console.log("[ERUDA:WALLET] ✅ Username set from Worldcoin:", u);
+                }
+                if (a) {
+                  setAvatar(a);
+                  console.log("[ERUDA:WALLET] ✅ Avatar set from Worldcoin");
+                }
+              } else {
+                console.log("[ERUDA:WALLET] Worldcoin username API returned:", wcRes.status);
+              }
+            } catch (e) {
+              console.warn("[ERUDA:WALLET] Worldcoin username API error:", e);
+            }
+          }
+
+          // Fallback: try MiniKit.user if Worldcoin API didn't return data
+          if (!username && MiniKit.user) {
             const u = MiniKit.user.username || null;
-            const a = MiniKit.user.avatar_url || null;
-            console.log("[ERUDA:WALLET] Extracted username:", u, "avatar:", !!a);
-            setUsername(u);
-            setAvatar(a);
-            if (u) setGlobalUsername(u);
-          } else {
-            console.log("[ERUDA:WALLET] ⚠ MiniKit.user still null after walletAuth — username not available from MiniKit");
+            const a = MiniKit.user.avatar_url || MiniKit.user.profilePictureUrl || null;
+            if (u) { setUsername(u); setGlobalUsername(u); }
+            if (a) setAvatar(a);
+            console.log("[ERUDA:WALLET] Fallback MiniKit.user:", u);
           }
         } catch (err: any) {
           console.error("[ERUDA:WALLET] ❌ Error walletAuth:", err);
