@@ -463,7 +463,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           const verifyRes = await fetch("/api/verifyPayment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transactionId, userId: currentUserId, action: "tip" }),
+            body: JSON.stringify({ transactionId, userId: currentUserId, action: "tip", postId: post.id, amount: Number(tipAmount) }),
           });
           if (!verifyRes.ok) {
             const errData = await verifyRes.json().catch(() => ({}));
@@ -519,7 +519,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           const verifyRes = await fetch("/api/verifyPayment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transactionId, userId: currentUserId, action: "boost" }),
+            body: JSON.stringify({ transactionId, userId: currentUserId, action: "boost", postId: post.id }),
           });
           if (!verifyRes.ok) {
             const errData = await verifyRes.json().catch(() => ({}));
