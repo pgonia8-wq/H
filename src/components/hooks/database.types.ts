@@ -1,21 +1,24 @@
-// database.types.ts
-// Tipos compartidos entre AutonomousGrowthBrain y sus hooks.
-// NO modificar sin actualizar AutonomousGrowthBrain.tsx también.
-
 export type Category =
   | "crypto_news"
   | "market_analysis"
   | "worldcoin_updates"
   | "trading_signals"
   | "tech"
-  | "memecoins";
+  | "memecoins"
+  | "world_news"
+  | "sports"
+  | "entertainment"
+  | "lifestyle";
 
 export type OfficialAccount =
   | "@news"
   | "@crypto"
   | "@trading"
   | "@memes"
-  | "@builders";
+  | "@builders"
+  | "@sports"
+  | "@entertainment"
+  | "@world";
 
 export interface ContentQueueRow {
   id: string;

@@ -6,11 +6,14 @@ const supabase = createClient(
 );
 
 const OFFICIAL_ACCOUNTS = [
-  { id: "@news",     username: "H News",     tier: "official" },
-  { id: "@crypto",   username: "H Crypto",   tier: "official" },
-  { id: "@trading",  username: "H Trading",  tier: "official" },
-  { id: "@memes",    username: "H Memes",    tier: "official" },
-  { id: "@builders", username: "H Builders", tier: "official" },
+  { id: "@news",          username: "H News",          tier: "official" },
+  { id: "@crypto",        username: "H Crypto",        tier: "official" },
+  { id: "@trading",       username: "H Trading",       tier: "official" },
+  { id: "@memes",         username: "H Memes",         tier: "official" },
+  { id: "@builders",      username: "H Builders",      tier: "official" },
+  { id: "@sports",        username: "H Sports",        tier: "official" },
+  { id: "@entertainment", username: "H Entertainment", tier: "official" },
+  { id: "@world",         username: "H World",         tier: "official" },
 ];
 
 export default async function handler(req, res) {

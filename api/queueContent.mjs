@@ -29,6 +29,7 @@ export default async function handler(req, res) {
       account: r.account,
       topic: r.topic,
       content: r.content,
+      image_url: r.image_url || null,
       status: "queued",
       published_at: null,
       scheduled_at: null,

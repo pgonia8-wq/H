@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   try {
     const { data: candidates, error: selectErr } = await supabase
       .from("content_queue")
-      .select("id, category, account, topic, content, created_at")
+      .select("id, category, account, topic, content, image_url, created_at")
       .eq("status", "queued")
       .eq("account", account)
       .order("created_at", { ascending: true })
@@ -39,11 +39,14 @@ export default async function handler(req, res) {
     const hourOfDay = new Date(publishedAt).getHours();
 
     const OFFICIAL_PROFILES = {
-      "@news":     { username: "H News" },
-      "@crypto":   { username: "H Crypto" },
-      "@trading":  { username: "H Trading" },
-      "@memes":    { username: "H Memes" },
-      "@builders": { username: "H Builders" },
+      "@news":          { username: "H News" },
+      "@crypto":        { username: "H Crypto" },
+      "@trading":       { username: "H Trading" },
+      "@memes":         { username: "H Memes" },
+      "@builders":      { username: "H Builders" },
+      "@sports":        { username: "H Sports" },
+      "@entertainment": { username: "H Entertainment" },
+      "@world":         { username: "H World" },
     };
 
     const meta = OFFICIAL_PROFILES[account];
@@ -68,7 +71,7 @@ export default async function handler(req, res) {
       .insert({
         user_id: account,
         content: post.content,
-        image_url: null,
+        image_url: post.image_url || null,
         timestamp: publishedAt,
         created_at: publishedAt,
         deleted_flag: false,
