@@ -14,8 +14,7 @@
 --   - Comments (peso medio)
 --   - Tiempo transcurrido (decay exponencial para favorecer contenido reciente)
 --
--- Ajusta los pesos (x0.7, x0.5, x0.3) según las métricas de tu tabla posts.
--- Si tu tabla posts tiene columnas con nombres distintos, cámbialos aquí.
+-- Columnas reales de la tabla posts: likes, views, comments
 -- ─────────────────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION update_post_scores()
@@ -26,18 +25,14 @@ AS $$
 BEGIN
   UPDATE posts
   SET score = (
-    -- Engagement score ponderado
-    (COALESCE(likes_count, 0)    * 3.0) +
-    (COALESCE(views_count, 0)    * 0.5) +
-    (COALESCE(comments_count, 0) * 2.0)
+    (COALESCE(likes, 0)    * 3.0) +
+    (COALESCE(views, 0)    * 0.5) +
+    (COALESCE(comments, 0) * 2.0)
   )
-  * -- Decay temporal: score decrece con el tiempo (vida media ~48 horas)
-  EXP(
+  * EXP(
     -EXTRACT(EPOCH FROM (NOW() - created_at)) / (48.0 * 3600)
   );
 END;
 $$;
 
--- Permitir que el rol anon/authenticated de Supabase ejecute la función
--- (no necesario si el backend usa service_role key, pero es buena práctica)
 GRANT EXECUTE ON FUNCTION update_post_scores() TO service_role;

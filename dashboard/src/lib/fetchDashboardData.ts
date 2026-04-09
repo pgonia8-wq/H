@@ -23,7 +23,7 @@ export async function fetchDashboardData(userId: string): Promise<DashboardData>
   const { data: posts, error: postsError } = await supabase
     .from("posts")
     .select("id, content")
-    .eq("author_id", userId);
+    .eq("user_id", userId);
 
   if (postsError) throw new Error(postsError.message);
   if (!posts?.length) return emptyData();

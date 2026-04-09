@@ -176,6 +176,12 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     fetchUser();
   }, [currentUserId]);
 
+  const [showWldAnimation, setShowWldAnimation] = useState(false);
+  const [hasSeenTooltip] = useState(() => {
+    try { return localStorage.getItem("h_like_tooltip_seen") === "1"; } catch { return false; }
+  });
+  const [showLikeTooltip, setShowLikeTooltip] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState<number | "">(1);
   const [showRepostModal, setShowRepostModal] = useState(false);
@@ -316,6 +322,13 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         await supabase.from("posts").update({ likes: likes + 1 }).eq("id", post.id);
         setLiked(true);
         setLikes((prev: number) => prev + 1);
+        setShowWldAnimation(true);
+        setTimeout(() => setShowWldAnimation(false), 1200);
+        if (!hasSeenTooltip) {
+          setShowLikeTooltip(true);
+          try { localStorage.setItem("h_like_tooltip_seen", "1"); } catch {}
+          setTimeout(() => setShowLikeTooltip(false), 4000);
+        }
       }
     } catch (err: any) {
       setError(t("error_al_dar_like") + ": " + err.message);
@@ -695,19 +708,39 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     </div>
   );
 
+  const isBoosted = post.is_boosted && post.boosted_until && new Date(post.boosted_until) > new Date();
+  const estimatedEarnings = (
+    ((post.tips_total || 0) * 0.70) +
+    ((post.likes || 0) * 0.001) +
+    ((post.boost_score || 0) * 0.01)
+  );
+
   return (
     <div
       ref={postRef}
       className={`
         relative w-full max-w-full overflow-hidden px-4 pt-5 pb-6 mb-0
         border-b transition-colors
-        ${isDark
-          ? "bg-black border-gray-800 hover:bg-gray-950"
-          : "bg-white border-gray-100 hover:bg-gray-50"
+        ${isBoosted
+          ? isDark
+            ? "bg-gradient-to-r from-orange-950/20 via-black to-black border-orange-800/40"
+            : "bg-gradient-to-r from-orange-50 via-white to-white border-orange-200/60"
+          : isDark
+            ? "bg-black border-gray-800 hover:bg-gray-950"
+            : "bg-white border-gray-100 hover:bg-gray-50"
         }
       `}
       onClick={isAd ? handleAdClick : undefined}
     >
+
+      {isBoosted && (
+        <div className="flex items-center gap-1.5 mb-2 ml-10">
+          <svg className="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+          </svg>
+          <span className="text-xs font-semibold text-orange-400">Boosted</span>
+        </div>
+      )}
 
       {/* Repost banner */}
       {post.reposted_post_id && (
@@ -814,25 +847,57 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             </div>
           )}
 
+          {estimatedEarnings > 0 && (
+            <div className={`flex items-center gap-2 mt-3 px-3 py-1.5 rounded-xl w-fit ${
+              isDark ? "bg-emerald-950/30 border border-emerald-800/30" : "bg-emerald-50 border border-emerald-100"
+            }`}>
+              <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-xs font-semibold text-emerald-500">
+                {estimatedEarnings.toFixed(4)} WLD
+              </span>
+            </div>
+          )}
+
           {/* Action bar */}
           <div className="flex items-center flex-wrap gap-1 mt-3 -ml-1">
             {/* Like */}
-            <button
-              onClick={handleLike}
-              disabled={loadingAction === "like"}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all ${
-                liked
-                  ? "text-red-500 bg-red-500/10"
-                  : isDark
-                    ? "text-gray-500 hover:text-red-400 hover:bg-red-500/10"
-                    : "text-gray-400 hover:text-red-500 hover:bg-red-50"
-              }`}
-            >
-              <svg className="w-4 h-4" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-              </svg>
-              {likes > 0 && <span>{likes}</span>}
-            </button>
+            <div className="relative">
+              <button
+                onClick={handleLike}
+                disabled={loadingAction === "like"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  liked
+                    ? "text-red-500 bg-red-500/10"
+                    : isDark
+                      ? "text-gray-500 hover:text-red-400 hover:bg-red-500/10"
+                      : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                }`}
+              >
+                <svg className="w-4 h-4" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+                </svg>
+                {likes > 0 && <span>{likes}</span>}
+              </button>
+              {showWldAnimation && (
+                <span
+                  className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-400 pointer-events-none"
+                  style={{
+                    animation: "wldFloat 1.2s ease-out forwards",
+                  }}
+                >
+                  +WLD
+                </span>
+              )}
+              {showLikeTooltip && (
+                <div className={`absolute bottom-full left-0 mb-2 w-48 px-3 py-2 rounded-xl text-xs shadow-lg z-30 ${
+                  isDark ? "bg-gray-800 text-gray-200 border border-gray-700" : "bg-white text-gray-700 border border-gray-200"
+                }`}>
+                  Cada like suma valor. Publica y gana WLD con el engagement de tu contenido.
+                </div>
+              )}
+            </div>
 
             {/* Comment */}
             <button

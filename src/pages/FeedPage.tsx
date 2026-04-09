@@ -76,37 +76,33 @@ const premiumPlusBenefits = [
   { icon: <Sparkles size={18} />, text: "Invitaciones exclusivas a eventos" },
 ];
 
-// ── Sorting algorithm (sin cambios) ────────────────────────────────────
 const sortPosts = (posts: any[]) => {
   const now = Date.now();
   return [...posts].sort((a, b) => {
     const calculateScore = (post: any) => {
-      const weightLikes = 1;
-      const weightComments = 2;
-      const weightReposts = 2;
-      const weightTips = 3;
-      const weightBoost = 15;
-      const ageHours = (now - new Date(post.timestamp).getTime()) / 3600000;
-      const recencyDecay = Math.exp(-ageHours / 24);
+      const ageHours = Math.max((now - new Date(post.timestamp || post.created_at || 0).getTime()) / 3600000, 0.1);
       const likes = post.likes || 0;
       const comments = post.comments || 0;
       const reposts = post.reposts || 0;
-      const tips = post.tips_total || 0;
+      const tipsTotal = post.tips_total || 0;
+      const tipsCount = post.tips_count || 0;
+      const boostScore = post.boost_score || 0;
+      const views = post.views || 0;
       const engagement =
-        likes * weightLikes +
-        comments * weightComments +
-        reposts * weightReposts +
-        tips * weightTips;
-      const engagementScore = engagement / (1 + ageHours);
-      const boost =
+        likes * 2 +
+        comments * 4 +
+        reposts * 3 +
+        tipsTotal * 8 +
+        tipsCount * 5 +
+        views * 0.05;
+      const velocity = engagement / ageHours;
+      const recencyDecay = Math.exp(-ageHours / 36);
+      const activeBoost =
         post.boosted_until && new Date(post.boosted_until) > new Date()
-          ? weightBoost
-          : 0;
-      const tagScore = post.tags ? post.tags.length * 0.5 : 0;
-      const velocity =
-        (likes + comments * 2 + reposts * 2 + tips * 3) / Math.max(ageHours, 1);
-      const velocityScore = velocity * 0.5;
-      return engagementScore + recencyDecay + boost + tagScore + velocityScore;
+          ? 20 + boostScore * 0.5
+          : boostScore * 0.1;
+      const tagScore = Array.isArray(post.tags) ? post.tags.length * 0.5 : 0;
+      return (engagement * recencyDecay) + (velocity * 0.6) + activeBoost + tagScore;
     };
     return calculateScore(b) - calculateScore(a);
   });
@@ -472,6 +468,24 @@ const FeedPage: React.FC<FeedPageProps> = ({
             {label}
           </button>
         ))}
+      </div>
+
+      {/* ── WHY STAY BANNER ──────────────────────────────────────── */}
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl mb-4 ${
+        isDark
+          ? "bg-gradient-to-r from-emerald-950/40 to-emerald-900/20 border border-emerald-800/30"
+          : "bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100"
+      }`}>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+          isDark ? "bg-emerald-500/20" : "bg-emerald-100"
+        }`}>
+          <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <p className={`text-xs font-medium leading-snug ${isDark ? "text-emerald-300/80" : "text-emerald-700"}`}>
+          {t ? t("earn_wld_banner") || "Gana WLD publicando y conectando con humanos reales" : "Gana WLD publicando y conectando con humanos reales"}
+        </p>
       </div>
 
       {/* ── UPGRADE BUTTON (sin cambios) ─────────────────────────── */}
