@@ -1,95 +1,95 @@
 import { createClient } from "@supabase/supabase-js";
 
-  if (!process.env.SUPABASE_URL) {
-    console.error("[VERIFY_ORB] ERROR: SUPABASE_URL not configured");
-  }
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("[VERIFY_ORB] ERROR: SUPABASE_SERVICE_ROLE_KEY not configured");
-  }
-
-  const supabase = createClient(
-    process.env.SUPABASE_URL ?? "",
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
-  );
-
-  const APP_ID = process.env.APP_ID ?? "";
-  const ORB_ACTION_ID = process.env.WORLDCOIN_ORB_ACTION_ID ?? "user-orb";
-
-  export default async function handler(req, res) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-
-    if (req.method === "OPTIONS") return res.status(200).end();
-
-    if (req.method !== "POST") {
-      return res.status(405).json({ success: false, error: "Method not allowed" });
+    if (!process.env.SUPABASE_URL) {
+      console.error("[VERIFY_ORB] ERROR: SUPABASE_URL not configured");
+    }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error("[VERIFY_ORB] ERROR: SUPABASE_SERVICE_ROLE_KEY not configured");
     }
 
-    const body = req.body || {};
-    const { userId, proof } = body;
+    const supabase = createClient(
+      process.env.SUPABASE_URL ?? "",
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+    );
 
-    if (!userId || typeof userId !== "string") {
-      return res.status(400).json({ success: false, error: "userId is required" });
-    }
+    const APP_ID = process.env.APP_ID ?? "";
+    const ORB_ACTION_ID = process.env.WORLDCOIN_ORB_ACTION_ID ?? "user-orb";
 
-    if (
-      !proof ||
-      !proof.nullifier_hash ||
-      !proof.proof ||
-      !proof.merkle_root ||
-      !proof.verification_level
-    ) {
-      return res.status(400).json({ success: false, error: "Missing proof fields" });
-    }
+    export default async function handler(req, res) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-    if (proof.verification_level !== "orb") {
-      return res.status(400).json({ success: false, error: "Only orb-level verification accepted" });
-    }
+      if (req.method === "OPTIONS") return res.status(200).end();
 
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id, verification_level")
-      .eq("id", userId)
-      .maybeSingle();
+      if (req.method !== "POST") {
+        return res.status(405).json({ success: false, error: "Method not allowed" });
+      }
 
-    if (!existing) {
-      return res.status(404).json({ success: false, error: "Profile not found" });
-    }
+      const body = req.body || {};
+      const { userId, proof } = body;
 
-    if (existing.verification_level === "orb") {
-      return res.status(200).json({ success: true, message: "Already orb-verified" });
-    }
+      if (!userId || typeof userId !== "string") {
+        return res.status(400).json({ success: false, error: "userId is required" });
+      }
 
-    const { data: deviceProfile } = await supabase
-      .from("profiles")
-      .select("nullifier_hash")
-      .eq("id", userId)
-      .maybeSingle();
+      if (
+        !proof ||
+        !proof.nullifier_hash ||
+        !proof.proof ||
+        !proof.merkle_root ||
+        !proof.verification_level
+      ) {
+        return res.status(400).json({ success: false, error: "Missing proof fields" });
+      }
 
-    if (deviceProfile?.nullifier_hash) {
-      const { data: orbConflict } = await supabase
+      if (proof.verification_level !== "orb") {
+        return res.status(400).json({ success: false, error: "Only orb-level verification accepted" });
+      }
+
+      if (!APP_ID) {
+        console.error("[VERIFY_ORB] APP_ID not configured — cannot verify orb proofs");
+        return res.status(503).json({ success: false, error: "Orb verification service not configured" });
+      }
+
+      const { data: existing } = await supabase
         .from("profiles")
-        .select("id")
-        .eq("nullifier_hash", proof.nullifier_hash)
-        .neq("id", userId)
+        .select("id, verification_level")
+        .eq("id", userId)
         .maybeSingle();
 
-      if (orbConflict) {
-        return res.status(403).json({
-          success: false,
-          error: "This orb proof is already linked to a different account",
-        });
+      if (!existing) {
+        return res.status(404).json({ success: false, error: "Profile not found" });
       }
-    }
 
-    // World App already verified the proof via MiniKit before sending it here.
-    // Re-verifying with Worldcoin API often fails because proofs are single-use.
-    // We trust World App's MiniKit verification and save directly.
-    // Optional: attempt server-side verification, but accept "already verified" as success.
-    let worldcoinVerified = false;
-    try {
-      if (APP_ID) {
+      if (existing.verification_level === "orb") {
+        return res.status(200).json({ success: true, message: "Already orb-verified" });
+      }
+
+      const { data: deviceProfile } = await supabase
+        .from("profiles")
+        .select("nullifier_hash")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (deviceProfile?.nullifier_hash) {
+        const { data: orbConflict } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("nullifier_hash", proof.nullifier_hash)
+          .neq("id", userId)
+          .maybeSingle();
+
+        if (orbConflict) {
+          return res.status(403).json({
+            success: false,
+            error: "This orb proof is already linked to a different account",
+          });
+        }
+      }
+
+      let worldcoinVerified = false;
+      try {
         const verifyResponse = await fetch(
           `https://developer.worldcoin.org/api/v2/verify/${APP_ID}`,
           {
@@ -112,39 +112,38 @@ import { createClient } from "@supabase/supabase-js";
           verifyData.code === "already_verified" ||
           verifyData.code === "max_verifications_reached";
         console.log("[VERIFY_ORB] Worldcoin API:", verifyResponse.status, JSON.stringify(verifyData));
-      } else {
-        console.warn("[VERIFY_ORB] APP_ID not set, skipping Worldcoin API check");
-        worldcoinVerified = true;
+      } catch (err) {
+        console.error("[VERIFY_ORB] Worldcoin API unreachable:", err.message);
+        return res.status(502).json({ success: false, error: "Worldcoin verification service unreachable. Please try again later." });
       }
-    } catch (err) {
-      console.warn("[VERIFY_ORB] Worldcoin API unreachable, trusting MiniKit proof:", err.message);
-      worldcoinVerified = true;
-    }
 
-    // Save orb verification to DB (trust MiniKit proof even if Worldcoin API fails)
-    try {
-      const { error: dbErr } = await supabase
-        .from("profiles")
-        .update({
-          verification_level: "orb",
-          orb_verified_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId);
+      if (!worldcoinVerified) {
+        return res.status(400).json({ success: false, error: "Worldcoin orb verification failed" });
+      }
 
-      if (dbErr) {
-        console.error("[VERIFY_ORB] DB error:", dbErr.message);
+      try {
+        const { error: dbErr } = await supabase
+          .from("profiles")
+          .update({
+            verification_level: "orb",
+            orb_verified_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", userId);
+
+        if (dbErr) {
+          console.error("[VERIFY_ORB] DB error:", dbErr.message);
+          return res.status(500).json({ success: false, error: "Database error" });
+        }
+      } catch (err) {
+        console.error("[VERIFY_ORB] Error:", err.message);
         return res.status(500).json({ success: false, error: "Database error" });
       }
-    } catch (err) {
-      console.error("[VERIFY_ORB] Error:", err.message);
-      return res.status(500).json({ success: false, error: "Database error" });
-    }
 
-    return res.status(200).json({
-      success: true,
-      message: "Orb verification saved",
-      worldcoinVerified,
-    });
-  }
+      return res.status(200).json({
+        success: true,
+        message: "Orb verification saved",
+        worldcoinVerified,
+      });
+    }
   
