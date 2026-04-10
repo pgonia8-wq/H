@@ -44,6 +44,8 @@ import React, { useState, useEffect, useRef } from "react";
             });
             poll().then(() => {
               setMiniKitReady(true);
+              // Señal a World App: la app está lista → quita su splash nativa
+              try { MiniKit.commands.ready(); } catch (_) {}
               if (MiniKit.user) {
                 const u = MiniKit.user.username || null;
                 const a = MiniKit.user.avatar_url || null;
