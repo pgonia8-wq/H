@@ -130,7 +130,27 @@ export default async function handler(req, res) {
       throw insertErr;
     }
 
-    return res.status(200).json({ success: true });
+    if (type === "click") {
+        const { data: campaign } = await supabase
+          .from("campaigns")
+          .select("spent")
+          .eq("id", campaignId)
+          .single();
+        if (campaign) {
+          const { data: spentUpdate } = await supabase
+            .from("campaigns")
+            .update({ spent: campaign.spent + value })
+            .eq("id", campaignId)
+            .eq("spent", campaign.spent)
+            .select("id")
+            .maybeSingle();
+          if (!spentUpdate) {
+            console.warn("[trackAd] Budget deduction OCC conflict — metric recorded, budget retry needed");
+          }
+        }
+      }
+
+      return res.status(200).json({ success: true });
   } catch (err) {
     console.error("[trackAd] Error:", err);
     return res.status(500).json({ error: "Internal server error" });
