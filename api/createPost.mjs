@@ -35,8 +35,8 @@ import { createClient } from "@supabase/supabase-js";
       .eq("id", user_id)
       .maybeSingle();
 
-    if (!profile || profile.verification_level !== "orb") {
-      return res.status(403).json({ error: "Orb verification required to create posts" });
+    if (!profile || !profile.verification_level) {
+      return res.status(403).json({ error: "Device verification required to create posts" });
     }
 
     const rl = await rateLimitPersistent("create_post:" + user_id, { windowMs: 3600000, max: 15 });
