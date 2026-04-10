@@ -185,6 +185,16 @@
       } catch { showError("Error al eliminar"); }
     }, [currentUserId, selectedRoomId, updateMessage, showError]);
 
+
+  function sanitizeChat(input: string): string {
+    return input
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/javascript:/gi, "")
+      .replace(/on\w+=/gi, "")
+      .slice(0, 2000);
+  }
+  
     const handleSend = useCallback(async (content: string, file?: File, audioBlob?: Blob, ephemeral?: boolean, replyMsg?: ChatMessage) => {
       if (!content.trim() && !file && !audioBlob) return;
       const username = myUsername || `@${currentUserId.slice(0, 6)}`;
@@ -222,7 +232,7 @@
       setReplyTo(null);
 
       const payload: Record<string, unknown> = {
-        room_id: selectedRoomId, sender_id: currentUserId, content: content.trim() || null,
+        room_id: selectedRoomId, sender_id: currentUserId, content: content.trim() ? sanitizeChat(content.trim()) : null,
       };
       if (username) payload.username = username;
       if (myAvatarUrl) payload.avatar_url = myAvatarUrl;
@@ -231,7 +241,7 @@
       if (fileType) payload.file_type = fileType;
       if (audioUrl) payload.audio_url = audioUrl;
       if (replyMsg?.id) payload.reply_to_id = replyMsg.id;
-      if (replyMsg?.content) payload.reply_to_content = replyMsg.content;
+      if (replyMsg?.content) payload.reply_to_content = sanitizeChat(replyMsg.content);
       if (replyMsg?.username) payload.reply_to_username = replyMsg.username;
       if (ephemeral) payload.ephemeral = true;
 
