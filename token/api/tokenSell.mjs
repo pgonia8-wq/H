@@ -140,7 +140,9 @@ export default async function handler(req, res) {
         fee, wldReceived,
       });
 
-      return res.status(200).json({
+      await supabase.rpc("log_audit", { p_event: "token_sell", p_user: userId, p_details: JSON.stringify({ tokenId, amount }) });
+
+    return res.status(200).json({
         success: true,
         wldReceived, fee,
         slippage: slippageAmt,
