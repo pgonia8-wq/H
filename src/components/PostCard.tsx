@@ -306,24 +306,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     setError(null);
     setLoadingAction("like");
     try {
-      const { data: existing } = await supabase
-        .from("likes")
-        .select("id")
-        .eq("post_id", post.id)
-        .eq("user_id", currentUserId)
-        .maybeSingle();
+      const { data: result } = await supabase.rpc("toggle_like", {
+          p_post_id: post.id,
+          p_user_id: currentUserId,
+        });
 
-      if (existing) {
-        await supabase.from("likes").delete().eq("id", existing.id);
-        await supabase.from("posts").update({ likes: likes - 1 }).eq("id", post.id);
-        setLiked(false);
-        setLikes((prev: number) => prev - 1);
-      } else {
-        await supabase.from("likes").insert({ post_id: post.id, user_id: currentUserId });
-        await supabase.from("posts").update({ likes: likes + 1 }).eq("id", post.id);
-        setLiked(true);
-        setLikes((prev: number) => prev + 1);
-        incrementLikeCount(currentUserId);
+        if (result && !result.liked) {
+          setLiked(false);
+          setLikes(result.likes ?? likes - 1);
+        } else if (result && result.liked) {
+          setLiked(true);
+          setLikes(result.likes ?? likes + 1);
+          incrementLikeCount(currentUserId);
         setShowWldAnimation(true);
         setTimeout(() => setShowWldAnimation(false), 1200);
         if (!hasSeenTooltip) {
@@ -489,10 +483,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           setError("Error de red al verificar tip: " + (verifyErr instanceof Error ? verifyErr.message : ""));
           return;
         }
-        await supabase
-          .from("posts")
-          .update({ tips_total: (post.tips_total || 0) + Number(tipAmount) })
-          .eq("id", post.id);
+        await supabase.rpc("add_tip", {
+            p_post_id: post.id,
+            p_from_user: currentUserId,
+            p_amount: Number(tipAmount),
+          });
         setTipAmount(1);
       } else {
         setError(t("pago_cancelado"));
