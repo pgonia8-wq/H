@@ -15,7 +15,7 @@ export default async function handler(req, res) {
 
   const tokenId = req.query.id;
   const { amountWld, userId, transactionId } = req.body ?? {};
-  if (!tokenId || !amountWld || !userId) {
+  if (!tokenId || !amountWld || !userId || !transactionId) {
     return res.status(400).json({ error: "Missing tokenId, amountWld, userId" });
   }
   if (amountWld <= 0 || amountWld > 120) {
@@ -25,6 +25,34 @@ export default async function handler(req, res) {
   const orbOk = await requireOrb(userId, res);
   if (!orbOk) return;
 
+    const APP_ID = process.env.APP_ID ?? "";
+    const RP_KEY = process.env.RP_SIGNING_KEY ?? "";
+    if (RP_KEY) {
+      try {
+        const txVerify = await fetch(
+          `https://developer.worldcoin.org/api/v2/minikit/transaction/${transactionId}?app_id=${APP_ID}`,
+          { headers: { Authorization: `Bearer ${RP_KEY}` } }
+        );
+        const txData = await txVerify.json();
+        if (!txVerify.ok || (txData.transaction_status && txData.transaction_status !== "mined")) {
+          return res.status(402).json({ error: "Payment not confirmed on-chain", details: txData });
+        }
+      } catch (verifyErr) {
+        console.error("[BUY] Payment verification error:", verifyErr.message);
+        return res.status(502).json({ error: "Could not verify payment" });
+      }
+    }
+
+    const { data: txDupe } = await supabase
+      .from("payment_orders")
+      .select("id")
+      .eq("transaction_id", transactionId)
+      .eq("status", "completed")
+      .maybeSingle();
+    if (txDupe) {
+      return res.status(409).json({ error: "Transaction already used for a previous buy" });
+    }
+  
   const wldUsd = await getWldUsdRate();
 
   const { data: profile } = await supabase
