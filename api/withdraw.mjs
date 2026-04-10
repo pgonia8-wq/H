@@ -138,7 +138,13 @@ import { createClient } from "@supabase/supabase-js";
         txResult = await executeTransfer(wallet, amount);
       } catch (txErr) {
         console.error("[WITHDRAW] Transfer failed, refunding balance:", txErr.message);
-        await supabase.rpc("deduct_balance", { p_user_id: userId, p_amount: -amount });
+        await supabase.rpc("credit_balance", { p_user_id: userId, p_amount: amount });
+          await supabase.from("withdrawals").insert({
+            user_id: userId, amount, wallet_address: wallet,
+            status: "refunded", tx_hash: null,
+            error_message: txErr.message,
+            created_at: new Date().toISOString(),
+          });
         return res.status(500).json({ success: false, error: "Error en transferencia on-chain: " + txErr.message });
       }
 
