@@ -59,11 +59,13 @@ export default async function handler(req, res) {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: tips, error: tipsError } = await supabase
-      .from("tips")
-      .select("from_user_id, to_post_id, amount, id")
-      .gte("created_at", sevenDaysAgo)
-      .is("distributed_at", null);
+    // Atomic: mark tips as distributed BEFORE processing (prevents double-payout)
+      const { data: tips, error: tipsError } = await supabase
+        .from("tips")
+        .update({ distributed_at: new Date().toISOString() })
+        .is("distributed_at", null)
+        .gte("created_at", sevenDaysAgo)
+        .select("from_user_id, to_post_id, amount, id");
 
     if (tipsError) {
       console.error("[PAYOUT] Error fetching tips:", tipsError.message);
@@ -143,10 +145,7 @@ export default async function handler(req, res) {
     const platformTotal = platformAmount + poolAmount;
 
     const tipIds = tips.map(t => t.id);
-    await supabase
-      .from("tips")
-      .update({ distributed_at: new Date().toISOString() })
-      .in("id", tipIds);
+    // distributed_at already set atomically at the start
 
     await supabase.from("payout_logs").insert({
       total_tips: totalAmount,
