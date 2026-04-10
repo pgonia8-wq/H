@@ -95,7 +95,7 @@ export default async function handler(req, res) {
       value = cpc;
       creatorEarning = cpc * 0.7;
       platformEarning = cpc * 0.3;
-
+    }
 
     const { error: insertErr } = await supabase.from("ad_metrics").insert({
       post_id: postId,
