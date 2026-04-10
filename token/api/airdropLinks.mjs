@@ -206,7 +206,16 @@ export default async function handler(req, res) {
           const { error: iErr } = await supabase.from("airdrop_links").insert(newLink);
           if (iErr) throw iErr;
 
-          await supabase.from("airdrop_pools").update({ allocated: (pool.allocated ?? 0) + numAmount }).eq("id", poolId);
+          const { data: poolUpd } = await supabase.from("airdrop_pools")
+              .update({ allocated: (pool.allocated ?? 0) + numAmount })
+              .eq("id", poolId)
+              .eq("allocated", pool.allocated ?? 0)
+              .select("id")
+              .maybeSingle();
+            if (!poolUpd) {
+              await supabase.from("airdrop_links").delete().eq("id", newLink.id);
+              return res.status(409).json({ error: "Concurrent pool update — please retry" });
+            }
 
           return res.status(201).json({
             success: true,
@@ -247,8 +256,8 @@ export default async function handler(req, res) {
           const { data: pool } = await supabase.from("airdrop_pools").select("allocated").eq("id", link.pool_id).single();
           if (pool) {
             await supabase.from("airdrop_pools").update({
-              allocated: Math.max(0, (pool.allocated ?? 0) - unclaimed),
-            }).eq("id", link.pool_id);
+                allocated: Math.max(0, (pool.allocated ?? 0) - unclaimed),
+              }).eq("id", link.pool_id).eq("allocated", pool.allocated ?? 0);
           }
         }
 
