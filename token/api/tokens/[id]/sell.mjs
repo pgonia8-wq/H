@@ -102,25 +102,56 @@ export default async function handler(req, res) {
       const avgBuyPrice = Number(holding?.avg_buy_price ?? 0);
 
       if (newAmount > 0) {
-        await supabase.from("holdings").upsert({
-          user_id: userId,
-          token_id: tokenId,
-          amount: newAmount,
-          current_price: newPrice,
-          value: newAmount * newPrice,
-          pnl: (newPrice - avgBuyPrice) * newAmount,
-          pnl_percent: avgBuyPrice > 0 ? ((newPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id,token_id" });
+          const { data: hUpd } = await supabase.from("holdings")
+            .update({
+              amount: newAmount,
+              current_price: newPrice,
+              value: newAmount * newPrice,
+              pnl: (newPrice - avgBuyPrice) * newAmount,
+              pnl_percent: avgBuyPrice > 0 ? ((newPrice - avgBuyPrice) / avgBuyPrice) * 100 : 0,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("user_id", userId)
+            .eq("token_id", tokenId)
+            .eq("amount", heldAmount)
+            .select("user_id")
+            .maybeSingle();
+
+          if (!hUpd) {
+            if (attempt < MAX_RETRIES - 1) continue;
+            return res.status(409).json({ error: "Concurrent holdings update, please retry" });
+          }
       } else {
-        await supabase.from("holdings")
-          .delete()
-          .eq("user_id", userId)
-          .eq("token_id", tokenId);
+        const { data: hDel } = await supabase.from("holdings")
+            .delete()
+            .eq("user_id", userId)
+            .eq("token_id", tokenId)
+            .eq("amount", heldAmount)
+            .select("user_id")
+            .maybeSingle();
+
+          if (!hDel) {
+            if (attempt < MAX_RETRIES - 1) continue;
+            return res.status(409).json({ error: "Concurrent holdings update, please retry" });
+          }
         await supabase.rpc("decrement_holders", { tid: tokenId });
       }
 
-      const { data: profile } = await supabase
+      
+        const { error: balErr } = await supabase.rpc("credit_balance", {
+          p_user_id: userId,
+          p_amount: wldReceived,
+        });
+        if (balErr) {
+          console.error("[SELL] Failed to credit WLD balance:", balErr.message);
+          await supabase.from("user_balances").upsert({
+            user_id: userId,
+            balance: wldReceived,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "user_id" });
+        }
+
+        const { data: profile } = await supabase
         .from("profiles")
         .select("username")
         .eq("id", userId)
