@@ -66,8 +66,14 @@ export default async function handler(req, res) {
         return res.status(409).json({ error: "Concurrent modification detected, please retry" });
       }
 
-      await supabase.from("holdings").update({ amount: heldAmount - amount, updated_at: new Date().toISOString() })
-        .eq("user_id", userId).eq("token_id", tokenId);
+      const { data: hUpd } = await supabase.from("holdings")
+          .update({ amount: heldAmount - amount, updated_at: new Date().toISOString() })
+          .eq("user_id", userId).eq("token_id", tokenId)
+          .eq("amount", heldAmount)
+          .select("user_id").maybeSingle();
+        if (!hUpd) {
+          return res.status(409).json({ error: "Concurrent holdings update, please retry" });
+        }
 
       const { data: profile } = await supabase
         .from("profiles")
