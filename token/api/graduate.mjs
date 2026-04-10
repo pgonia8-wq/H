@@ -12,7 +12,20 @@ export default async function handler(req, res) {
   const { tokenId } = req.body ?? {};
   if (!tokenId) return res.status(400).json({ error: "Missing tokenId" });
 
-  try {
+
+    const { userId } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    const { data: _profile } = await supabase
+      .from("profiles")
+      .select("verification_level")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!_profile || !_profile.verification_level) {
+      return res.status(403).json({ error: "Device verification required" });
+    }
+
+    try {
     const { data: token, error: tErr } = await supabase
       .from("tokens")
       .select("*")
