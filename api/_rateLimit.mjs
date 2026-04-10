@@ -1,5 +1,11 @@
-const hits = new Map();
+import { createClient } from "@supabase/supabase-js";
 
+  const supabase = createClient(
+    process.env.SUPABASE_URL ?? "",
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+  );
+
+  const hits = new Map();
   const CLEANUP_INTERVAL = 5 * 60 * 1000;
   let lastCleanup = Date.now();
 
@@ -18,7 +24,6 @@ const hits = new Map();
       req.socket?.remoteAddress ||
       "unknown";
     const now = Date.now();
-
     cleanup(windowMs);
 
     const record = hits.get(ip);
@@ -26,11 +31,40 @@ const hits = new Map();
       hits.set(ip, { start: now, count: 1 });
       return { limited: false };
     }
-
     record.count++;
     if (record.count > max) {
       return { limited: true };
     }
     return { limited: false };
+  }
+
+  export async function rateLimitPersistent(key, { windowMs = 60000, max = 30 } = {}) {
+    try {
+      const since = new Date(Date.now() - windowMs).toISOString();
+      const { count, error } = await supabase
+        .from("rate_limit_hits")
+        .select("id", { count: "exact", head: true })
+        .eq("key", key)
+        .gte("created_at", since);
+
+      if (error) {
+        console.error("[RATE_LIMIT] DB error:", error.message);
+        return { limited: false };
+      }
+
+      if ((count ?? 0) >= max) {
+        return { limited: true };
+      }
+
+      await supabase.from("rate_limit_hits").insert({
+        key,
+        created_at: new Date().toISOString(),
+      });
+
+      return { limited: false };
+    } catch (err) {
+      console.error("[RATE_LIMIT] Error:", err.message);
+      return { limited: false };
+    }
   }
   
