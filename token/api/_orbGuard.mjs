@@ -1,4 +1,4 @@
-import { supabase, rateLimit } from "./_supabase.mjs";
+import { supabase, rateLimit, rateLimitByIp } from "./_supabase.mjs";
 
 export async function requireOrb(userId, res) {
   if (!userId || typeof userId !== "string") {
