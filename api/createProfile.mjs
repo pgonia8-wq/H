@@ -1,3 +1,4 @@
+import { requireOrb } from "../token/api/_orbGuard.mjs";
 /* ─────────────────────────────────────────────────────────────────────────────
    DESTINO: api/createProfile.mjs
    BUGS CORREGIDOS:
@@ -50,6 +51,9 @@ export default async function handler(req, res) {
 
   try {
     const { userId } = req.body;
+
+  const orbOk = await requireOrb(userId, res);
+  if (!orbOk) return;
 
     if (!userId || typeof userId !== "string" || userId.trim() === "") {
       return res.status(400).json({ success: false, error: "No userId provided" });
