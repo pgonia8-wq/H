@@ -29,84 +29,44 @@ import React, { useState, useEffect, useRef } from "react";
           setVerified(true); // muestra la app inmediatamente para usuarios recurrentes
         }
 
-        try {
-          console.log("[ERUDA:MINIKIT] isInstalled:", MiniKit.isInstalled());
-          if (!MiniKit.isInstalled()) {
-            console.warn("[ERUDA:MINIKIT] ⏳ Esperando MiniKit...");
-            const waitForMiniKit = () =>
-              new Promise<boolean>((resolve) => {
-                let attempts = 0;
-                const interval = setInterval(() => {
-                  attempts++;
-                  console.log(`[ERUDA:MINIKIT] Poll #${attempts}, installed: ${MiniKit.isInstalled()}`);
-                  if (MiniKit.isInstalled()) {
-                    clearInterval(interval);
-                    resolve(true);
-                  } else if (attempts > 20) {
-                    clearInterval(interval);
-                    resolve(false);
-                  }
-                }, 250);
-              });
-            const ready = await waitForMiniKit();
-            console.log("[ERUDA:MINIKIT] Poll result:", ready ? "✅ READY" : "❌ TIMEOUT");
-            if (!ready) {
-              console.warn("[ERUDA:MINIKIT] MiniKit no respondió después de 5s");
-              return;
-            }
-          }
-
-          setMiniKitReady(true);
-          console.log("[ERUDA:MINIKIT] ✅ MiniKit ready");
-
-          console.log("[ERUDA:MINIKIT] MiniKit.user raw:", JSON.stringify(MiniKit.user));
-          console.log("[ERUDA:MINIKIT] MiniKit keys:", Object.keys(MiniKit).filter(k => typeof (MiniKit as any)[k] !== 'function').join(', '));
-          if (MiniKit.user) {
-            console.log("[ERUDA:MINIKIT] User:", JSON.stringify({ username: MiniKit.user.username, avatar: !!MiniKit.user.avatar_url, walletAddress: MiniKit.user.walletAddress }));
-            const u = MiniKit.user.username || null;
-            const a = MiniKit.user.avatar_url || null;
-            setUsername(u);
-            setAvatar(a);
-            if (u) setGlobalUsername(u);
-          } else {
-            console.log("[ERUDA:MINIKIT] No MiniKit.user — username will come from walletAuth or profile");
-          }
-
-          if (!storedId) {
-            console.log("[ERUDA:INIT] No storedId → running verification...");
-            await runVerification();
-          } else {
-            console.log("[ERUDA:INIT] Has storedId → checking validity with backend...");
-            try {
-              const t0 = Date.now();
-              const checkRes = await fetch(`/api/verify?userId=${storedId}`);
-              console.log("[ERUDA:INIT] /api/verify GET response:", checkRes.status, `(${Date.now() - t0}ms)`);
-              if (checkRes.ok) {
-                const checkData = await checkRes.json();
-                console.log("[ERUDA:INIT] verify check data:", JSON.stringify(checkData));
-                if (checkData.valid) {
-                  setVerified(true);
-                  console.log("[ERUDA:INIT] ✅ User verified from stored session");
-                } else {
-                  console.log("[ERUDA:INIT] ❌ Stored userId invalid, re-verifying...");
+                // MiniKit se inicializa en background — la app ya está visible de inmediato
+          (() => {
+            const poll = (): Promise<void> => new Promise((resolve) => {
+              if (MiniKit.isInstalled()) { resolve(); return; }
+              let attempts = 0;
+              const interval = setInterval(() => {
+                attempts++;
+                if (MiniKit.isInstalled() || attempts >= 20) {
+                  clearInterval(interval);
+                  resolve();
+                }
+              }, 250);
+            });
+            poll().then(() => {
+              setMiniKitReady(true);
+              if (MiniKit.user) {
+                const u = MiniKit.user.username || null;
+                const a = MiniKit.user.avatar_url || null;
+                if (u) { setUsername(u); setGlobalUsername(u); }
+                if (a) setAvatar(a);
+              }
+            });
+          })();
+          // Usuarios recurrentes: validar sesión sin bloquear render
+          if (storedId) {
+            fetch(`/api/verify?userId=${storedId}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data && !data.valid) {
                   localStorage.removeItem("userId");
                   setUserId(null);
-                  await runVerification();
+                  setVerified(false);
                 }
-              } else {
-                console.log("[ERUDA:INIT] verify endpoint not ok, assuming verified");
-                setVerified(true);
-              }
-            } catch (e) {
-              console.log("[ERUDA:INIT] verify endpoint unreachable, assuming verified", e);
-              setVerified(true);
-            }
+              })
+              .catch(() => {});
           }
-        } catch (err) {
-          console.error("[ERUDA:INIT] ❌ Error inicializando:", err);
-          setError("Error inicializando MiniKit");
-        }
-        console.log("[ERUDA:INIT] ◀ App init finished", { ts: Date.now() });
+          // Usuarios nuevos: el banner "Verificate" dispara runVerification()
+          console.log("[ERUDA:INIT] ◀ App init finished", { ts: Date.now() });
       };
 
       init();
@@ -273,9 +233,21 @@ import React, { useState, useEffect, useRef } from "react";
     };
 
     const verifyUser = async () => {
-        if (verifying || !miniKitReady) return;
-        await runVerification();
-      };
+        if (verifying) return;
+          if (!miniKitReady) {
+            let attempts = 0;
+            while (!MiniKit.isInstalled() && attempts < 20) {
+              await new Promise(r => setTimeout(r, 250));
+              attempts++;
+            }
+            if (!MiniKit.isInstalled()) {
+              setError("Abre esta app dentro de World App");
+              return;
+            }
+            setMiniKitReady(true);
+          }
+          await runVerification();
+        };
 
       const verifyOrb = async (): Promise<{ success: boolean; proof?: any }> => {
         if (!miniKitReady || orbVerifying) return { success: false };
