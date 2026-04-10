@@ -63,19 +63,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (userId && campaignId) {
-      const { data: existing } = await supabase
-        .from("ad_metrics")
-        .select("id")
-        .eq("campaign_id", campaignId)
-        .eq("user_id", userId)
-        .eq("type", type)
-        .limit(1)
-        .maybeSingle();
-      if (existing) {
-        return res.status(409).json({ error: "Already tracked this " + type + " for this campaign" });
-      }
-    }
+    // Dedup handled by UNIQUE constraint (campaign_id, user_id, type) + 23505 catch below
 
   
   try {
@@ -121,7 +109,7 @@ export default async function handler(req, res) {
       }
     }
 
-    await supabase.from("ad_metrics").insert({
+    const { error: insertErr } = await supabase.from("ad_metrics").insert({
       post_id: postId,
       campaign_id: campaignId,
       user_id: userId || null,
@@ -134,6 +122,13 @@ export default async function handler(req, res) {
       interests: interests || null,
       created_at: new Date().toISOString(),
     });
+
+    if (insertErr) {
+      if (insertErr.code === "23505") {
+        return res.status(409).json({ error: "Already tracked this " + type + " for this campaign" });
+      }
+      throw insertErr;
+    }
 
     return res.status(200).json({ success: true });
   } catch (err) {
