@@ -4,40 +4,31 @@
   -- Seguro de ejecutar múltiples veces (idempotente)
   -- ============================================================================
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 1. UNIQUE CONSTRAINT EN LIKES (previene multi-like)
-  -- ═══════════════════════════════════════════════════════════════
 
-  DO $$ BEGIN
+  DO $block1$ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM pg_constraint WHERE conname = 'uq_like_post_user'
     ) THEN
-      -- Eliminar duplicados antes de crear el constraint
       DELETE FROM likes a USING likes b
       WHERE a.id > b.id AND a.post_id = b.post_id AND a.user_id = b.user_id;
-
       ALTER TABLE likes ADD CONSTRAINT uq_like_post_user UNIQUE (post_id, user_id);
     END IF;
-  END $$;
+  END $block1$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 2. UNIQUE CONSTRAINT EN AIRDROP_CLAIMS (previene claim doble)
-  -- ═══════════════════════════════════════════════════════════════
 
-  DO $$ BEGIN
+  DO $block2$ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM pg_constraint WHERE conname = 'uq_airdrop_claim'
     ) THEN
       DELETE FROM airdrop_claims a USING airdrop_claims b
       WHERE a.ctid > b.ctid AND a.airdrop_link_id = b.airdrop_link_id AND a.user_id = b.user_id;
-
       ALTER TABLE airdrop_claims ADD CONSTRAINT uq_airdrop_claim UNIQUE (airdrop_link_id, user_id);
     END IF;
-  END $$;
+  END $block2$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 3. TABLA: processed_transactions (anti-replay atómico)
-  -- ═══════════════════════════════════════════════════════════════
 
   CREATE TABLE IF NOT EXISTS processed_transactions (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -52,14 +43,13 @@
   CREATE INDEX IF NOT EXISTS idx_processed_tx_created ON processed_transactions(created_at);
 
   ALTER TABLE processed_transactions ENABLE ROW LEVEL SECURITY;
-  DO $ BEGIN
+
+  DO $block3$ BEGIN
     CREATE POLICY "processed_tx_select" ON processed_transactions FOR SELECT USING (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
+  END $block3$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 4. TABLA: rate_limit_hits (rate limiting persistente)
-  -- ═══════════════════════════════════════════════════════════════
 
   CREATE TABLE IF NOT EXISTS rate_limit_hits (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -71,17 +61,14 @@
 
   ALTER TABLE rate_limit_hits ENABLE ROW LEVEL SECURITY;
 
-  -- Limpieza automática de hits viejos (>1 hora)
   CREATE OR REPLACE FUNCTION cleanup_rate_limit_hits()
-  RETURNS void LANGUAGE plpgsql AS $$
+  RETURNS void LANGUAGE plpgsql AS $func1$
   BEGIN
     DELETE FROM rate_limit_hits WHERE created_at < NOW() - INTERVAL '1 hour';
   END;
-  $$;
+  $func1$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 5. TABLA: system_locks (lock distribuido para Growth Brain)
-  -- ═══════════════════════════════════════════════════════════════
 
   CREATE TABLE IF NOT EXISTS system_locks (
     key TEXT PRIMARY KEY,
@@ -91,26 +78,28 @@
   );
 
   ALTER TABLE system_locks ENABLE ROW LEVEL SECURITY;
-  DO $ BEGIN
+
+  DO $block4$ BEGIN
     CREATE POLICY "system_locks_select" ON system_locks FOR SELECT USING (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
-  DO $ BEGIN
+  END $block4$;
+
+  DO $block5$ BEGIN
     CREATE POLICY "system_locks_insert" ON system_locks FOR INSERT WITH CHECK (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
-  DO $ BEGIN
+  END $block5$;
+
+  DO $block6$ BEGIN
     CREATE POLICY "system_locks_update" ON system_locks FOR UPDATE USING (true) WITH CHECK (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
-  DO $ BEGIN
+  END $block6$;
+
+  DO $block7$ BEGIN
     CREATE POLICY "system_locks_delete" ON system_locks FOR DELETE USING (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
+  END $block7$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 6. TABLA: security_events (logging de seguridad)
-  -- ═══════════════════════════════════════════════════════════════
 
   CREATE TABLE IF NOT EXISTS security_events (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -126,17 +115,16 @@
   CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type, created_at);
 
   ALTER TABLE security_events ENABLE ROW LEVEL SECURITY;
-  DO $ BEGIN
+
+  DO $block8$ BEGIN
     CREATE POLICY "security_events_select" ON security_events FOR SELECT USING (true);
   EXCEPTION WHEN duplicate_object THEN NULL;
-  END $;
+  END $block8$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 7. FUNCIÓN: deduct_balance con advisory lock (atómico)
-  -- ═══════════════════════════════════════════════════════════════
 
   CREATE OR REPLACE FUNCTION deduct_balance(p_user_id TEXT, p_amount NUMERIC)
-  RETURNS BOOLEAN LANGUAGE plpgsql AS $$
+  RETURNS BOOLEAN LANGUAGE plpgsql AS $func2$
   DECLARE
     v_balance NUMERIC;
   BEGIN
@@ -162,66 +150,44 @@
 
     RETURN TRUE;
   END;
-  $$;
+  $func2$;
 
-  -- ═══════════════════════════════════════════════════════════════
   -- 8. RLS RESTRICTIVO EN BALANCES (solo service_role puede escribir)
-  -- ═══════════════════════════════════════════════════════════════
 
   ALTER TABLE balances ENABLE ROW LEVEL SECURITY;
 
-  DO $$ BEGIN
+  DO $block9$ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies WHERE policyname = 'balances_select_own' AND tablename = 'balances'
     ) THEN
       CREATE POLICY balances_select_own ON balances FOR SELECT USING (true);
     END IF;
-  END $$;
+  END $block9$;
 
-  -- No INSERT/UPDATE/DELETE policies for anon → only service_role can modify
-  -- Drop existing permissive policies if any
-  DO $$ 
+  DO $block10$
   DECLARE pol RECORD;
   BEGIN
-    FOR pol IN 
-      SELECT policyname FROM pg_policies 
-      WHERE tablename = 'balances' 
+    FOR pol IN
+      SELECT policyname FROM pg_policies
+      WHERE tablename = 'balances'
       AND cmd IN ('INSERT', 'UPDATE', 'DELETE')
     LOOP
       EXECUTE format('DROP POLICY IF EXISTS %I ON balances', pol.policyname);
     END LOOP;
-  END $$;
+  END $block10$;
 
-  -- ═══════════════════════════════════════════════════════════════
-  -- 9. RLS RESTRICTIVO EN POSTS (solo service_role puede actualizar score)
-  -- ═══════════════════════════════════════════════════════════════
+  -- 9. UNIQUE EN AD_METRICS (dedup de interactions)
 
-  -- Mantener SELECT público, pero restringir UPDATE de campos sensibles
-  -- (La restricción completa de UPDATE en score necesitaría un trigger,
-  -- por ahora aseguramos que UPDATE vía anon no puede tocar score)
-
-  -- ═══════════════════════════════════════════════════════════════
-  -- 10. UNIQUE EN AD_METRICS (dedup de interactions)
-  -- ═══════════════════════════════════════════════════════════════
-
-  DO $$ BEGIN
+  DO $block11$ BEGIN
     IF NOT EXISTS (
       SELECT 1 FROM pg_constraint WHERE conname = 'uq_ad_metric_user_campaign'
     ) THEN
-      ALTER TABLE ad_metrics ADD CONSTRAINT uq_ad_metric_user_campaign 
+      ALTER TABLE ad_metrics ADD CONSTRAINT uq_ad_metric_user_campaign
         UNIQUE (campaign_id, user_id, type);
     END IF;
   EXCEPTION WHEN undefined_table THEN
     NULL;
-  END $$;
+  END $block11$;
 
-  -- ═══════════════════════════════════════════════════════════════
-  -- 11. UNIQUE EN BOOSTS por transaction_id (ya existe en schema)
-  -- ═══════════════════════════════════════════════════════════════
-
-  -- boosts.transaction_id ya tiene UNIQUE desde el schema original ✓
-
-  -- ═══════════════════════════════════════════════════════════════
   -- FIN DE MIGRACIÓN DE SEGURIDAD
-  -- ═══════════════════════════════════════════════════════════════
   
