@@ -13,7 +13,14 @@ export default async function handler(req, res) {
   const tokenId = req.query.id;
   if (!tokenId) return res.status(400).json({ error: "Missing tokenId" });
 
-  try {
+
+    const { userId } = req.body ?? {};
+    if (!userId) return res.status(400).json({ error: "userId required for graduation" });
+
+    const orbOk = await requireOrb(userId, res);
+    if (!orbOk) return;
+
+    try {
     const { data: token, error: tErr } = await supabase
       .from("tokens")
       .select("*")
