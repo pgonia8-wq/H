@@ -26,6 +26,7 @@ import React, { useState, useEffect, useRef } from "react";
         console.log("[ERUDA:INIT] localStorage userId:", storedId ? storedId.slice(0, 12) + "..." : "null");
         if (storedId) {
           setUserId(storedId);
+          setVerified(true); // muestra la app inmediatamente para usuarios recurrentes
         }
 
         try {
