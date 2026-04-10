@@ -58,6 +58,20 @@ export default async function handler(req, res) {
     return res.status(401).json({ success: false, error: "Error verificando firma SIWE: " + err.message });
   }
 
+  
+    const { data: nonceClaimed, error: nonceClaimErr } = await supabase
+      .from("nonces")
+      .update({ used: true })
+      .eq("nonce", nonce)
+      .eq("used", false)
+      .gt("expires_at", new Date().toISOString())
+      .select("nonce")
+      .maybeSingle();
+
+    if (nonceClaimErr || !nonceClaimed) {
+      return res.status(401).json({ success: false, error: "Nonce inválido, expirado o ya usado" });
+    }
+
   const verifiedAddress = payload.address;
 
   if (userId) {
