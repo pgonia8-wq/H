@@ -127,7 +127,7 @@ export default async function handler(req, res) {
           results.push({ creatorId, amount: creatorAmount, error: err.message });
         }
       } else {
-        const { error: balErr } = await supabase.rpc("add_balance", {
+        const { error: balErr } = await supabase.rpc("credit_balance", {
           p_user_id: creatorId,
           p_amount: creatorAmount,
         });
