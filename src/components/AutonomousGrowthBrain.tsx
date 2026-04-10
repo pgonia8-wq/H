@@ -106,14 +106,40 @@ function save<T>(key: string, value: T): void {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-function acquireLock(): boolean {
-  const existing = load<{ ts: number } | null>(STORAGE_LOCK, null);
-  if (existing && now() - existing.ts < LOCK_TTL_MS) return false;
-  save(STORAGE_LOCK, { ts: now() });
-  return true;
-}
-function releaseLock(): void {
-  try { localStorage.removeItem(STORAGE_LOCK); } catch {}
+async function acquireLock(): Promise<boolean> {
+    const existing = load<{ ts: number } | null>(STORAGE_LOCK, null);
+    if (existing && now() - existing.ts < LOCK_TTL_MS) return false;
+    save(STORAGE_LOCK, { ts: now() });
+
+    try {
+      const lockExpiry = new Date(now() + LOCK_TTL_MS).toISOString();
+      const deviceId = localStorage.getItem("seeds_device_id") || crypto.randomUUID();
+      localStorage.setItem("seeds_device_id", deviceId);
+
+      const { data, error } = await supabase
+        .from("system_locks")
+        .upsert({
+          key: "growth_brain",
+          locked_until: lockExpiry,
+          locked_by: deviceId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "key" })
+        .select("locked_by")
+        .maybeSingle();
+
+      if (error || !data || data.locked_by !== deviceId) {
+        releaseLock();
+        return false;
+      }
+      return true;
+    } catch {
+      return true;
+    }
+  }
+  function releaseLock(): void {
+    try { localStorage.removeItem(STORAGE_LOCK); } catch {}
+    supabase.from("system_locks").delete().eq("key", "growth_brain").then(() => {}).catch(() => {});
+  } catch {}
 }
 
 async function fetchTrendsFromApi(): Promise<TrendData[]> {
@@ -371,7 +397,7 @@ export default function AutonomousGrowthBrain(): null {
 
   const runCycle = useCallback(async () => {
     if (isRunning.current) return;
-    if (!acquireLock()) return;
+    if (!(await acquireLock())) return;
     isRunning.current = true;
 
     try {
