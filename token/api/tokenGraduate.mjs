@@ -1,4 +1,5 @@
 import { supabase, cors } from "./_supabase.mjs";
+import { requireOrb } from "./_orbGuard.mjs";
 import {
   checkGraduation, graduationSplit, spotPrice, getWldUsdRate,
   GRADUATION_WLD, GRADUATION_HOLDERS,
