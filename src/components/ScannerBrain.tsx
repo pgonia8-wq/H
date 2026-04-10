@@ -1,6 +1,18 @@
 import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 
+  function sanitizeForAnalysis(text: string): string {
+    if (!text) return "";
+    return text
+      .replace(/\[SYSTEM\]/gi, "[TEXTO]")
+      .replace(/\[INST\]/gi, "[TEXTO]")
+      .replace(/ignore\s+(previous|all|above|prior)/gi, "")
+      .replace(/override/gi, "")
+      .replace(/instruc(ción|tion)/gi, "texto")
+      .slice(0, 2000);
+  }
+
+  
 const API_BASE = "";
 const POSTS_PER_DAY = 4;
 const SCANNER_KEY = "h_scanner_brain";
