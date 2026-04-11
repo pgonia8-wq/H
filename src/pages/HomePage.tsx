@@ -15,6 +15,7 @@ import FeedPage from "./FeedPage";
 import { ThemeContext } from "../lib/ThemeContext";
 import { LanguageContext } from "../LanguageContext";
 import ActionButton from "../components/ActionButton";
+import NotificationBanner from "../components/NotificationBanner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ImageIcon,
@@ -582,6 +583,7 @@ const HomePage: React.FC<HomePageProps> = ({
   // ─────────────────────────────────────────────
   return (
     <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"}`}>
+      {userId && <NotificationBanner userId={userId} />}
       <Suspense fallback={null}>
         <AutonomousGrowthBrain />
       </Suspense>

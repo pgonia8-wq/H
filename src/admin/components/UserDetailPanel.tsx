@@ -1,26 +1,19 @@
 import React, { useState, useEffect } from "react";
+import UserActionsPanel from "./UserActionsPanel";
 
 export default function UserDetailPanel({ apiCall, userId, onBack }: { apiCall: any; userId: string; onBack: () => void }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"info" | "posts" | "trades" | "chats" | "reports">("info");
   const [banLoading, setBanLoading] = useState(false);
-  const [banReason, setBanReason] = useState("");
-  const [showBanInput, setShowBanInput] = useState(false);
 
   useEffect(() => {
     setLoading(true);
     apiCall(`user-detail?userId=${encodeURIComponent(userId)}`).then((d: any) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
   }, [userId]);
 
-  const handleBan = async () => {
-    setBanLoading(true);
-    try {
-      await apiCall("ban", { method: "POST", body: JSON.stringify({ userId, action: "ban", reason: banReason || "Violación de normas" }) });
-      setData((d: any) => ({ ...d, profile: { ...d.profile, banned: true, ban_reason: banReason } }));
-      setShowBanInput(false);
-    } catch {}
-    setBanLoading(false);
+  const reload = () => {
+    apiCall(`user-detail?userId=${encodeURIComponent(userId)}`).then((d: any) => setData(d)).catch(() => {});
   };
 
   const handleUnban = async () => {
@@ -65,31 +58,11 @@ export default function UserDetailPanel({ apiCall, userId, onBack }: { apiCall: 
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 8 }}>
-            {p.banned ? (
-              <button onClick={handleUnban} disabled={banLoading} style={{ padding: "10px 20px", background: "#10f090", color: "#000", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                {banLoading ? "..." : "Desbanear"}
-              </button>
-            ) : (
-              <>
-                {!showBanInput ? (
-                  <button onClick={() => setShowBanInput(true)} style={{ padding: "10px 20px", background: "#f05050", color: "#fff", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    Banear usuario
-                  </button>
-                ) : (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input value={banReason} onChange={e => setBanReason(e.target.value)} placeholder="Razón del baneo..." style={{ padding: "8px 12px", background: "#1a1a2e", border: "1px solid #2a2a3e", borderRadius: 8, color: "#e0e0e0", fontSize: 12, width: 200 }} />
-                    <button onClick={handleBan} disabled={banLoading} style={{ padding: "8px 16px", background: "#f05050", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                      {banLoading ? "..." : "Confirmar"}
-                    </button>
-                    <button onClick={() => setShowBanInput(false)} style={{ padding: "8px 12px", background: "#1e1e2e", border: "1px solid #2a2a3e", borderRadius: 8, color: "#888", fontSize: 12, cursor: "pointer" }}>
-                      Cancelar
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
+          {p.banned && (
+            <button onClick={handleUnban} disabled={banLoading} style={{ padding: "10px 20px", background: "#10f090", color: "#000", border: "none", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              {banLoading ? "..." : "Desbanear"}
+            </button>
+          )}
         </div>
 
         {p.ban_reason && (
@@ -205,6 +178,8 @@ export default function UserDetailPanel({ apiCall, userId, onBack }: { apiCall: 
           </div>
         )}
       </div>
+
+      <UserActionsPanel apiCall={apiCall} userId={userId} username={p.username} onDone={reload} />
     </div>
   );
 }
