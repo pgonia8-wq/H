@@ -65,7 +65,10 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const body = req.body || {};
-  const { transactionId, userId, action } = body;
+  const transactionId = body.transactionId || body.transaction_id;
+  const userId = body.userId || body.user_id;
+  const action = body.action;
+  console.log("[VERIFY_PAYMENT] INPUT:", { transactionId, userId, action });
 
   if (!transactionId || typeof transactionId !== "string") {
     return res.status(400).json({ error: "transactionId es requerido" });

@@ -23,7 +23,11 @@ import { createClient } from "@supabase/supabase-js";
     if (req.method === "OPTIONS") return res.status(200).end();
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-    const { user_id, content, image_url } = req.body ?? {};
+    const body = req.body ?? {};
+    const user_id = body.user_id || body.userId;
+    const { content, image_url } = body;
+
+    console.log("[CREATE_POST] INPUT:", { user_id, content_length: content?.length });
 
     if (!user_id || typeof user_id !== "string") {
       return res.status(400).json({ error: "user_id required" });

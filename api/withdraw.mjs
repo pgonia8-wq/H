@@ -63,7 +63,10 @@ import { createClient } from "@supabase/supabase-js";
     }
 
     const body = req.body || {};
-    const { userId, amount, wallet } = body;
+    const userId = body.userId || body.user_id;
+    const amount = body.amount;
+    const wallet = body.wallet;
+    console.log("[WITHDRAW] INPUT:", { userId, amount, wallet });
 
     if (!userId || typeof userId !== "string") {
       return res.status(400).json({ success: false, error: "userId es requerido" });

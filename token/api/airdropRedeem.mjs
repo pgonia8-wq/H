@@ -6,7 +6,10 @@ import { supabase, cors } from "./_supabase.mjs";
         if (req.method === "OPTIONS") return res.status(200).end();
         if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-        const { code, userId } = req.body ?? {};
+        const body = req.body ?? {};
+        const code = body.code;
+        const userId = body.userId || body.user_id;
+        console.log("[AIRDROP_REDEEM] INPUT:", { code, userId });
         if (!code || !userId) return res.status(400).json({ error: "code and userId required" });
 
         const orbOk = await requireOrb(userId, res);

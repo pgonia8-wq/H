@@ -19,6 +19,7 @@ export const useProfilePosts = (
           .from("posts")
           .select("*")
           .eq("user_id", userId)
+          .eq("deleted_flag", false)
           .order("created_at", { ascending: false });
 
         setData(data || []);
@@ -29,6 +30,7 @@ export const useProfilePosts = (
           .from("posts")
           .select("*")
           .eq("user_id", userId)
+          .eq("deleted_flag", false)
           .not("parent_id", "is", null)
           .order("created_at", { ascending: false });
 

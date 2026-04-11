@@ -13,7 +13,10 @@ import { supabase, cors } from "./_supabase.mjs";
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
     const tokenId = req.query.id;
-    const { tokensToSell, userId } = req.body ?? {};
+    const body = req.body ?? {};
+    const tokensToSell = body.tokensToSell || body.tokens_to_sell;
+    const userId = body.userId || body.user_id;
+    console.log("[SELL] INPUT:", { tokenId, tokensToSell, userId });
     if (!tokenId || !tokensToSell || !userId) {
       return res.status(400).json({ error: "Missing tokenId, tokensToSell, userId" });
     }

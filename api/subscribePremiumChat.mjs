@@ -70,7 +70,9 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { userId, transactionId } = body;
+  const userId = body.userId || body.user_id;
+  const transactionId = body.transactionId || body.transaction_id;
+  console.log("[SUBSCRIBE] INPUT:", { userId, transactionId });
 
   if (!userId || typeof userId !== "string" || userId.trim() === "") {
     return res.status(400).json({ error: "userId es requerido" });

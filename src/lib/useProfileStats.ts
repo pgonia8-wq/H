@@ -16,7 +16,8 @@ export const useProfileStats = (userId: string | null) => {
       const { count: posts } = await supabase
         .from("posts")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("deleted_flag", false);
 
       const { count: followers } = await supabase
         .from("follows")

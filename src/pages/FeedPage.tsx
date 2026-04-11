@@ -191,6 +191,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
           .from("posts")
           .select("*")
           .in("user_id", ids)
+          .eq("deleted_flag", false)
           .order("timestamp", { ascending: false })
           .limit(TAB_PAGE_SIZE);
 
@@ -238,6 +239,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
           .from("posts")
           .select("*")
           .eq("user_id", currentUserId)
+          .eq("deleted_flag", false)
           .order("timestamp", { ascending: false })
           .limit(TAB_PAGE_SIZE);
 

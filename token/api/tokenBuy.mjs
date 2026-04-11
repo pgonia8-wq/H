@@ -14,7 +14,11 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   const tokenId = req.query.id;
-  const { amountWld, userId, transactionId } = req.body ?? {};
+  const body = req.body ?? {};
+  const amountWld = body.amountWld;
+  const userId = body.userId || body.user_id;
+  const transactionId = body.transactionId || body.transaction_id;
+  console.log("[BUY] INPUT:", { tokenId, amountWld, userId, transactionId });
   if (!tokenId || !amountWld || !userId || !transactionId) {
     return res.status(400).json({ error: "Missing tokenId, amountWld, userId" });
   }
@@ -120,96 +124,39 @@ export default async function handler(req, res) {
       const treasuryBalance = Number(token.treasury_balance ?? 0) + fee;
       const cp = curvePercent(totalWldInCurve);
 
-      const { data: updated, error: updateErr } = await supabase
-        .from("tokens")
-        .update({
-          circulating_supply: newSupply,
-          price_wld: newPrice,
-          price_usdc: newPriceUsd,
-          total_wld_in_curve: totalWldInCurve,
-          treasury_balance: treasuryBalance,
-          curve_percent: cp,
-          market_cap: newSupply * newPriceUsd,
-          volume_24h: Number(token.volume_24h ?? 0) + amountWld * wldUsd,
-        })
-        .eq("id", tokenId)
-        .eq("circulating_supply", supply)
-        .select("id")
-        .maybeSingle();
+      const volumeNew = Number(token.volume_24h ?? 0) + amountWld * wldUsd;
 
-      if (updateErr) throw updateErr;
-      if (!updated) {
+      const { data: rpcResult, error: rpcErr } = await supabase.rpc("atomic_token_buy", {
+        p_token_id: tokenId,
+        p_user_id: userId,
+        p_username: username,
+        p_amount_wld: amountWld,
+        p_tokens_out: tokensOut,
+        p_fee: fee,
+        p_net_wld: netWld,
+        p_new_supply: newSupply,
+        p_new_price: newPrice,
+        p_new_price_usd: newPriceUsd,
+        p_total_wld_in_curve: totalWldInCurve,
+        p_treasury_balance: treasuryBalance,
+        p_curve_percent: cp,
+        p_market_cap: newSupply * newPriceUsd,
+        p_volume_24h: volumeNew,
+        p_expected_supply: supply,
+      });
+
+      if (rpcErr) throw rpcErr;
+
+      if (!rpcResult || !rpcResult.success) {
         if (attempt < MAX_RETRIES - 1) continue;
         return res.status(409).json({ error: "Concurrent trade detected, please retry" });
       }
 
-      const { data: holdingRow } = await supabase
-        .from("holdings")
-        .select("amount, avg_buy_price")
-        .eq("user_id", userId)
-        .eq("token_id", tokenId)
-        .maybeSingle();
-
-      const prevAmount = Number(holdingRow?.amount ?? 0);
-      const prevAvg = Number(holdingRow?.avg_buy_price ?? 0);
-      const newAmount = prevAmount + tokensOut;
+      const prevAmount = Number(rpcResult.prev_amount ?? 0);
       const unitPrice = netWld / tokensOut;
-      const avgPrice = prevAmount > 0
-        ? (prevAvg * prevAmount + unitPrice * tokensOut) / newAmount
-        : unitPrice;
+      const avgPrice = Number(rpcResult.avg_price ?? unitPrice);
 
-      if (holdingRow) {
-            const { data: hUpd } = await supabase.from("holdings")
-              .update({
-                amount: newAmount,
-                avg_buy_price: avgPrice,
-                token_name: token.name, token_symbol: token.symbol,
-                token_emoji: token.emoji ?? "\u{1F31F}",
-                current_price: newPrice,
-                value: newAmount * newPrice,
-                pnl: (newPrice - avgPrice) * newAmount,
-                pnl_percent: avgPrice > 0 ? ((newPrice - avgPrice) / avgPrice) * 100 : 0,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("user_id", userId)
-              .eq("token_id", tokenId)
-              .eq("amount", prevAmount)
-              .select("user_id")
-              .maybeSingle();
-
-            if (!hUpd) {
-              
-            await supabase.from("tokens").update({
-              circulating_supply: supply, price_wld: Number(token.price_wld),
-              price_usdc: Number(token.price_usdc), total_wld_in_curve: Number(token.total_wld_in_curve),
-              treasury_balance: Number(token.treasury_balance), curve_percent: Number(token.curve_percent),
-              market_cap: Number(token.market_cap), volume_24h: Number(token.volume_24h),
-            }).eq("id", tokenId).eq("circulating_supply", supply);
-            if (attempt < MAX_RETRIES - 1) continue;
-              return res.status(409).json({ error: "Concurrent holdings update, please retry" });
-            }
-          } else {
-            await supabase.from("holdings").insert({
-              user_id: userId, token_id: tokenId,
-              token_name: token.name, token_symbol: token.symbol,
-              token_emoji: token.emoji ?? "\u{1F31F}",
-              amount: tokensOut, avg_buy_price: unitPrice,
-              current_price: newPrice, value: tokensOut * newPrice,
-              pnl: 0, pnl_percent: 0,
-              updated_at: new Date().toISOString(),
-            });
-          }
-
-      if (prevAmount === 0) {
-        await supabase.rpc("increment_holders", { tid: tokenId });
-      }
-
-      await supabase.from("token_activity").insert({
-        type: "buy", user_id: userId, username,
-        token_id: tokenId, token_symbol: token.symbol,
-        amount: tokensOut, price: newPrice, total: amountWld,
-        timestamp: new Date().toISOString(),
-      });
+      console.log("[BUY] RESULT:", { tokensOut, prevAmount, avgPrice, newSupply });
 
       await recordPriceSnapshot(tokenId, newPrice, newPriceUsd, newSupply, amountWld * wldUsd, "buy");
 

@@ -252,6 +252,7 @@ const HomePage: React.FC<HomePageProps> = ({
       let query = supabase
         .from("posts")
         .select("*")
+        .eq("deleted_flag", false)
         .order("timestamp", { ascending: false })
         .limit(10);
 
