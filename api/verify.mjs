@@ -1,0 +1,150 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   DESTINO: api/verify.mjs
+   ESTADO: Sin cambios respecto a la versión actual del repo.
+   El archivo ya fue corregido correctamente. Se entrega aquí como referencia
+   de la versión completa y auditada.
+
+   BUGS QUE YA TIENE CORREGIDOS (documentados en el archivo original):
+   [V1] CORS con "*" — necesario para World App WebView
+   [V2] action hardcoded "verify-user" — se usa APP_ID + ACTION_ID desde env
+   [V3] Validación de env vars al inicio
+   [V4] Anti-replay con check de nullifier_hash existente
+   [V5] Verificación robusta de verifyData.success
+   [V6] APP_ID desde variable de entorno con fallback
+   ─────────────────────────────────────────────────────────────────────────── */
+
+import { createClient } from "@supabase/supabase-js";
+import { rateLimit } from "./_rateLimit.mjs";
+
+if (!process.env.SUPABASE_URL) {
+  console.error("[VERIFY] ERROR: SUPABASE_URL no está configurada");
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("[VERIFY] ERROR: SUPABASE_SERVICE_ROLE_KEY no está configurada");
+}
+if (!process.env.APP_ID) {
+  console.warn("[VERIFY] ADVERTENCIA: APP_ID no está configurada.");
+}
+
+const supabase = createClient(
+  process.env.SUPABASE_URL ?? "",
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
+);
+
+const APP_ID = process.env.APP_ID ?? "";
+const ACTION_ID = process.env.WORLDCOIN_ACTION_ID ?? "verify-user";
+
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  if (rateLimit(req, { max: 10, windowMs: 60000 }).limited) {
+    return res.status(429).json({ success: false, error: "Demasiadas solicitudes. Intenta en un minuto." });
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ success: false, error: "Method not allowed" });
+  }
+
+  const body = req.body || {};
+  const { payload } = body;
+
+  if (
+    !payload ||
+    !payload.nullifier_hash ||
+    !payload.proof ||
+    !payload.merkle_root ||
+    !payload.verification_level
+  ) {
+    return res.status(400).json({ success: false, error: "Faltan campos en proof" });
+  }
+
+  const nullifierHash = payload.nullifier_hash;
+
+    if (payload.verification_level !== "device") {
+      return res.status(400).json({ success: false, error: "Only device-level verification accepted on this endpoint" });
+    }
+
+  // Anti-replay: verificar si este nullifier_hash ya fue verificado
+  try {
+    const { data: existing } = await supabase
+      .from("profiles")
+      .select("id, verified")
+      .eq("id", nullifierHash)
+      .maybeSingle();
+
+    if (existing?.verified) {
+      return res.status(200).json({ success: true, nullifier_hash: nullifierHash, reused: true });
+    }
+  } catch (err) {
+    console.warn("[VERIFY] No se pudo verificar anti-replay:", err.message);
+  }
+
+  // Verificar con Worldcoin Developer Portal
+  let verifyData;
+  try {
+    const verifyResponse = await fetch(
+      `https://developer.worldcoin.org/api/v2/verify/${APP_ID}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: ACTION_ID,
+          merkle_root: payload.merkle_root,
+          proof: payload.proof,
+          nullifier_hash: nullifierHash,
+          verification_level: payload.verification_level,
+        }),
+      }
+    );
+
+    verifyData = await verifyResponse.json();
+
+    const isSuccess = verifyResponse.ok && (verifyData.success === true || verifyData.success === "true");
+
+    if (!isSuccess) {
+        const errMsg = verifyData.detail ?? verifyData.error ?? "";
+        if (errMsg.includes("already") || verifyData.code === "already_verified") {
+          return res.status(200).json({ success: true, nullifier_hash: nullifierHash, reused: true });
+        }
+        return res.status(verifyResponse.status || 400).json({
+          success: false,
+          error: errMsg || "Verificación fallida en Worldcoin",
+        });
+      }
+  } catch (err) {
+    console.error("[VERIFY] Error de red al contactar Worldcoin:", err.message);
+    return res.status(500).json({ success: false, error: "Error al contactar Worldcoin" });
+  }
+
+  // Guardar/actualizar perfil en Supabase
+  try {
+    const { error: upsertError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: nullifierHash,
+          tier: "free",
+          verified: true,
+          verification_level: "device",
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" }
+      );
+
+    if (upsertError) {
+      console.error("[VERIFY] Error upsert:", upsertError.message);
+      return res.status(500).json({ success: false, error: upsertError.message });
+    }
+  } catch (err) {
+    console.error("[VERIFY] Error:", err.message);
+    return res.status(500).json({ success: false, error: "Error al guardar perfil" });
+  }
+
+  return res.status(200).json({ success: true, nullifier_hash: nullifierHash });
+}

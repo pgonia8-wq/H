@@ -1,0 +1,990 @@
+# 🔍 AUDITORÍA PROFUNDA #3 — LÍNEA POR LÍNEA
+  # H by Humans (pgonia8-wq/Humans)
+  # Fecha: 2026-04-10
+  # Archivos analizados: 107 | Total: ~495,000 caracteres de código
+
+  ═══════════════════════════════════════════════════════════════
+    RESUMEN EJECUTIVO
+  ═══════════════════════════════════════════════════════════════
+
+    CRÍTICOS: 19
+    ALTOS:    14
+    MEDIOS:   12
+    TOTAL:    45
+
+  ═══════════════════════════════════════════════════════════════
+    🔥 TOP 5 RIESGOS MÁS CRÍTICOS (EXPLOIT INMEDIATO)
+  ═══════════════════════════════════════════════════════════════
+
+    1. RLS MASIVAMENTE PERMISIVA: 30+ tablas INSERT(true), 20+ UPDATE(true)
+       → Cualquier usuario puede crear holdings falsos, balances, tokens, pedidos
+       → DINERO INFINITO via browser console
+
+    2. ORBGUARD BYPASS: verifyOrbStatus.mjs acepta proofs falsos si
+       Worldcoin API falla o APP_ID no está configurado
+       → Bypass total de autenticación en todos los endpoints financieros
+
+    3. CONFIRMACIÓN DE COMPRA SIN ATÓMICA: confirmBuy.mjs tiene TOCTOU
+       → Un pago = dos confirmaciones = tokens gratis duplicados
+
+    4. HOLDINGS SIN OCC: sell.mjs, tokenSell.mjs, [id]/sell.mjs, [id]/buy.mjs,
+       confirmBuy.mjs, tokenBuy.mjs, tokenBurn.mjs, tokenLock.mjs
+       → Todos los upsert de holdings son no-atómicos = race condition
+
+    5. AIRDROP RACE: airdropRedeem.mjs otorga tokens ANTES del dedup check
+       → Claims concurrentes = tokens gratis ilimitados
+
+  ═══════════════════════════════════════════════════════════════
+    💸 FORMAS REALES DE PERDER DINERO
+  ═══════════════════════════════════════════════════════════════
+
+    A) HOLDINGS FALSOS → SELL REAL
+       Browser: supabase.from("holdings").insert({user_id:"me",token_id:"X",amount:999999})
+       Luego: POST /api/tokens/X/sell con tokensToSell:999999
+       Resultado: wldReceived en el response (dinero real del bonding curve)
+
+    B) BALANCE FALSO → WITHDRAW REAL
+       Browser: supabase.from("user_balances").insert({user_id:"me",balance:99999})
+       Luego: POST /api/withdraw con amount:500
+       Resultado: WLD real transferido on-chain a wallet del atacante
+
+    C) AUTO-VERIFICACIÓN ORB → ACCESO A TODO
+       POST /api/verifyOrbStatus con proof falso cuando Worldcoin API está lento
+       Resultado: verification_level="orb" → acceso a sell, buy, withdraw, etc.
+
+    D) DOBLE CONFIRMACIÓN → TOKENS GRATIS
+       POST /api/confirmBuy dos veces simultáneamente con mismo orderId
+       Resultado: tokens mintados 2x, pago procesado 1x
+
+    E) AIRDROP INFINITO
+       POST /api/airdropRedeem múltiples veces simultáneamente
+       Resultado: tokens otorgados múltiples veces, claim solo registrado una
+
+  ═══════════════════════════════════════════════════════════════
+    HALLAZGOS DETALLADOS
+  ═══════════════════════════════════════════════════════════════
+
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #1 [CRÍTICO] — sell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings update (L107) uses upsert WITHOUT OCC — race condition on holdings
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Token OCC (L93) passes, but two sells can read same heldAmount=100, both pass OCC on tokens table, then both upsert holdings with newAmount=50. User sells 100 tokens total but holdings shows 50.
+
+  Impacto real:
+    User can sell MORE tokens than they own by sending concurrent requests. The OCC is on the tokens table (circulating_supply) but NOT on holdings.
+
+  Evidencia en código:
+    L107: supabase.from("holdings").upsert({...amount: newAmount...}) — no .eq("amount", heldAmount)
+
+  Solución concreta:
+    Use atomic: UPDATE holdings SET amount = amount - tokensToSell WHERE amount >= tokensToSell, or add .eq("amount", heldAmount) check
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #2 [MEDIO] — sell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Audit log references undefined variable "amount" — should be "tokensToSell"
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    L143: JSON.stringify({ tokenId, amount, heldAmount }) — "amount" is not defined, only "tokensToSell"
+
+  Impacto real:
+    Audit log silently fails or logs undefined
+
+  Evidencia en código:
+    L143
+
+  Solución concreta:
+    Change to: JSON.stringify({ tokenId, tokensToSell, heldAmount })
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #3 [CRÍTICO] — tokenSell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings upsert (L113) has NO OCC — same race condition as sell.mjs
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Same exploit as sell.mjs — concurrent sells bypass holdings check
+
+  Impacto real:
+    Double-sell: user sells more tokens than owned
+
+  Evidencia en código:
+    L113: .upsert({...amount: newAmount...}) without .eq("amount", heldAmount)
+
+  Solución concreta:
+    Atomic UPDATE with WHERE amount >= tokensToSell
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #4 [CRÍTICO] — tokenSell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: User balance NEVER credited with WLD proceeds from sell
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    User sells tokens, gets wldReceived in JSON, but no DB record of WLD credit
+
+  Impacto real:
+    Users lose money — sell tokens and receive nothing
+
+  Evidencia en código:
+    No update to balances/user_balances anywhere
+
+  Solución concreta:
+    Credit user_balances or create a withdrawal-ready record
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #5 [MEDIO] — tokenSell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Audit log references undefined "amount" (L143)
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    JSON.stringify({ tokenId, amount }) — amount is not defined, tokensToSell is
+
+  Impacto real:
+    Silent audit failure
+
+  Evidencia en código:
+    L143
+
+  Solución concreta:
+    Change to tokensToSell
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #6 [CRÍTICO] — [id]/sell.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings upsert (L105) has NO OCC on holdings amount — same race as sell.mjs
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Same concurrent sell exploit
+
+  Impacto real:
+    Double-sell allows selling more tokens than owned
+
+  Evidencia en código:
+    L105: .upsert({amount: newAmount}) without WHERE amount = heldAmount
+
+  Solución concreta:
+    Atomic UPDATE with WHERE clause
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #7 [CRÍTICO] — confirmBuy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: P3 FIX NOT APPLIED: Still has TOCTOU race on order claim (L20-40)
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two concurrent confirmBuy calls with same orderId: both read status="pending", both proceed, both complete the buy. User gets double tokens for one payment.
+
+  Impacto real:
+    Free token duplication — pay once, confirm twice = double tokens
+
+  Evidencia en código:
+    L20-40: SELECT txDupe → SELECT order → check status !== pending (TOCTOU pattern, not atomic UPDATE)
+
+  Solución concreta:
+    Replace L20-40 with atomic: UPDATE payment_orders SET status="processing" WHERE id=orderId AND status="pending" RETURNING *
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #8 [CRÍTICO] — confirmBuy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Order status set to "completed" AFTER tokens minted (L136-140), not BEFORE
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    If server crashes between L112 (holdings upsert) and L136 (order completed), tokens are minted but order stays "pending". On retry, user gets double tokens.
+
+  Impacto real:
+    Free tokens on crash/timeout — tokens minted, order not marked completed, retryable
+
+  Evidencia en código:
+    L112-140: holdings upsert at L112, order update at L136
+
+  Solución concreta:
+    Set order to "processing" atomically FIRST, then mint, then set "completed"
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #9 [CRÍTICO] — confirmBuy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings upsert (L112) without OCC — concurrent buys corrupt holdings
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two buys for same user+token: both read prevAmount=10, both calculate newAmount=10+5=15. Second overwrites first. Holdings=15 instead of 20.
+
+  Impacto real:
+    Lost tokens — concurrent buys overwrite each other, user loses tokens
+
+  Evidencia en código:
+    L112: .upsert({amount: newAmount}) without WHERE amount = prevAmount
+
+  Solución concreta:
+    Use atomic: UPDATE holdings SET amount = amount + tokensOut WHERE user_id AND token_id
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #10 [CRÍTICO] — [id]/buy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings upsert (L107) without OCC — concurrent buys overwrite each other
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Same as confirmBuy — two buys for same user+token overwrite holdings
+
+  Impacto real:
+    Lost tokens on concurrent purchases
+
+  Evidencia en código:
+    L107: .upsert({amount: newAmount}) without WHERE
+
+  Solución concreta:
+    Use atomic: UPDATE holdings SET amount = amount + tokensOut
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #11 [ALTO] — initiateBuy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: No limit on pending orders — user can create unlimited pending payment_orders
+
+  Tipo: abuso
+
+  Cómo explotarlo:
+    Spam initiateBuy to create thousands of pending orders. Each reserves a price quote. If price moves favorably, confirm the best one.
+
+  Impacto real:
+    Price manipulation + DB bloat + stale order arbitrage
+
+  Evidencia en código:
+    No check for existing pending orders before creating new one
+
+  Solución concreta:
+    Add: SELECT count(*) FROM payment_orders WHERE user_id = X AND status = "pending" — limit to 3
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #12 [ALTO] — _curve.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: solveBuy actualCost (L76) can differ from netWld — no check that actualCost <= netWld
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    Newton's method (L56-61) converges to s1 where V(s1)-V(s0) should equal netWld, but Math.floor at L69 can make actualCost < netWld. The difference (netWld - actualCost) is lost — neither returned to user nor added to treasury.
+
+  Impacto real:
+    Economic leak: rounding errors on every buy accumulate. Small amounts of WLD disappear from the system.
+
+  Evidencia en código:
+    L76: actualCost = V(newSupply) - V(s0); L81: return netWld: actualCost — this returns the actual cost as "netWld", overriding the input. If actualCost > original netWld, more is spent than collected.
+
+  Solución concreta:
+    Add: if (actualCost > netWld) recalculate tokensOut; track dust amounts in treasury
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #13 [MEDIO] — _curve.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: MAX_SELL_PERCENT_PER_TX (2.5%) can be bypassed by sending 40 sequential sells
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    User sends 40 sells of 2.5% each = 100% sold. No per-user sell rate limit.
+
+  Impacto real:
+    Market dump protection is ineffective
+
+  Evidencia en código:
+    L23: MAX_SELL_PERCENT_PER_TX = 0.025; no per-user cooldown
+
+  Solución concreta:
+    Add per-user sell cooldown (e.g., max 10% per hour per user)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #14 [ALTO] — withdraw.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: TOCTOU: Balance check (L119-132) is separate from deduct_balance (L134). Concurrent withdrawals can overdraw.
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two concurrent requests: both SELECT available=10, both pass check, both call deduct_balance(10). If RPC doesn't check, balance goes to -10.
+
+  Impacto real:
+    Double withdrawal — user extracts more WLD than available
+
+  Evidencia en código:
+    L119-132: SELECT balance; L134: RPC deduct_balance — no guarantee of atomicity between them
+
+  Solución concreta:
+    deduct_balance RPC MUST check available >= amount internally and raise error if not
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #15 [MEDIO] — withdraw.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Nonce update (L116) is not atomic — TOCTOU race between L106-114 check and L116 update
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two requests with same nonce: both SELECT nonce WHERE used=false → both pass → both UPDATE used=true → both proceed
+
+  Impacto real:
+    Nonce replay allows duplicate withdrawals
+
+  Evidencia en código:
+    L106-114: SELECT nonce; L116: UPDATE used=true — no .eq("used", false)
+
+  Solución concreta:
+    Use atomic: UPDATE nonces SET used=true WHERE nonce=X AND used=false RETURNING *
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #16 [ALTO] — withdraw.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Withdrawal destination (wallet) is not verified against SIWE signer — user can send to any address
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    User signs SIWE with their address (userId), but specifies a different wallet address as destination. SIWE only verifies userId matches signer, not the destination.
+
+  Impacto real:
+    If an attacker compromises userId, they can drain to any external wallet
+
+  Evidencia en código:
+    L66: wallet is separate from L102: payload.address check. No verification that wallet === payload.address
+
+  Solución concreta:
+    Either require wallet === payload.address, or include wallet in SIWE message for verification
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #17 [CRÍTICO] — tokenBuy.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings upsert (L161) without OCC — concurrent buys overwrite each other
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Same pattern: read prevAmount, calculate newAmount, upsert without WHERE clause
+
+  Impacto real:
+    Lost tokens on concurrent purchases
+
+  Evidencia en código:
+    L161: .upsert({amount: newAmount}) without WHERE amount = prevAmount
+
+  Solución concreta:
+    Use atomic: UPDATE holdings SET amount = amount + tokensOut
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #18 [CRÍTICO] — airdropRedeem.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Tokens granted (L51-77) BEFORE dedup claim check (L89). On duplicate, user gets tokens but sees "already claimed".
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two concurrent claims: both pass L16-44 checks, both grant tokens at L51-77, then second INSERT at L89 fails with 23505. But tokens were already added to holdings.
+
+  Impacto real:
+    Free unlimited tokens — claim same airdrop repeatedly via concurrent requests
+
+  Evidencia en código:
+    L51-77 executes BEFORE L89 dedup INSERT. Order should be reversed: INSERT claim FIRST, then grant tokens.
+
+  Solución concreta:
+    Move claim INSERT (L89) BEFORE holdings update (L51). If claim INSERT fails with 23505, return 409 WITHOUT granting tokens.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #19 [ALTO] — airdropRedeem.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Fallback holdings update (L66-70) has TOCTOU — uses read amount then update without OCC
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    L58-63 reads amount, L68 updates with amount + claimAmount. Concurrent claims can overwrite.
+
+  Impacto real:
+    Lost tokens from concurrent airdrop claims
+
+  Evidencia en código:
+    L66-70: .update({ amount: existingHolding.amount + claimAmount }) without .eq("amount")
+
+  Solución concreta:
+    Use atomic RPC or .eq("amount", existingHolding.amount)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #20 [ALTO] — airdropRedeem.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Airdrop claimed_amount update (L80-87) uses stale value — TOCTOU race
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    claimed_amount read at L27, used at L83. Between read and update, another claim can change it.
+
+  Impacto real:
+    Airdrop overclaimed — more tokens given than total supply of airdrop
+
+  Evidencia en código:
+    L83: claimed_amount: (link.claimed_amount ?? 0) + claimAmount — uses stale link data
+
+  Solución concreta:
+    Use atomic: UPDATE airdrop_links SET claimed_amount = claimed_amount + $amount WHERE claimed_amount + $amount <= amount
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #21 [CRÍTICO] — airdrops/[id]/claim.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: NO orbGuard — userId can be spoofed to claim airdrops as any user
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    POST with any userId — no authentication check
+
+  Impacto real:
+    Steal airdrops by claiming as other users
+
+  Evidencia en código:
+    No requireOrb or orbGuard import/check
+
+  Solución concreta:
+    Add requireOrb(userId, res)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #22 [ALTO] — airdrops/[id]/claim.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Claim dedup relies on cooldown, not UNIQUE constraint — race condition on concurrent claims
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two concurrent claims bypass cooldown check (L44-53), both get tokens
+
+  Impacto real:
+    Double-claim airdrops
+
+  Evidencia en código:
+    L65: INSERT claim, L72-78: UPDATE claimed_amount with stale value, L93: upsert holdings without OCC
+
+  Solución concreta:
+    Add UNIQUE(airdrop_id, user_id, date) constraint and check constraint on claimed_amount
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #23 [ALTO] — tokenBurn.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings update (L70) without OCC — concurrent burns can corrupt holdings
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two burns: both read heldAmount=100, both update to amount=90. Second overwrites first.
+
+  Impacto real:
+    Holdings inconsistency — burned tokens not properly deducted
+
+  Evidencia en código:
+    L70: .update({ amount: newHeld }) without .eq("amount", heldAmount)
+
+  Solución concreta:
+    Add .eq("amount", heldAmount) to holdings update
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #24 [ALTO] — tokenLock.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Holdings update (L69) without OCC — concurrent locks corrupt holdings
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Same pattern — concurrent lock operations can overwrite each other
+
+  Impacto real:
+    Holdings inconsistency
+
+  Evidencia en código:
+    L69: .update({ amount: heldAmount - amount }) without .eq("amount", heldAmount)
+
+  Solución concreta:
+    Add .eq("amount", heldAmount)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #25 [ALTO] — trackAd.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Ad dedup check (L67-78) is TOCTOU — concurrent clicks bypass dedup
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Two concurrent clicks: both SELECT ad_metrics WHERE campaign+user+type → both return null → both INSERT → advertiser charged twice for same user click
+
+  Impacto real:
+    Ad budget drained faster — advertiser pays double for concurrent clicks
+
+  Evidencia en código:
+    L67-78: SELECT then L124: INSERT — no UNIQUE constraint protection
+
+  Solución concreta:
+    Add UNIQUE(campaign_id, user_id, type) constraint and handle 23505 error
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #26 [MEDIO] — trackAd.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Rate limit is in-memory Map (L11) — resets on serverless cold start, per-instance
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    Each serverless instance has its own Map — rate limit is effectively useless at scale
+
+  Impacto real:
+    Rate limit bypass — each new instance allows fresh 30 requests
+
+  Evidencia en código:
+    L11: const rateLimitMap = new Map()
+
+  Solución concreta:
+    Use persistent rate limit (Redis or Supabase RPC)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #27 [CRÍTICO] — _orbGuard.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: orbGuard trusts profiles.verification_level which may be client-writable via anon Supabase key
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Browser console: supabase.from("profiles").update({verification_level:"orb"}).eq("id", myUserId) — if UPDATE RLS is permissive, user bypasses orbGuard
+
+  Impacto real:
+    Complete auth bypass — any user can set themselves as orb-verified and access all financial endpoints
+
+  Evidencia en código:
+    L33: const isOrbVerified = profile.verification_level === "orb" — trusts client-writable field
+
+  Solución concreta:
+    Either: 1) Ensure profiles UPDATE RLS blocks verification_level changes, or 2) Verify against a separate server-only table, or 3) Check with World ID API directly
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #28 [MEDIO] — _supabase.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: CORS allows no origin if ALLOWED_ORIGINS is empty (L17-21) — this is restrictive but may break app if not configured
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    If ALLOWED_ORIGINS env var is not set, no Access-Control-Allow-Origin header is sent. Some endpoints like withdraw.mjs bypass this with their own CORS: "*"
+
+  Impacto real:
+    Inconsistent CORS — some endpoints open, some closed
+
+  Evidencia en código:
+    L15-24 vs withdraw.mjs L56-58
+
+  Solución concreta:
+    Standardize CORS across all endpoints
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #29 [MEDIO] — _supabase.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: orbGuard rate limit is in-memory Map (L115) — resets on cold start, per-instance
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    Serverless: each instance has its own counter. Attacker triggers new instances to bypass.
+
+  Impacto real:
+    Rate limit bypass for all orbGuard-protected endpoints
+
+  Evidencia en código:
+    L115: const rateLimitMap = new Map()
+
+  Solución concreta:
+    Use persistent rate limit
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #30 [ALTO] — createPost.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: No orbGuard — userId can be spoofed to create posts as any user
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    POST with any user_id string — no verification the caller owns that identity
+
+  Impacto real:
+    Impersonation — create posts as any user, damage reputation
+
+  Evidencia en código:
+    No requireOrb or SIWE check
+
+  Solución concreta:
+    Add requireOrb(user_id, res)
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #31 [MEDIO] — createPost.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: No content sanitization — stored XSS potential
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    Content is stored as-is (L39). If rendered in frontend without escaping, XSS possible.
+
+  Impacto real:
+    Stored XSS attacks via post content
+
+  Evidencia en código:
+    L39: content: content.trim() — no HTML/script stripping
+
+  Solución concreta:
+    Sanitize: content.replace(/<[^>]*>/g, "")
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #32 [ALTO] — AutonomousGrowthBrain.tsx
+  ───────────────────────────────────────────────────────────────
+  Problema: No distributed lock — concurrent browser tabs/users trigger duplicate content generation
+
+  Tipo: concurrencia
+
+  Cómo explotarlo:
+    Multiple users can open the app, each triggering the brain's cycle. Without a lock, all generate posts simultaneously.
+
+  Impacto real:
+    Content spam — duplicate AI-generated posts flooding the feed
+
+  Evidencia en código:
+    No advisory_lock or distributed_lock check
+
+  Solución concreta:
+    Add distributed lock via Supabase advisory_lock or a lock row in DB
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #33 [MEDIO] — AutonomousGrowthBrain.tsx
+  ───────────────────────────────────────────────────────────────
+  Problema: Brain generates up to 6 posts per cycle with no daily cap enforcement
+
+  Tipo: abuso
+
+  Cómo explotarlo:
+    If cycle runs every 30min, that's up to 288 posts/day per brain instance. Multiple users = multiplied.
+
+  Impacto real:
+    Feed flooded with AI content, drowning real user posts
+
+  Evidencia en código:
+    L355-360: postsToGenerate up to 6, no daily total cap
+
+  Solución concreta:
+    Add daily cap check: SELECT count(*) FROM content_queue WHERE date = today AND account = X
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #34 [CRÍTICO] — supabase-schema.sql
+  ───────────────────────────────────────────────────────────────
+  Problema: MASSIVE RLS FAILURE: 25+ tables have permissive INSERT/UPDATE/DELETE WITH CHECK(true) — anon can write directly to ALL tables
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    From browser console: supabase.from("holdings").insert({user_id:"me",token_id:"X",amount:999999}) — instant free tokens. Or: supabase.from("balances").update({available:99999}).eq("user_id","me") — instant free WLD.
+
+  Impacto real:
+    COMPLETE SYSTEM COMPROMISE: Any user can give themselves unlimited tokens, WLD, balances, fake orders, fake activity, modify campaigns, etc.
+
+  Evidencia en código:
+    Schema lines 748-1018: ALL tables have INSERT WITH CHECK(true) and many have UPDATE USING(true)
+
+  Solución concreta:
+    DROP ALL permissive INSERT/UPDATE/DELETE policies. Only allow writes through service_role (server-side API calls). Frontend should NEVER write directly to Supabase.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #35 [CRÍTICO] — LIVE DATABASE
+  ───────────────────────────────────────────────────────────────
+  Problema: STILL 30+ tables with permissive INSERT(true) and 20+ with UPDATE(true) in live Supabase
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Browser console attacks:
+1. supabase.from("holdings").insert({user_id:"me",token_id:"X",amount:999999}) — FREE TOKENS
+2. supabase.from("user_balances").insert({user_id:"me",balance:99999}) — FREE WLD
+3. supabase.from("payment_orders").update({status:"completed"}).eq("id","X") — SKIP PAYMENT
+4. supabase.from("tokens").insert({...}) — CREATE FAKE TOKENS
+5. supabase.from("profiles").insert({id:"attacker",verification_level:"orb"}) — BYPASS ORBGUARD
+6. supabase.from("airdrop_links").update({claimed_amount:0}).eq("id","X") — INFINITE AIRDROPS
+
+  Impacto real:
+    TOTAL SYSTEM COMPROMISE — every financial operation can be bypassed via browser console
+
+  Evidencia en código:
+    pg_policies query shows 113 write policies, most WITH CHECK(true)
+
+  Solución concreta:
+    DROP ALL permissive write policies. Create restrictive policies or remove anon write access entirely.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #36 [CRÍTICO] — LIVE DATABASE
+  ───────────────────────────────────────────────────────────────
+  Problema: profiles INSERT WITH CHECK(true) — anyone can create a profile with verification_level:"orb"
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    supabase.from("profiles").insert({id:"attacker_id",verification_level:"orb"}) — bypasses ALL orbGuard checks
+
+  Impacto real:
+    Complete orbGuard bypass — attacker creates fake orb-verified profile, then accesses all financial endpoints
+
+  Evidencia en código:
+    Live policy: profiles_insert WITH CHECK(true)
+
+  Solución concreta:
+    DROP profiles_insert or restrict to service_role only. OR add CHECK that verification_level cannot be "orb" from anon.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #37 [CRÍTICO] — LIVE DATABASE
+  ───────────────────────────────────────────────────────────────
+  Problema: holdings/user_token_holdings INSERT(true) + UPDATE(true) — free token holdings
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    supabase.from("holdings").insert({user_id:"me",token_id:"X",amount:999999}) then sell via API
+
+  Impacto real:
+    INFINITE MONEY: Insert fake holdings → sell via API → receive WLD
+
+  Evidencia en código:
+    Live policies: user_token_holdings_insert WITH CHECK(true), user_token_holdings_update USING(true)
+
+  Solución concreta:
+    DROP both policies immediately
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #38 [CRÍTICO] — src/supabaseClient.ts
+  ───────────────────────────────────────────────────────────────
+  Problema: Frontend exposes Supabase anon key — combined with permissive RLS, enables all direct DB attacks
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    User opens browser console: const { supabase } = require("supabaseClient") or uses the exposed key directly. Then can INSERT/UPDATE/DELETE any table with USING(true).
+
+  Impacto real:
+    Root cause of all RLS exploits — the anon key + permissive policies = zero security
+
+  Evidencia en código:
+    VITE_SUPABASE_ANON_KEY exposed to client + 113 permissive write policies
+
+  Solución concreta:
+    MUST fix at RLS level — cannot hide anon key from frontend. Drop ALL permissive write policies.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #39 [ALTO] — PostCard.tsx
+  ───────────────────────────────────────────────────────────────
+  Problema: Still has 10+ direct Supabase writes for reposts (L395,L421), comments (L343), reports (L626), blocks (L647)
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Direct client writes to posts, comments, reports, blocks via anon key
+
+  Impacto real:
+    Users can repost/comment/report as any user, create spam, fake engagement
+
+  Evidencia en código:
+    L395,421: .from("posts").insert(), L626: .from("reports").insert(), L647: .from("blocks").insert()
+
+  Solución concreta:
+    Move all write operations to server-side API endpoints
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #40 [MEDIO] — useFollow.ts
+  ───────────────────────────────────────────────────────────────
+  Problema: Direct client writes for follow/unfollow (L35-46) via anon key
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Any user can follow/unfollow as any other user by spoofing currentUserId
+
+  Impacto real:
+    Fake follower counts, social manipulation
+
+  Evidencia en código:
+    L35-46: direct .delete()/.insert() on follows table
+
+  Solución concreta:
+    Move to server-side RPC or API
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #41 [CRÍTICO] — verifyOrbStatus.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: Orb verification ALWAYS succeeds: if Worldcoin API fails (L120-121) or APP_ID not set (L116-117), worldcoinVerified=true and profile gets orb status
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Send fake proof data. If Worldcoin API is slow/down/unreachable, or APP_ID isn't configured, endpoint sets verification_level="orb" with NO actual verification.
+
+  Impacto real:
+    COMPLETE ORBGUARD BYPASS: Anyone can self-verify as orb by timing requests when Worldcoin API is down, or if APP_ID is not set.
+
+  Evidencia en código:
+    L115-121: catch block sets worldcoinVerified=true; L124-133: saves to DB regardless
+
+  Solución concreta:
+    REQUIRE Worldcoin API verification. If it fails, DO NOT set orb status. Return error instead.
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #42 [CRÍTICO] — verifyOrbStatus.mjs
+  ───────────────────────────────────────────────────────────────
+  Problema: No cryptographic proof validation — endpoint trusts arbitrary JSON sent by client
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    POST with userId=X and proof={nullifier_hash:"fake",proof:"fake",merkle_root:"fake",verification_level:"orb"} — if Worldcoin API fails, user becomes orb-verified.
+
+  Impacto real:
+    Any user can become orb-verified by sending fake proof data
+
+  Evidencia en código:
+    L36-44: Only checks field existence, not cryptographic validity
+
+  Solución concreta:
+    Must validate proof cryptographically OR require Worldcoin API success
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #43 [ALTO] — FeedPage.tsx
+  ───────────────────────────────────────────────────────────────
+  Problema: Direct Supabase writes for views counter and feed interactions
+
+  Tipo: auth
+
+  Cómo explotarlo:
+    Frontend increments view counts and writes interactions directly via anon key
+
+  Impacto real:
+    Fake engagement metrics, inflated view counts
+
+  Evidencia en código:
+    Direct .update() calls on posts table for views
+
+  Solución concreta:
+    Move to server-side API or RPC
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #44 [MEDIO] — economy.ts
+  ───────────────────────────────────────────────────────────────
+  Problema: Like economy tracked in localStorage — easily manipulated
+
+  Tipo: diseño
+
+  Cómo explotarlo:
+    User clears localStorage to reset daily like count. Like multiplier resets.
+
+  Impacto real:
+    Unlimited like value extraction by clearing storage between sessions
+
+  Evidencia en código:
+    localStorage.getItem("like_tracking_v1")
+
+  Solución concreta:
+    Track on server via Supabase
+  
+  ───────────────────────────────────────────────────────────────
+  🚨 #45 [MEDIO] — GlobalChatRoom.tsx
+  ───────────────────────────────────────────────────────────────
+  Problema: Chat file uploads have no server-side validation — any file type/size accepted by Supabase storage
+
+  Tipo: bug
+
+  Cómo explotarlo:
+    Upload malicious files (executables, scripts) via chat file upload
+
+  Impacto real:
+    Malware distribution via chat
+
+  Evidencia en código:
+    L198: supabase.storage.from("chat-files").upload() — only client-side size check
+
+  Solución concreta:
+    Add storage bucket policies to restrict file types
+  
+  ═══════════════════════════════════════════════════════════════
+    🚀 PLAN DE ACCIÓN PRIORITARIO
+  ═══════════════════════════════════════════════════════════════
+
+    PRIORIDAD 0 (INMEDIATO — Sistema explotable AHORA):
+    
+    P0a: DROP TODAS las policies INSERT/UPDATE/DELETE WITH CHECK(true)
+         en tablas financieras: holdings, user_balances, balances,
+         tokens, payment_orders, withdrawals, ledger, airdrop_*
+         → Sin esto, todo lo demás es inútil
+
+    P0b: Fix verifyOrbStatus.mjs — REQUERIR éxito de Worldcoin API
+         No aceptar proofs cuando API falla
+         → Sin esto, orbGuard es bypass-able
+
+    PRIORIDAD 1 (24h):
+
+    P1a: Atomic holdings — crear RPC "adjust_holdings" que use
+         UPDATE holdings SET amount = amount +/- X WHERE user_id AND token_id
+         Reemplazar todos los upsert en sell, buy, confirm, burn, lock
+
+    P1b: confirmBuy.mjs — atomic order claim via
+         UPDATE payment_orders SET status='processing' WHERE id=X AND status='pending'
+         ANTES de mintear tokens
+
+    P1c: airdropRedeem.mjs — INSERT claim ANTES de grant tokens
+         Si INSERT falla con 23505, no otorgar tokens
+
+    PRIORIDAD 2 (48h):
+
+    P2a: airdrops/[id]/claim.mjs — agregar orbGuard
+    P2b: createPost.mjs — agregar orbGuard + sanitización
+    P2c: PostCard.tsx — mover reposts y comments a API server-side
+    P2d: withdraw.mjs — verificar wallet === SIWE signer, nonce atómico
+
+    PRIORIDAD 3 (1 semana):
+
+    P3a: Rate limits persistentes (Redis o Supabase RPC)
+    P3b: AutonomousGrowthBrain — distributed lock + daily cap
+    P3c: sell.mjs — acreditar WLD al balance del usuario
+    P3d: trackAd.mjs — UNIQUE constraint en ad_metrics
+    P3e: Sell rate limit per user (cooldown entre ventas)
+
+  ═══════════════════════════════════════════════════════════════
+    ⚠️ MODO ADVERSARIAL: ESCENARIO DE ATAQUE ORGANIZADO
+  ═══════════════════════════════════════════════════════════════
+
+    Un grupo organizado podría en 10 minutos:
+
+    1. Crear perfil con verification_level:"orb" via INSERT directo
+    2. Crear holdings falsos de cualquier token via INSERT directo
+    3. Vender esos holdings via API → extraer WLD del bonding curve
+    4. Transferir WLD a wallet externa via /api/withdraw
+    5. Repetir con múltiples cuentas
+
+    Costo del ataque: $0
+    Ganancia potencial: Todo el WLD en el bonding curve + treasury
+    Tiempo de ejecución: < 1 hora
+    Detección: Ninguna (audit_log solo cubre sell/confirmBuy)
+
+  ═══════════════════════════════════════════════════════════════
+  
