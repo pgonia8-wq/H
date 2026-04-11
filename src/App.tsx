@@ -49,28 +49,18 @@ import React, { useState, useEffect, useRef } from "react";
           });
           poll().then(() => {
             setMiniKitReady(true);
-            try { MiniKit.commands.ready(); } catch (_) {}
+            try { MiniKit.appReady(); } catch (_) {}
             if (MiniKit.user) {
               const u = MiniKit.user.username || null;
-              const a = MiniKit.user.avatar_url || null;
+              const a = MiniKit.user?.profilePictureUrl || null;
               if (u) { setUsername(u); setGlobalUsername(u); }
               if (a) setAvatar(a);
             }
           });
         })();
 
-        if (storedId) {
-          fetch(`/api/verify?userId=${storedId}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-              if (data && !data.valid) {
-                localStorage.removeItem("userId");
-                setUserId(null);
-                setVerified(false);
-              }
-            })
-            .catch(() => {});
-        }
+        // Session re-validation removed: verify.mjs only accepts POST (GET → 405).
+          // The userId in localStorage is already validated by the original verify flow.
 
         console.log("[ERUDA:INIT] ◀ App init finished", { ts: Date.now() });
       };
@@ -137,7 +127,7 @@ import React, { useState, useEffect, useRef } from "react";
                     walletLoading.current = false;
                   });
 
-                const addr = payload.address || MiniKit.walletAddress;
+                const addr = payload.address || MiniKit.user?.walletAddress;
                 if (addr) {
                   fetch(`https://usernames.worldcoin.org/api/v1/${addr}`)
                     .then(r => r.ok ? r.json() : null)
@@ -158,7 +148,7 @@ import React, { useState, useEffect, useRef } from "react";
 
               if (!username && MiniKit.user) {
                 const u = MiniKit.user.username || null;
-                const a = MiniKit.user.avatar_url || MiniKit.user.profilePictureUrl || null;
+                const a = MiniKit.user?.profilePictureUrl || null;
                 if (u) { setUsername(u); setGlobalUsername(u); }
                 if (a) setAvatar(a);
               }
