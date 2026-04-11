@@ -16,8 +16,12 @@ import { ReactNode, useEffect, useState } from "react";
         console.error("[MiniKitProvider] Install error:", err);
       }
 
+      if (MiniKit.isInstalled()) {
+        MiniKit.appReady();
+        console.log("[MiniKitProvider] appReady() called");
+      }
+
       setReady(true);
-    }, []);
 
     if (!ready) return null;
 
