@@ -6,7 +6,10 @@ import { supabase, cors } from "./_supabase.mjs";
     solveSell, curvePercent, spotPrice, getWldUsdRate,
     CREATOR_LOCK_HOURS, MAX_RETRIES,
   } from "./_curve.mjs";
-  import { trackRequest, trackTrade, trackOccConflict, trackPartialPayout, triggerAlert } from "../../api/_metrics.mjs";
+  import { trackRequest, trackTrade, trackOccConflict, trackPartialPayout, trackFailedTrade, triggerAlert, isTradingPaused, isTokenFrozen } from "../../api/_metrics.mjs";
+  import { canTrade, shouldThrottle } from "../../api/_infra.mjs";
+  import { smartRateLimit, detectTradingLoop } from "../../api/_smartRate.mjs";
+  import { createTrace, startSpan, endSpan, failSpan, finishTrace, log, SPANS, LOG_TYPES } from "../../api/_tracer.mjs";
 
   export default async function handler(req, res) {
     const t0 = Date.now();
@@ -19,14 +22,69 @@ import { supabase, cors } from "./_supabase.mjs";
     const body = req.body ?? {};
     const tokensToSell = body.tokensToSell || body.tokens_to_sell;
     const userId = body.userId || body.user_id;
-    console.log(JSON.stringify({ op: "SELL_START", reqId, tokenId, tokensToSell, userId, ts: new Date().toISOString() }));
+
+    const trace = createTrace("/api/tokenSell", userId);
+    const reqSpan = startSpan(trace, SPANS.REQUEST_START);
+
+    console.log(JSON.stringify({ op: "SELL_START", reqId, traceId: trace.traceId, tokenId, tokensToSell, userId, ts: new Date().toISOString() }));
     if (!tokenId || !tokensToSell || !userId) {
+      endSpan(reqSpan, { reason: "missing_params" });
+      finishTrace(trace, "error");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.ERROR, "400", { reason: "missing_params" });
       return res.status(400).json({ error: "Missing tokenId, tokensToSell, userId" });
     }
-    if (tokensToSell <= 0) return res.status(400).json({ error: "tokensToSell must be positive" });
+    if (tokensToSell <= 0) {
+      endSpan(reqSpan, { reason: "invalid_amount" });
+      finishTrace(trace, "error");
+      return res.status(400).json({ error: "tokensToSell must be positive" });
+    }
 
+    if (isTradingPaused()) {
+      trackFailedTrade("other");
+      finishTrace(trace, "blocked");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.TRADE, "503", { reason: "trading_paused" });
+      return res.status(503).json({ error: "Trading is temporarily paused" });
+    }
+    if (isTokenFrozen(tokenId)) {
+      trackFailedTrade("other");
+      finishTrace(trace, "blocked");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.TRADE, "503", { reason: "token_frozen", tokenId });
+      return res.status(503).json({ error: "This token is temporarily frozen" });
+    }
+    if (!canTrade()) {
+      trackFailedTrade("other");
+      finishTrace(trace, "blocked");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.INFRA, "503", { reason: "system_lockdown" });
+      return res.status(503).json({ error: "System is in lockdown mode, trading disabled" });
+    }
+    if (shouldThrottle("SELL")) {
+      finishTrace(trace, "throttled");
+      return res.status(429).json({ error: "System under load, please retry" });
+    }
+
+    const rl = smartRateLimit(userId, "trade", { tokenId, tokensToSell });
+    if (rl.limited) {
+      trackFailedTrade("other");
+      finishTrace(trace, "rate_limited");
+      log(trace, SPANS.RATE_LIMIT_CHECK, LOG_TYPES.RATE_LIMIT, "429", { reason: rl.reason, userId });
+      return res.status(429).json({ error: "Rate limited: " + rl.reason, retryAfterMs: rl.retryAfterMs });
+    }
+    const loopCheck = detectTradingLoop(userId, "sell");
+    if (loopCheck.looping) {
+      trackFailedTrade("other");
+      finishTrace(trace, "rate_limited");
+      log(trace, SPANS.RATE_LIMIT_CHECK, LOG_TYPES.RATE_LIMIT, "429", { reason: loopCheck.reason, userId });
+      return res.status(429).json({ error: "Rapid buy/sell loop detected, please slow down" });
+    }
+
+    const authSpan = startSpan(trace, SPANS.AUTH_CHECK);
     const orbOk = await requireOrb(userId, res);
-    if (!orbOk) return;
+    if (!orbOk) {
+      failSpan(authSpan, "orb_check_failed");
+      finishTrace(trace, "auth_failed");
+      return;
+    }
+    endSpan(authSpan);
 
     const wldUsd = await getWldUsdRate();
 
@@ -196,10 +254,12 @@ import { supabase, cors } from "./_supabase.mjs";
         await supabase.rpc("log_audit", { p_event: "token_sell", p_user: userId, p_details: JSON.stringify({ tokenId, tokensToSell, heldAmount, wldReceived }) });
 
       const elapsed = Date.now() - t0;
-      trackRequest(elapsed); trackTrade(wldReceived);
+      trackRequest(elapsed); trackTrade(wldReceived, "sell", fee);
       if (elapsed > 500) triggerAlert("SLOW_SELL", { reqId, elapsed });
-      console.log(JSON.stringify({ op: "SELL_OK", reqId, tokenId, userId, tokensToSell, wldReceived, fee, newPrice, newSupply, elapsed_ms: elapsed }));
-      supabase.from("admin_logs").insert({ category: "activity", event: "token_sell", severity: "info", user_id: userId, username, endpoint: "/api/tokenSell", latency_ms: elapsed, details: { tokenId, tokenSymbol: token.symbol, tokensToSell, wldReceived, fee, newPrice, reqId } }).catch(() => {});
+      finishTrace(trace, "ok");
+      log(trace, SPANS.RESPONSE, LOG_TYPES.TRADE, "200", { tokenId, tokensToSell, wldReceived, fee, newPrice, elapsed });
+      console.log(JSON.stringify({ op: "SELL_OK", reqId, traceId: trace.traceId, tokenId, userId, tokensToSell, wldReceived, fee, newPrice, newSupply, elapsed_ms: elapsed }));
+      supabase.from("admin_logs").insert({ category: "activity", event: "token_sell", severity: "info", user_id: userId, username, endpoint: "/api/tokenSell", latency_ms: elapsed, details: { tokenId, tokenSymbol: token.symbol, tokensToSell, wldReceived, fee, newPrice, reqId, traceId: trace.traceId } }).catch(() => {});
       return res.status(200).json({
           success: true,
           wldReceived, fee,
@@ -213,9 +273,12 @@ import { supabase, cors } from "./_supabase.mjs";
       } catch (err) {
         const elapsed = Date.now() - t0;
         trackRequest(elapsed, true);
+        trackFailedTrade("other");
         if (err.message?.includes("concurrent") || err.message?.includes("OCC")) trackOccConflict();
-        console.error(JSON.stringify({ op: "SELL_ERR", reqId, tokenId, userId, attempt, error: err.message, elapsed_ms: elapsed }));
-        supabase.from("admin_logs").insert({ category: "error", event: "sell_error", severity: attempt >= MAX_RETRIES - 1 ? "error" : "warning", user_id: userId, endpoint: "/api/tokenSell", latency_ms: elapsed, details: { tokenId, attempt, error: err.message, reqId } }).catch(() => {});
+        finishTrace(trace, "error");
+        log(trace, SPANS.WRITE_OPERATION, LOG_TYPES.ERROR, "500", { tokenId, attempt, error: err.message, elapsed });
+        console.error(JSON.stringify({ op: "SELL_ERR", reqId, traceId: trace.traceId, tokenId, userId, attempt, error: err.message, elapsed_ms: elapsed }));
+        supabase.from("admin_logs").insert({ category: "error", event: "sell_error", severity: attempt >= MAX_RETRIES - 1 ? "error" : "warning", user_id: userId, endpoint: "/api/tokenSell", latency_ms: elapsed, details: { tokenId, attempt, error: err.message, reqId, traceId: trace.traceId } }).catch(() => {});
         if (attempt >= MAX_RETRIES - 1) {
           return res.status(500).json({ error: "Internal server error" });
         }

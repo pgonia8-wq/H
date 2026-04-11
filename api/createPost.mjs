@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
   import { rateLimitPersistent } from "./_rateLimit.mjs";
+  import { canSocialWrite, shouldQueueSocial, shouldThrottle, isRealtimeEnabled } from "./_infra.mjs";
+  import { smartRateLimit } from "./_smartRate.mjs";
+  import { createTrace, startSpan, endSpan, finishTrace, log, SPANS, LOG_TYPES } from "./_tracer.mjs";
+  import { enqueue, OP_TYPES } from "./_queue.mjs";
+  import { trackRequest, trackPost, isReadOnlyMode } from "./_metrics.mjs";
 
   const supabase = createClient(
     process.env.SUPABASE_URL ?? "",
@@ -29,10 +34,36 @@ import { createClient } from "@supabase/supabase-js";
     const user_id = body.user_id || body.userId;
     const { content, image_url } = body;
 
-    console.log(JSON.stringify({ event: "create_post", reqId, userId: user_id, content_length: content?.length, ts: new Date().toISOString() }));
+    const trace = createTrace("/api/createPost", user_id);
+    startSpan(trace, SPANS.REQUEST_START);
+
+    console.log(JSON.stringify({ event: "create_post", reqId, traceId: trace.traceId, userId: user_id, content_length: content?.length, ts: new Date().toISOString() }));
 
     if (!user_id || typeof user_id !== "string") {
+      finishTrace(trace, "error");
       return res.status(400).json({ error: "user_id required" });
+    }
+
+    if (isReadOnlyMode()) {
+      finishTrace(trace, "blocked");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.INFRA, "503", { reason: "read_only_mode" });
+      return res.status(503).json({ error: "System is in read-only mode" });
+    }
+    if (!canSocialWrite()) {
+      finishTrace(trace, "blocked");
+      log(trace, SPANS.REQUEST_START, LOG_TYPES.INFRA, "503", { reason: "social_writes_disabled" });
+      return res.status(503).json({ error: "Social features temporarily disabled" });
+    }
+    if (shouldThrottle("POST")) {
+      finishTrace(trace, "throttled");
+      return res.status(429).json({ error: "System under load, please retry in a moment" });
+    }
+
+    const srl = smartRateLimit(user_id, "post", { content: content?.slice(0, 100) });
+    if (srl.limited) {
+      finishTrace(trace, "rate_limited");
+      log(trace, SPANS.RATE_LIMIT_CHECK, LOG_TYPES.RATE_LIMIT, "429", { reason: srl.reason, userId: user_id });
+      return res.status(429).json({ error: "Rate limited: " + srl.reason });
     }
 
     const { data: profile } = await supabase
@@ -42,12 +73,27 @@ import { createClient } from "@supabase/supabase-js";
       .maybeSingle();
 
     if (!profile || !profile.verification_level) {
+      finishTrace(trace, "auth_failed");
       return res.status(403).json({ error: "Device verification required to create posts" });
     }
 
     const rl = await rateLimitPersistent("create_post:" + user_id, { windowMs: 3600000, max: 15 });
     if (rl.limited) {
+      finishTrace(trace, "rate_limited");
       return res.status(429).json({ error: "Max 15 posts per hour" });
+    }
+
+    if (shouldQueueSocial()) {
+      const cleanContent = sanitizeContent(content || "");
+      const qResult = await enqueue(OP_TYPES.POST, { user_id, content: cleanContent, image_url: image_url || null }, user_id);
+      if (qResult.queued) {
+        trackPost();
+        const elapsed = Date.now() - t0;
+        trackRequest(elapsed);
+        finishTrace(trace, "queued");
+        log(trace, SPANS.QUEUE_ENQUEUE, LOG_TYPES.SOCIAL, "202", { queueId: qResult.id });
+        return res.status(202).json({ success: true, queued: true, message: "Post queued for processing" });
+      }
     }
     if (!content || typeof content !== "string" || !content.trim()) {
       return res.status(400).json({ error: "content required" });
@@ -83,17 +129,26 @@ import { createClient } from "@supabase/supabase-js";
 
       if (error) {
         console.error(JSON.stringify({ event: "error", type: "create_post_db", reqId, endpoint: "/api/createPost", userId: user_id, error: error.message, latency_ms: Date.now() - t0 }));
+        finishTrace(trace, "error");
+        log(trace, SPANS.WRITE_OPERATION, LOG_TYPES.ERROR, "500", { error: error.message });
         return res.status(500).json({ error: error.message });
       }
 
       const elapsed = Date.now() - t0;
-      console.log(JSON.stringify({ event: "create_post_ok", reqId, userId: user_id, postId: data?.id, latency_ms: elapsed }));
-      supabase.from("admin_logs").insert({ category: "activity", event: "create_post", severity: "info", user_id, endpoint: "/api/createPost", latency_ms: elapsed, details: { postId: data?.id, content_length: cleanContent?.length, reqId } }).catch(() => {});
+      trackRequest(elapsed);
+      trackPost();
+      finishTrace(trace, "ok");
+      log(trace, SPANS.RESPONSE, LOG_TYPES.SOCIAL, "201", { postId: data?.id, elapsed });
+      console.log(JSON.stringify({ event: "create_post_ok", reqId, traceId: trace.traceId, userId: user_id, postId: data?.id, latency_ms: elapsed }));
+      supabase.from("admin_logs").insert({ category: "activity", event: "create_post", severity: "info", user_id, endpoint: "/api/createPost", latency_ms: elapsed, details: { postId: data?.id, content_length: cleanContent?.length, reqId, traceId: trace.traceId } }).catch(() => {});
       return res.status(201).json({ success: true, postId: data?.id });
     } catch (err) {
       const elapsed = Date.now() - t0;
+      trackRequest(elapsed, true);
+      finishTrace(trace, "error");
+      log(trace, SPANS.WRITE_OPERATION, LOG_TYPES.ERROR, "500", { error: err.message });
       console.error(JSON.stringify({ event: "error", type: "create_post_exception", reqId, endpoint: "/api/createPost", userId: user_id, error: err.message, latency_ms: elapsed }));
-      supabase.from("admin_logs").insert({ category: "error", event: "create_post_error", severity: "error", user_id, endpoint: "/api/createPost", latency_ms: elapsed, details: { error: err.message, reqId } }).catch(() => {});
+      supabase.from("admin_logs").insert({ category: "error", event: "create_post_error", severity: "error", user_id, endpoint: "/api/createPost", latency_ms: elapsed, details: { error: err.message, reqId, traceId: trace.traceId } }).catch(() => {});
       return res.status(500).json({ error: "Internal server error" });
     }
   }

@@ -11,9 +11,11 @@ import SessionsPanel from "./components/SessionsPanel";
 import WhalesPanel from "./components/WhalesPanel";
 import IncidentPanel from "./components/IncidentPanel";
 import MoneyFlowPanel from "./components/MoneyFlowPanel";
+import InfraPanel from "./components/InfraPanel";
 
 const TABS = [
   { id: "overview", label: "Panel General", icon: "📊" },
+  { id: "infra", label: "Infraestructura", icon: "🏗️" },
   { id: "moneyflow", label: "Money Flow", icon: "💰" },
   { id: "whales", label: "Whales & Dumps", icon: "🐋" },
   { id: "activity", label: "Actividad", icon: "📡" },
@@ -171,6 +173,11 @@ export default function AdminApp() {
               {alerts.length} ⚠
             </span>
           )}
+          {health?.infra?.state && health.infra.state !== "NORMAL" && (
+            <span onClick={() => switchTab("infra")} style={{ background: health.infra.state === "LOCKDOWN" ? "#ff202020" : health.infra.state === "CRITICAL" ? "#f0505020" : "#f7a60620", color: health.infra.state === "LOCKDOWN" ? "#ff2020" : health.infra.state === "CRITICAL" ? "#f05050" : "#f7a606", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+              {health.infra.state === "LOCKDOWN" ? "🚨" : health.infra.state === "CRITICAL" ? "🔴" : "🟡"} {health.infra.state}
+            </span>
+          )}
           {health?.tradingPaused && <span style={{ background: "#f0505020", color: "#f05050", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer" }} onClick={() => switchTab("incidents")}>🛑 PAUSED</span>}
           {health?.readOnlyMode && <span style={{ background: "#f7a60620", color: "#f7a606", padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700 }}>⚠️ R/O</span>}
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: health?.status === "ok" ? "#10f090" : health?.status === "degraded" ? "#f7a606" : "#f05050", boxShadow: `0 0 8px ${health?.status === "ok" ? "#10f09060" : health?.status === "degraded" ? "#f7a60660" : "#f0505060"}` }} title={health?.status || "Conectado"} />
@@ -220,6 +227,9 @@ export default function AdminApp() {
               {tab.id === "errors" && (
                 <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "#f05050" }} />
               )}
+              {tab.id === "infra" && health?.infra?.state && health.infra.state !== "NORMAL" && (
+                <span style={{ marginLeft: "auto", background: health.infra.state === "CRITICAL" || health.infra.state === "LOCKDOWN" ? "#f05050" : "#f7a606", color: "#fff", borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>{health.infra.state[0]}</span>
+              )}
               {tab.id === "incidents" && (health?.tradingPaused || health?.readOnlyMode || health?.degradedMode) && (
                 <span style={{ marginLeft: "auto", background: "#f05050", color: "#fff", borderRadius: 6, padding: "1px 6px", fontSize: 9, fontWeight: 700 }}>!</span>
               )}
@@ -232,6 +242,7 @@ export default function AdminApp() {
 
         <main style={{ flex: 1, padding: isMobile ? 12 : 24, overflow: "auto", maxHeight: "calc(100vh - 52px)" }}>
           {activeTab === "overview" && <OverviewPanel stats={stats} health={health} onViewUser={handleViewUser} />}
+          {activeTab === "infra" && <InfraPanel apiCall={apiCall} />}
           {activeTab === "moneyflow" && <MoneyFlowPanel apiCall={apiCall} />}
           {activeTab === "whales" && <WhalesPanel apiCall={apiCall} onViewUser={handleViewUser} />}
           {activeTab === "activity" && <LiveFeedPanel apiCall={apiCall} onViewUser={handleViewUser} />}
