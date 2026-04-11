@@ -56,6 +56,7 @@ DECLARE
   v_new_amount BIGINT;
   v_avg_price DOUBLE PRECISION;
   v_unit_price DOUBLE PRECISION;
+  v_token_symbol TEXT;
 BEGIN
   -- Step 1: Update token with OCC check (atomic within this transaction)
   UPDATE tokens SET
@@ -74,6 +75,8 @@ BEGIN
   IF v_updated_id IS NULL THEN
     RETURN json_build_object('success', false, 'error', 'concurrent_trade');
   END IF;
+
+  SELECT symbol INTO v_token_symbol FROM tokens WHERE id = p_token_id;
 
   -- Step 2: Get current holdings (within same transaction — no race possible)
   SELECT amount, avg_buy_price INTO v_prev_amount, v_prev_avg
@@ -113,8 +116,8 @@ BEGIN
   END IF;
 
   -- Step 5: Record activity
-  INSERT INTO token_activity (type, user_id, username, token_id, amount, price, total, timestamp)
-  VALUES ('buy', p_user_id, p_username, p_token_id, p_tokens_out, p_new_price, p_amount_wld, NOW());
+  INSERT INTO token_activity (type, user_id, username, token_id, token_symbol, amount, price, total, timestamp)
+  VALUES ('buy', p_user_id, p_username, p_token_id, COALESCE(v_token_symbol, ''), p_tokens_out, p_new_price, p_amount_wld, NOW());
 
   RETURN json_build_object(
     'success', true,
