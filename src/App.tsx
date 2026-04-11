@@ -66,10 +66,11 @@ import React, { useState, useEffect, useRef } from "react";
               setMiniKitReady(true);
               console.log("[ERUDA:POLL] setMiniKitReady(true)");
               try {
-                MiniKit.commands.ready();
-                console.log("[ERUDA:POLL] ✅ MiniKit.commands.ready() called OK");
+                MiniKit.commands.appReady();
+                console.log("[ERUDA:POLL] ✅ MiniKit.commands.appReady() called OK");
               } catch (e) {
-                console.warn("[ERUDA:POLL] ⚠ MiniKit.commands.ready() error:", e);
+                console.warn("[ERUDA:POLL] ⚠ appReady() failed, trying ready()...", e);
+                try { (MiniKit.commands as any).ready(); } catch (_) {}
               }
               if (MiniKit.user) {
                 console.log("[ERUDA:POLL] MiniKit.user found:", JSON.stringify({ username: MiniKit.user.username, hasAvatar: !!MiniKit.user.avatar_url }));
