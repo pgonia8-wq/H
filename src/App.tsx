@@ -23,10 +23,6 @@ import React, { useState, useEffect, useRef } from "react";
         const init = async () => {
           const t0 = Date.now();
           console.log("[ERUDA:INIT] ▶ App init started", { ts: t0, APP_ID: APP_ID ? APP_ID.slice(0,12)+"..." : "EMPTY" });
-          console.log("[ERUDA:INIT] MiniKit imported:", typeof MiniKit);
-          console.log("[ERUDA:INIT] MiniKit.isInstalled():", MiniKit.isInstalled());
-          console.log("[ERUDA:INIT] MiniKit.user:", JSON.stringify(MiniKit.user || null));
-          console.log("[ERUDA:INIT] MiniKit.walletAddress:", MiniKit.walletAddress || "null");
 
           const storedId = localStorage.getItem("userId");
           console.log("[ERUDA:INIT] localStorage userId:", storedId ? storedId.slice(0, 12) + "..." : "null");
@@ -34,8 +30,12 @@ import React, { useState, useEffect, useRef } from "react";
             setUserId(storedId);
             setVerified(true);
             console.log("[ERUDA:INIT] ✅ Returning user — setVerified(true)");
-          } else {
-            console.log("[ERUDA:INIT] 🆕 New user — needs verification");
+          }
+
+          const cachedWallet = localStorage.getItem("wallet");
+          if (cachedWallet) {
+            setWallet(cachedWallet);
+            console.log("[ERUDA:INIT] ⚡ Cached wallet:", cachedWallet.slice(0,10)+"...");
           }
 
           (() => {
@@ -64,13 +64,13 @@ import React, { useState, useEffect, useRef } from "react";
             poll().then(() => {
               console.log("[ERUDA:POLL] ◀ Poll finished. MiniKit.isInstalled():", MiniKit.isInstalled(), "(" + (Date.now() - pollStart) + "ms)");
               setMiniKitReady(true);
-              console.log("[ERUDA:POLL] setMiniKitReady(true)");
               try {
                 MiniKit.commands.appReady();
                 console.log("[ERUDA:POLL] ✅ MiniKit.commands.appReady() called OK");
-              } catch (e) {
-                console.warn("[ERUDA:POLL] ⚠ appReady() failed, trying ready()...", e);
-                try { (MiniKit.commands as any).ready(); } catch (_) {}
+              } catch (_) {
+                try { (MiniKit.commands as any).ready(); console.log("[ERUDA:POLL] ✅ Fallback ready() called OK"); } catch (_2) {
+                  console.warn("[ERUDA:POLL] ⚠ Neither appReady() nor ready() available");
+                }
               }
               if (MiniKit.user) {
                 console.log("[ERUDA:POLL] MiniKit.user found:", JSON.stringify({ username: MiniKit.user.username, hasAvatar: !!MiniKit.user.avatar_url }));
@@ -99,7 +99,7 @@ import React, { useState, useEffect, useRef } from "react";
                   setUserId(null);
                   setVerified(false);
                 } else {
-                  console.log("[ERUDA:SESSION] ✅ Session valid");
+                  console.log("[ERUDA:SESSION] ✅ Session valid (or endpoint unavailable)");
                 }
               })
               .catch((e) => {
@@ -116,19 +116,21 @@ import React, { useState, useEffect, useRef } from "react";
       useEffect(() => {
         const loadWallet = async () => {
           console.log("[ERUDA:WALLET] ▶ loadWallet check", { verified, wallet: !!wallet, verifying, miniKitReady, loading: walletLoading.current });
+
           if (!verified || wallet || verifying || !miniKitReady || walletLoading.current) {
-            console.log("[ERUDA:WALLET] ⏭ Skipping loadWallet — conditions:", {
-              "!verified": !verified,
-              "wallet exists": !!wallet,
-              "verifying": verifying,
-              "!miniKitReady": !miniKitReady,
-              "loading": walletLoading.current
-            });
+            console.log("[ERUDA:WALLET] ⏭ Skipping loadWallet");
+            return;
+          }
+
+          const cachedWallet = localStorage.getItem("wallet");
+          if (cachedWallet) {
+            setWallet(cachedWallet);
+            console.log("[ERUDA:WALLET] ⚡ Using cached wallet:", cachedWallet.slice(0,10)+"...");
             return;
           }
 
           walletLoading.current = true;
-          console.log("[ERUDA:WALLET] 🔄 Starting wallet auth flow...");
+          console.log("[ERUDA:WALLET] 🔄 Starting wallet auth flow (background)...");
 
           try {
             console.log("[ERUDA:WALLET] Fetching /api/nonce...");
@@ -139,15 +141,20 @@ import React, { useState, useEffect, useRef } from "react";
             const { nonce } = await nonceRes.json();
             console.log("[ERUDA:WALLET] Nonce received:", nonce?.slice(0, 8) + "...");
 
-            console.log("[ERUDA:WALLET] Calling MiniKit.commandsAsync.walletAuth...");
+            console.log("[ERUDA:WALLET] Calling walletAuth with 3s timeout...");
             const t1 = Date.now();
-            const auth = await MiniKit.commandsAsync.walletAuth({
-              nonce,
-              requestId: "wallet-auth-" + Date.now(),
-              expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-              notBefore: new Date(Date.now() - 60 * 1000),
-              statement: "Autenticar wallet para H humans",
-            });
+            const auth = await Promise.race([
+              MiniKit.commandsAsync.walletAuth({
+                nonce,
+                requestId: "wallet-auth-" + Date.now(),
+                expirationTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                notBefore: new Date(Date.now() - 60 * 1000),
+                statement: "Autenticar wallet para H humans",
+              }),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("walletAuth timeout (3s)")), 3000)
+              )
+            ]) as any;
             console.log("[ERUDA:WALLET] walletAuth returned (" + (Date.now() - t1) + "ms)", JSON.stringify({ status: auth?.finalPayload?.status, hasAddress: !!auth?.finalPayload?.address }));
 
             const payload = auth?.finalPayload;
@@ -168,7 +175,8 @@ import React, { useState, useEffect, useRef } from "react";
                 console.log("[ERUDA:WALLET] /api/walletVerify response:", vRes.status, "(" + (Date.now() - t2) + "ms)", JSON.stringify(vData));
                 if (vData.success) {
                   setWallet(vData.address);
-                  console.log("[ERUDA:WALLET] ✅ Wallet set:", vData.address.slice(0, 10) + "...");
+                  localStorage.setItem("wallet", vData.address);
+                  console.log("[ERUDA:WALLET] ✅ Wallet set + cached:", vData.address.slice(0, 10) + "...");
                 } else {
                   console.warn("[ERUDA:WALLET] ❌ Wallet verify rejected:", vData.error);
                 }
@@ -214,8 +222,7 @@ import React, { useState, useEffect, useRef } from "react";
               console.log("[ERUDA:WALLET] Fallback MiniKit.user:", u);
             }
           } catch (err: any) {
-            console.error("[ERUDA:WALLET] ❌ Error walletAuth:", err);
-            setError("Error autenticando wallet");
+            console.warn("[ERUDA:WALLET] ⚠ walletAuth skipped or timeout:", err.message);
           } finally {
             walletLoading.current = false;
             console.log("[ERUDA:WALLET] ◀ loadWallet finished");
@@ -234,13 +241,13 @@ import React, { useState, useEffect, useRef } from "react";
           console.log("[ERUDA:VERIFY] MiniKit.isInstalled():", MiniKit.isInstalled());
           if (!MiniKit.isInstalled()) throw new Error("MiniKit no instalado");
 
-          console.log("[ERUDA:VERIFY] Calling MiniKit.commandsAsync.verify({ action: 'verify-user', level: Device })...");
+          console.log("[ERUDA:VERIFY] Calling verify({ action: 'verify-user', level: Device })...");
           const t0 = Date.now();
           const verifyRes = await MiniKit.commandsAsync.verify({
             action: "verify-user",
             verification_level: VerificationLevel.Device,
           });
-          console.log("[ERUDA:VERIFY] verify returned (" + (Date.now() - t0) + "ms)", JSON.stringify({ status: verifyRes?.finalPayload?.status, hasHash: !!verifyRes?.finalPayload?.nullifier_hash }));
+          console.log("[ERUDA:VERIFY] verify returned (" + (Date.now() - t0) + "ms)");
 
           const proof = verifyRes?.finalPayload;
           if (!proof) throw new Error("No se recibió proof");
@@ -256,13 +263,13 @@ import React, { useState, useEffect, useRef } from "react";
 
           if (!res.ok) {
             const text = await res.text();
-            console.error("[ERUDA:VERIFY] ❌ Backend verify error:", text);
+            console.error("[ERUDA:VERIFY] ❌ Backend error:", text);
             if (text.includes("already verified") && proof.nullifier_hash) {
               const id = proof.nullifier_hash;
               localStorage.setItem("userId", id);
               setUserId(id);
               setVerified(true);
-              console.log("[ERUDA:VERIFY] ✅ Already verified — reusing nullifier as userId");
+              console.log("[ERUDA:VERIFY] ✅ Already verified — reusing nullifier");
               return;
             } else {
               throw new Error("Error de verificación. Intenta de nuevo.");
@@ -322,25 +329,21 @@ import React, { useState, useEffect, useRef } from "react";
             });
             const proof = verifyRes?.finalPayload;
             if (proof?.status === "error") {
-              console.warn("[ERUDA:ORB] ❌ Orb verify error:", proof.error_code);
+              console.warn("[ERUDA:ORB] ❌ error:", proof.error_code);
               return { success: false };
             }
             if (proof && proof.verification_level === "orb") {
               console.log("[ERUDA:ORB] ✅ Orb verified!");
               return { success: true, proof };
             }
-            console.log("[ERUDA:ORB] ⚠ Orb not completed");
             return { success: false };
           } catch (err: any) {
-            console.error("[ERUDA:ORB] ❌ Orb verify failed:", err);
+            console.error("[ERUDA:ORB] ❌ failed:", err);
             return { success: false };
           } finally {
             setOrbVerifying(false);
-            console.log("[ERUDA:ORB] ◀ verifyOrb finished");
           }
         };
-
-        console.log("[ERUDA:RENDER] App render", { verified, userId: userId?.slice(0,8), miniKitReady, wallet: !!wallet });
 
         return (
           <HomePage
