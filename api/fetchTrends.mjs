@@ -55,7 +55,7 @@ async function fetchRss(feed) {
       const image = extractImageFromItem(itemXml);
       return {
         title: titles[0] || "",
-        description: (descs[0] || "").replace(/<[^>]+>/g, "").slice(0, 300),
+        description: (descs[0] || "").replace(/<[^>]+>/g, "").slice(0, 800),
         category: feed.category,
         lang: feed.lang,
         source: feed.url.match(/\/\/([^/]+)/)?.[1] || "",
