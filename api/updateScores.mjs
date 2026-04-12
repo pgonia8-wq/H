@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 export default async function handler(req, res) {
   const CRON_SECRET = process.env.CRON_SECRET;
   const authHeader = req.headers?.authorization;
-  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
@@ -20,13 +20,6 @@ export default async function handler(req, res) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
-
-    if (
-      !process.env.CRON_SECRET ||
-      req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`
-    ) {
-      return res.status(401).end("Unauthorized");
-    }
 
     const { error } = await supabase.rpc("update_post_scores");
 
