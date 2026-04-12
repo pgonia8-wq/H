@@ -74,7 +74,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "transactionId es requerido" });
   }
   if (!userId || typeof userId !== "string") {
-    return res.status(400).json({ error: "userId es requerido" });
+      return res.status(400).json({ error: "userId es requerido" });
+    }
 
     const { data: _profile } = await supabase
       .from("profiles")
@@ -84,7 +85,6 @@ export default async function handler(req, res) {
 
     if (!_profile || !_profile.verification_level) {
       return res.status(403).json({ error: "Device verification required" });
-    }
     }
   const VALID_ACTIONS = ["chat_gold", "extra_room", "tip", "boost", "chat_classic", "campaign_budget"];
   if (!action || !VALID_ACTIONS.includes(action)) {
