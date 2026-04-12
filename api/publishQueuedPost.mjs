@@ -13,12 +13,6 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-  const CRON_SECRET = process.env.CRON_SECRET;
-    const authHeader = req.headers?.authorization;
-    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-
   const { account } = req.body ?? {};
 
   if (!account || typeof account !== "string") {
@@ -41,7 +35,8 @@ export default async function handler(req, res) {
     }
 
     const post = candidates[0];
-    const publishedAt = post.created_at || new Date().toISOString();
+    // Usar la hora actual como tiempo real de publicación
+    const publishedAt = new Date().toISOString();
     const hourOfDay = new Date(publishedAt).getHours();
 
     const OFFICIAL_PROFILES = {
@@ -53,6 +48,7 @@ export default async function handler(req, res) {
       "@sports":        { username: "H Sports" },
       "@entertainment": { username: "H Entertainment" },
       "@world":         { username: "H World" },
+      "@scanner":       { username: "H Scanner" },
     };
 
     const meta = OFFICIAL_PROFILES[account];
