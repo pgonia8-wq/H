@@ -18,12 +18,6 @@ const OFFICIAL_ACCOUNTS = [
 ];
 
 export default async function handler(req, res) {
-  const CRON_SECRET = process.env.CRON_SECRET;
-  const authHeader = req.headers?.authorization;
-  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
