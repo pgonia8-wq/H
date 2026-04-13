@@ -20,8 +20,6 @@ export interface UseRunConnectedPipelineReturn {
   error: string | null;
 }
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-
 export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,49 +32,25 @@ export function useRunConnectedPipeline(): UseRunConnectedPipelineReturn {
       setError(null);
 
       try {
-        // ── 1. Intentar Edge Function para generar contenido AI ──
-        let aiPosts: any[] | null = null;
-        try {
-          const { data: fnData, error: fnError } =
-            await supabase.functions.invoke<any>("generate-posts", {
-              body: { category, account, topic, count },
-            });
+        const { data: fnData, error: fnError } =
+          await supabase.functions.invoke<any>("generate-posts", {
+            body: { category, account, topic, count },
+          });
 
-          if (!fnError && fnData && fnData.posts) {
-            aiPosts = fnData.posts;
-          } else if (fnError) {
-            console.warn(`⚠️ [Pipeline] Edge Function unavailable (${fnError.message}). Using fallback content.`);
-          }
-        } catch (fnErr: any) {
-          console.warn(`⚠️ [Pipeline] Edge Function error (${fnErr?.message}). Using fallback content.`);
+        if (fnError) {
+          throw new Error(`Content generation unavailable: ${fnError.message}`);
         }
 
-        // ── 2. Construir filas (AI o fallback) ──────────────────
-        const topics: string[] = [];
-        const rows = Array.from({ length: count }, (_, i) => {
-          const postTopic = i === 0 ? topic : `${topic} — angle ${i + 1}`;
-          topics.push(postTopic);
+        if (!fnData || !fnData.posts) {
+          throw new Error("Content generation returned no posts");
+        }
 
-          return {
-            category,
-            account,
-            topic: postTopic,
-            content: aiPosts?.[i]?.content ?? `📊 ${postTopic} — ${category} insight.`,
-          };
-        });
-
-        // ── 3. Insertar via API (usa service_role, evita RLS) ───
-        const res = await fetch("/api/queueContent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.error || "Queue API failed");
+        const topics: string[] = Array.from({ length: count }, (_, i) =>
+          i === 0 ? topic : `${topic} — angle ${i + 1}`
+        );
 
         return {
-          queued: data.queued ?? 0,
+          queued: fnData.posts.length ?? count,
           topics,
         };
       } catch (err) {

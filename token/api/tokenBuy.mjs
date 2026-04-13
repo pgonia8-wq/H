@@ -15,7 +15,7 @@ import { createTrace, startSpan, endSpan, failSpan, finishTrace, log, SPANS, LOG
 export default async function handler(req, res) {
   const t0 = Date.now();
   const reqId = Math.random().toString(36).slice(2, 10);
-  cors(res);
+  cors(res, req);
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
@@ -101,20 +101,22 @@ export default async function handler(req, res) {
 
     const APP_ID = process.env.APP_ID ?? "";
     const RP_KEY = process.env.RP_SIGNING_KEY ?? "";
-    if (RP_KEY) {
-      try {
-        const txVerify = await fetch(
-          `https://developer.worldcoin.org/api/v2/minikit/transaction/${transactionId}?app_id=${APP_ID}`,
-          { headers: { Authorization: `Bearer ${RP_KEY}` } }
-        );
-        const txData = await txVerify.json();
-        if (!txVerify.ok || (txData.transaction_status && txData.transaction_status !== "mined")) {
-          return res.status(402).json({ error: "Payment not confirmed on-chain", details: txData });
-        }
-      } catch (verifyErr) {
-        console.error("[BUY] Payment verification error:", verifyErr.message);
-        return res.status(502).json({ error: "Could not verify payment" });
+    if (!RP_KEY) {
+      console.error("[tokenBuy] FATAL: RP_SIGNING_KEY not configured");
+      return res.status(500).json({ error: "Server misconfiguration: payment verification unavailable" });
+    }
+    try {
+      const txVerify = await fetch(
+        `https://developer.worldcoin.org/api/v2/minikit/transaction/${transactionId}?app_id=${APP_ID}`,
+        { headers: { Authorization: `Bearer ${RP_KEY}` } }
+      );
+      const txData = await txVerify.json();
+      if (!txVerify.ok || (txData.transaction_status && txData.transaction_status !== "mined")) {
+        return res.status(402).json({ error: "Payment not confirmed on-chain", details: txData });
       }
+    } catch (verifyErr) {
+      console.error("[BUY] Payment verification error:", verifyErr.message);
+      return res.status(502).json({ error: "Could not verify payment" });
     }
 
     const { data: txDupe } = await supabase

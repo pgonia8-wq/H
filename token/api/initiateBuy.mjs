@@ -3,7 +3,7 @@ import { supabase, cors } from "./_supabase.mjs";
   import { solveBuy, spotPrice, TOTAL_SUPPLY, MAX_CREATOR_HOLD } from "./_curve.mjs";
 
   export default async function handler(req, res) {
-    cors(res);
+    cors(res, req);
     if (req.method === "OPTIONS") return res.status(200).end();
     if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 

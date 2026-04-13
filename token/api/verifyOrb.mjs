@@ -34,22 +34,45 @@ export default async function handler(req, res) {
     });
   }
 
+  let existingProfile;
   try {
-    const { data: existing } = await supabase
+    const { data } = await supabase
       .from("profiles")
-      .select("id, verified, verification_level, orb_verified_at")
+      .select("id, verified, verification_level, orb_verified_at, nullifier_hash")
       .eq("id", userId)
       .maybeSingle();
+    existingProfile = data;
+  } catch (err) {
+    console.error("[VERIFY_ORB] Profile lookup failed:", err.message);
+    return res.status(500).json({ error: "Could not verify user identity" });
+  }
 
-    if (existing?.verification_level === "orb") {
-      return res.status(200).json({
-        success: true,
-        orbVerified: true,
-        reused: true,
+  if (!existingProfile) {
+    return res.status(404).json({
+      error: "User profile not found. Complete device verification first.",
+      code: "PROFILE_NOT_FOUND",
+    });
+  }
+
+  if (existingProfile.verification_level === "orb") {
+    if (existingProfile.nullifier_hash && existingProfile.nullifier_hash !== nullifierHash) {
+      return res.status(409).json({
+        error: "ORB proof does not match the one bound to this account.",
+        code: "NULLIFIER_BINDING_CONFLICT",
       });
     }
-  } catch (err) {
-    console.warn("[VERIFY_ORB] Anti-replay check failed:", err.message);
+    return res.status(200).json({
+      success: true,
+      orbVerified: true,
+      reused: true,
+    });
+  }
+
+  if (existingProfile.nullifier_hash && existingProfile.nullifier_hash !== nullifierHash) {
+    return res.status(409).json({
+      error: "A different ORB proof is already bound to this account.",
+      code: "NULLIFIER_BINDING_CONFLICT",
+    });
   }
 
   try {
@@ -106,26 +129,31 @@ export default async function handler(req, res) {
   try {
     const { error: upsertError } = await supabase
       .from("profiles")
-      .upsert(
+      .update(
         {
-          id: userId,
           verified: true,
           verification_level: "orb",
           nullifier_hash: nullifierHash,
           orb_verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
-      );
+        }
+      )
+      .eq("id", userId);
 
     if (upsertError) {
-      console.error("[VERIFY_ORB] Upsert error:", upsertError.message);
+      console.error("[VERIFY_ORB] Update error:", upsertError.message);
       return res.status(500).json({ error: upsertError.message });
     }
   } catch (err) {
     console.error("[VERIFY_ORB] DB error:", err.message);
     return res.status(500).json({ error: "Database error saving verification" });
   }
+
+  await supabase.rpc("log_audit", {
+    p_event: "orb_verified",
+    p_user: userId,
+    p_details: JSON.stringify({ nullifier_hash: nullifierHash }),
+  }).catch(() => {});
 
   return res.status(200).json({
     success: true,
