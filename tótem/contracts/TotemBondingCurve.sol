@@ -2,59 +2,40 @@
 pragma solidity ^0.8.20;
 
 interface IOracle {
-    function data(address)
-        external view
-        returns (
-            uint256 score,
-            uint256 influence,
-            uint256 nonce,
-            uint256 timestamp
-        );
+    function getInfluence(address user) external view returns (uint256);
 }
 
 contract TotemBondingCurve {
 
-    address public oracle;
+    IOracle public oracle;
 
-    constructor(address _oracle) {
-        oracle = _oracle;
+    mapping(address => uint256) public supply;
+
+    constructor(address oracleAddress) {
+        oracle = IOracle(oracleAddress);
     }
 
-    function getInfluence(address totem)
-        public view returns (uint256)
-    {
-        (, uint256 influence,,) = IOracle(oracle).data(totem);
-        return influence == 0 ? 100 : influence;
+    function spotPrice(uint256 s) public pure returns (uint256) {
+        return 55e9 + (235 * s * s) / 1e20;
     }
 
-    // ⚡ CUADRÁTICA SIMPLIFICADA
+    function buy(address totem, uint256 amount) external {
 
-    function buy(address totem, uint256 wld)
-        external view returns (uint256 tokens)
-    {
-        uint256 inf = getInfluence(totem);
+        uint256 influence = oracle.getInfluence(totem);
 
-        uint256 adjusted = (wld * inf) / 100;
+        uint256 adjusted = (amount * influence) / 100;
 
-        tokens = sqrt(adjusted * 1000000000);
+        supply[totem] += adjusted;
     }
 
-    function sell(address totem, uint256 tokens)
-        external view returns (uint256 wld)
-    {
-        uint256 inf = getInfluence(totem);
+    function sell(address totem, uint256 amount) external {
 
-        uint256 base = (tokens * tokens) / 1000000000;
+        uint256 influence = oracle.getInfluence(totem);
 
-        wld = (base * 100) / inf;
-    }
+        uint256 adjusted = (amount * influence) / 100;
 
-    function sqrt(uint256 x) internal pure returns (uint256 y) {
-        uint256 z = (x + 1) / 2;
-        y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
-        }
+        require(supply[totem] >= adjusted, "Not enough");
+
+        supply[totem] -= adjusted;
     }
 }
