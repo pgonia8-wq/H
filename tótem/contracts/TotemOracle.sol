@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
 interface IRegistry {
     function isTotem(address user) external view returns (bool);
 }
 
 /**
  * @title TotemOracle
- * @notice Oracle CRÍTICO para métricas del tótem (score + influence)
- * @dev FINAL PRODUCTION: EIP-712 seguro + multi-signer preparado + pausable + Registry
+ * @notice Oracle que devuelve influence en base 1000 (925 = 92.5%, 1075 = 107.5%)
  */
 contract TotemOracle {
 
@@ -16,22 +17,18 @@ contract TotemOracle {
     IRegistry public immutable registry;
 
     uint256 public constant MIN_INTERVAL = 1 hours;
-    uint256 public constant MAX_SCORE = 10_000;
-    uint256 public constant MIN_INFLUENCE = 80;
-    uint256 public constant MAX_INFLUENCE = 120;
 
     bool public paused;
 
     // EIP-712
     bytes32 public immutable DOMAIN_SEPARATOR;
-
     bytes32 public constant UPDATE_TYPEHASH = keccak256(
         "UpdateMetrics(address totem,uint256 score,uint256 influence,uint256 nonce,uint256 deadline)"
     );
 
     struct Metrics {
         uint256 score;
-        uint256 influence;
+        uint256 influence;   // base 1000
         uint256 timestamp;
     }
 
@@ -41,19 +38,10 @@ contract TotemOracle {
 
     mapping(address => bool) public authorizedSigners;
 
-    // ========================= EVENTS =========================
-    event MetricsUpdated(
-        address indexed totem,
-        uint256 score,
-        uint256 influence,
-        uint256 timestamp,
-        uint256 nonceUsed
-    );
-
+    event MetricsUpdated(address indexed totem, uint256 score, uint256 influence, uint256 timestamp, uint256 nonceUsed);
     event Paused(bool status);
     event SignerAuthorized(address indexed signer, bool allowed);
 
-    // ========================= ERRORS =========================
     error NotATotem();
     error InvalidRange();
     error RateLimitExceeded();
@@ -64,7 +52,6 @@ contract TotemOracle {
     error ZeroAddress();
     error NotAuthorizedSigner();
 
-    // ========================= MODIFIERS =========================
     modifier whenNotPaused() {
         if (paused) revert PausedError();
         _;
@@ -94,46 +81,32 @@ contract TotemOracle {
     function update(
         address totem,
         uint256 score,
-        uint256 influence,
+        uint256 influence,     // debe venir en base 1000
         uint256 nonce,
         uint256 deadline,
         bytes calldata signature
     ) external whenNotPaused {
         if (!registry.isTotem(totem)) revert NotATotem();
-        if (score == 0 || score > MAX_SCORE || influence < MIN_INFLUENCE || influence > MAX_INFLUENCE) {
-            revert InvalidRange();
-        }
+        if (score > 10000 || influence < 925 || influence > 1075) revert InvalidRange();
         if (block.timestamp > deadline) revert ExpiredDeadline();
-        if (block.timestamp < lastUpdateTime[totem] + MIN_INTERVAL) {
-            revert RateLimitExceeded();
-        }
+        if (block.timestamp < lastUpdateTime[totem] + MIN_INTERVAL) revert RateLimitExceeded();
         if (nonce != nonces[totem]) revert InvalidNonce();
 
         bytes32 structHash = keccak256(
-            abi.encode(
-                UPDATE_TYPEHASH,
-                totem,
-                score,
-                influence,
-                nonce,
-                deadline
-            )
+            abi.encode(UPDATE_TYPEHASH, totem, score, influence, nonce, deadline)
         );
 
-        bytes32 digest = keccak256(
-            abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
-        );
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash));
 
         address recovered = _recover(digest, signature);
         if (!authorizedSigners[recovered]) revert NotAuthorizedSigner();
 
-        // Actualización atómica
         nonces[totem] = nonce + 1;
         lastUpdateTime[totem] = block.timestamp;
 
         metrics[totem] = Metrics({
             score: score,
-            influence: influence,
+            influence: influence,   // guardamos en base 1000
             timestamp: block.timestamp
         });
 
@@ -153,15 +126,19 @@ contract TotemOracle {
             v := byte(0, calldataload(add(sig.offset, 64)))
         }
 
-        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) {
-            revert InvalidSignature();
-        }
+        if (uint256(s) > 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0) revert InvalidSignature();
         if (v != 27 && v != 28) revert InvalidSignature();
 
         return ecrecover(digest, v, r, s);
     }
 
-    // ========================= ADMIN =========================
+    // ====================== VIEW PARA BONDING CURVE ======================
+    function getInfluence(address user) external view returns (uint256) {
+        uint256 inf = metrics[user].influence;
+        return inf == 0 ? 1000 : inf;   // 1000 = neutral si nunca se actualizó
+    }
+
+    // ====================== ADMIN ======================
     function setPaused(bool _paused) external {
         if (msg.sender != PRIMARY_SIGNER) revert NotAuthorizedSigner();
         paused = _paused;
@@ -171,22 +148,7 @@ contract TotemOracle {
     function authorizeSigner(address signer, bool allowed) external {
         if (msg.sender != PRIMARY_SIGNER) revert NotAuthorizedSigner();
         if (signer == address(0)) revert ZeroAddress();
-
         authorizedSigners[signer] = allowed;
         emit SignerAuthorized(signer, allowed);
-    }
-
-    // ========================= VIEWS =========================
-    function getMetrics(address totem) external view returns (
-        uint256 score,
-        uint256 influence,
-        uint256 timestamp
-    ) {
-        Metrics memory m = metrics[totem];
-        return (m.score, m.influence, m.timestamp);
-    }
-
-    function getNonce(address totem) external view returns (uint256) {
-        return nonces[totem];
     }
 }
