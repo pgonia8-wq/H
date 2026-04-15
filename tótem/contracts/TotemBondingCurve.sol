@@ -3,29 +3,30 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IRegistry {
     function isTotem(address user) external view returns (bool);
 }
 
 interface IOracle {
-    function getInfluence(address user) external view returns (uint256);
+    function getInfluence(address user) external view returns (uint256); // base 1000
 }
 
-contract TotemBondingCurve is ReentrancyGuard {
+contract TotemBondingCurve is ReentrancyGuard, Ownable {
 
     IERC20 public immutable wldToken;
     IRegistry public immutable registry;
     IOracle public immutable oracle;
-    address public immutable treasury;
+    address public treasury;
 
-    // ====================== CURVA CUADRÁTICA EXACTA (Fixed Point) ======================
-    uint256 public constant INITIAL_PRICE_WLD = 55 * 10**7;   // 0.00000055
-    uint256 public constant SCALE = 1e20;                      // Para manejar 10^-20
-    uint256 public constant CURVE_K = 235;                     // 2.35 * SCALE
+    // ====================== CURVA EXACTA ======================
+    uint256 public constant INITIAL_PRICE_WLD = 55 * 10**7;
+    uint256 public constant SCALE = 1e20;
+    uint256 public constant CURVE_K = 235;
 
-    uint256 public constant BUY_FEE_BPS = 200;   // 2%
-    uint256 public constant SELL_FEE_BPS = 300;  // 3%
+    uint256 public constant BUY_FEE_BPS = 200;
+    uint256 public constant SELL_FEE_BPS = 300;
     uint256 public constant FEE_DENOMINATOR = 10_000;
 
     // Penalidad máxima 7.5% (92.5 - 107.5)
@@ -33,25 +34,26 @@ contract TotemBondingCurve is ReentrancyGuard {
     uint256 public constant INFLUENCE_MAX = 1075;
     uint256 public constant INFLUENCE_BASE = 1000;
 
-    // Distribución del excedente de penalidad
-    uint256 public constant RESERVE_PERCENT = 500;   // 5% se queda en el pool
-    uint256 public constant TREASURY_PERCENT = 250;  // 2.5% va a treasury
+    // Distribución del excedente
+    uint256 public constant RESERVE_PERCENT = 500;   // 5% reserva pool
+    uint256 public constant TREASURY_PERCENT = 250;  // 2.5% treasury
 
     mapping(address => uint256) public globalSupply;
 
     event Buy(address indexed totem, uint256 wldIn, uint256 tokensOut, uint256 influence);
     event Sell(address indexed totem, uint256 tokensIn, uint256 wldOut, uint256 influence);
+    event TreasuryUpdated(address newTreasury);
 
-    error NotATotem();
-    error ZeroAmount();
-    error InsufficientSupply();
-    error SlippageExceeded();
-
-    constructor(address _wld, address _registry, address _oracle, address _treasury) {
+    constructor(
+        address _wld,
+        address _registry,
+        address _oracle,
+        address _initialTreasury
+    ) Ownable(msg.sender) {
         wldToken = IERC20(_wld);
         registry = IRegistry(_registry);
         oracle = IOracle(_oracle);
-        treasury = _treasury;
+        treasury = _initialTreasury;
     }
 
     function V(uint256 s) public pure returns (uint256) {
@@ -81,6 +83,7 @@ contract TotemBondingCurve is ReentrancyGuard {
         if (tokensIn > s0) revert InsufficientSupply();
 
         uint256 s1 = s0 - tokensIn;
+
         uint256 baseValue = V(s0) - V(s1);
 
         uint256 influence = _getBoundedInfluence(totem);
@@ -120,9 +123,9 @@ contract TotemBondingCurve is ReentrancyGuard {
         uint256 baseValue = V(s0) - V(s1);
 
         uint256 influencedWld = (baseValue * influence) / INFLUENCE_BASE;
-        uint256 surplus = baseValue - influencedWld; // Excedente por baja influence
+        uint256 surplus = baseValue - influencedWld;
 
-        uint256 reserveTake = (surplus * RESERVE_PERCENT) / FEE_DENOMINATOR;   // 5% reserva pool
+        uint256 reserveTake = (surplus * RESERVE_PERCENT) / FEE_DENOMINATOR;   // 5% reserva
         uint256 treasuryTake = (surplus * TREASURY_PERCENT) / FEE_DENOMINATOR; // 2.5% treasury
 
         uint256 sellFee = (influencedWld * SELL_FEE_BPS) / FEE_DENOMINATOR;
@@ -148,5 +151,11 @@ contract TotemBondingCurve is ReentrancyGuard {
 
     function getSupply(address totem) external view returns (uint256) {
         return globalSupply[totem];
+    }
+
+    function setTreasury(address _newTreasury) external onlyOwner {
+        require(_newTreasury != address(0), "Zero address");
+        treasury = _newTreasury;
+        emit TreasuryUpdated(_newTreasury); // Agrega este evento si quieres
     }
 }
