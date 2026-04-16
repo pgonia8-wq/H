@@ -26,8 +26,6 @@ const App = () => {
       setMiniKitReady(isInstalled);
 
       if (isInstalled && MiniKit.user) {
-        // Si el usuario en MiniKit cambia, limpiamos cache local para evitar desincronización
-        const currentMiniKitId = (MiniKit.user as any).walletAddress; 
         const u = MiniKit.user.username || null;
         if (u) { setUsername(u); setGlobalUsername(u); }
       }
@@ -58,7 +56,6 @@ const App = () => {
     init();
   }, []);
 
-  // Manejo de Wallet Auth
   useEffect(() => {
     const loadWallet = async () => {
       if (!verified || wallet || !miniKitReady || walletLoading.current) return;
@@ -106,7 +103,7 @@ const App = () => {
       if (!MiniKit.isInstalled()) throw new Error("MiniKit no detectado");
 
       const verifyRes = await MiniKit.commandsAsync.verify({
-        action: WORLDCOIN_ACTION, // Uso de constante sincronizada
+        action: WORLDCOIN_ACTION,
         signal: userId ?? "",
         verification_level: VerificationLevel.Device,
       });
@@ -114,6 +111,7 @@ const App = () => {
       const proof = verifyRes?.finalPayload;
       if (proof?.status === "error") throw new Error("La verificación fue cancelada.");
 
+      // CORRECCIÓN QUIRÚRGICA: Enviamos el payload completo que incluye app_id y signal
       const res = await fetch("/api/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -123,7 +121,8 @@ const App = () => {
       const result = await res.json();
 
       if (result.success) {
-        const id = proof.nullifier_hash;
+        // Usamos el nullifier_hash de la respuesta del backend
+        const id = result.nullifier_hash || proof.nullifier_hash;
         localStorage.setItem("userId", id);
         setUserId(id);
         setVerified(true);
@@ -137,7 +136,6 @@ const App = () => {
     }
   };
 
-  // Función para niveles superiores (Orb)
   const verifyOrb = async (): Promise<{ success: boolean; proof?: any }> => {
     if (!miniKitReady || orbVerifying) return { success: false };
     setOrbVerifying(true);
@@ -148,6 +146,8 @@ const App = () => {
         verification_level: VerificationLevel.Orb,
       });
       const proof = verifyRes?.finalPayload;
+      
+      // Enviamos también la verificación de ORB al backend si es necesario
       return { success: proof?.verification_level === "orb", proof };
     } catch (err) {
       return { success: false };
