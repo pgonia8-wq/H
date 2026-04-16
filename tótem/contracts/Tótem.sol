@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+interface IERC721Minimal {
+    event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+    function balanceOf(address owner) external view returns (uint256);
+    function ownerOf(uint256 tokenId) external view returns (address);
+}
+
 interface IRegistry {
     function isTotem(address user) external view returns (bool);
 }
@@ -13,12 +19,11 @@ interface IOracle {
     );
 }
 
-/**
- * @title Totem
- * @notice Soulbound NFT identity (1 humano = 1 tótem)
- * @dev FINAL PRODUCTION: reputación económica viva, anti-gaming, decay, cap, integración limpia
- */
-contract Totem {
+interface IBondingCurve {
+    function getPrice(address user) external view returns (uint256);
+}
+
+contract Totem is IERC721Minimal {
 
     string public constant name = "Human Totem";
     string public constant symbol = "TOTEM";
@@ -27,6 +32,7 @@ contract Totem {
 
     IRegistry public immutable registry;
     IOracle public immutable oracle;
+    IBondingCurve public curve;
 
     address public admin;
     address public pendingAdmin;
@@ -35,6 +41,9 @@ contract Totem {
     uint256 public constant MIN_SYNC_INTERVAL = 1 hours;
     uint256 public constant MAX_ACCUMULATED_SCORE = 10_000_000;
     uint256 public constant MAX_FUTURE_DRIFT = 5 minutes;
+    uint256 public constant MAX_STALE_TIME = 10 minutes;
+
+    uint256 public manualFraudDelay;
 
     struct History {
         uint256 totalScoreAccumulated;
@@ -42,6 +51,7 @@ contract Totem {
         uint256 lastInfluence;
         uint256 lastUpdate;
         uint256 negativeEvents;
+        bool initialized;
     }
 
     struct Status {
@@ -50,25 +60,38 @@ contract Totem {
         uint256 badge;
     }
 
-    mapping(uint256 => address) public ownerOf;
+    struct FraudRequest {
+        uint256 executeAfter;
+        bool lock;
+        string reason;
+        bytes evidence;
+    }
+
+    mapping(uint256 => address) private _ownerOf;
     mapping(address => uint256) public tokenOf;
 
     mapping(address => History) public history;
     mapping(address => Status) public status;
+    mapping(address => FraudRequest) public pendingFraud;
 
+    // EVENTS
     event Mint(address indexed user, uint256 tokenId);
     event HistoryInitialized(address indexed user, uint256 score, uint256 influence);
     event Sync(address indexed user, uint256 score, uint256 influence, uint256 level, uint256 badge);
+    event ScoreAccumulated(address indexed user, uint256 total);
     event NegativeEvent(address indexed user, uint256 totalNegativeEvents);
-    event FraudLock(address indexed user, bool locked);
-    event LevelUpdated(address indexed user, uint256 level);
-    event BadgeUpdated(address indexed user, uint256 badge);
+
+    event FraudLockRequested(address indexed user, bool lock, string reason, bytes evidence, uint256 executeAfter);
+    event FraudLockExecuted(address indexed user, bool locked);
+
+    event CurveReadFailed(address indexed user);
+
     event Paused(address indexed admin, bool status);
     event AdminTransferStarted(address indexed current, address indexed pending);
     event AdminTransferred(address indexed newAdmin);
 
+    // ERRORS
     error NotAdmin();
-    error NoPendingAdmin();
     error NotRegistered();
     error AlreadyMinted();
     error Soulbound();
@@ -78,6 +101,8 @@ contract Totem {
     error FraudLocked();
     error PausedError();
     error ZeroAddress();
+    error NotPendingAdmin();
+    error FraudDelayNotMet();
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
@@ -89,92 +114,116 @@ contract Totem {
         _;
     }
 
-    constructor(address _registry, address _oracle) {
-        if (_registry == address(0) || _oracle == address(0)) revert ZeroAddress();
+    constructor(address _registry, address _oracle, address _curve) {
+        if (_registry == address(0) || _oracle == address(0) || _curve == address(0)) revert ZeroAddress();
 
         registry = IRegistry(_registry);
         oracle = IOracle(_oracle);
+        curve = IBondingCurve(_curve);
 
         admin = msg.sender;
-        paused = false;
     }
+
+    // -------------------------
+    // ERC721 MINIMAL
+    // -------------------------
+
+    function balanceOf(address owner) external view returns (uint256) {
+        return tokenOf[owner] == 0 ? 0 : 1;
+    }
+
+    function ownerOf(uint256 tokenId) public view returns (address) {
+        address owner = _ownerOf[tokenId];
+        if (owner == address(0)) revert TokenNotExists();
+        return owner;
+    }
+
+    // -------------------------
+    // MINT
+    // -------------------------
 
     function mint() external notPaused {
         if (!registry.isTotem(msg.sender)) revert NotRegistered();
         if (tokenOf[msg.sender] != 0) revert AlreadyMinted();
         if (status[msg.sender].fraudLocked) revert FraudLocked();
 
-        unchecked { totalSupply++; }
+        totalSupply++;
         uint256 tokenId = totalSupply;
 
-        ownerOf[tokenId] = msg.sender;
+        _ownerOf[tokenId] = msg.sender;
         tokenOf[msg.sender] = tokenId;
 
-        (uint256 score, uint256 influence, ) = oracle.getMetrics(msg.sender);
-
-        history[msg.sender] = History({
-            totalScoreAccumulated: 0,
-            lastScore: score,
-            lastInfluence: influence,
-            lastUpdate: block.timestamp,
-            negativeEvents: 0
-        });
-
+        emit Transfer(address(0), msg.sender, tokenId);
         emit Mint(msg.sender, tokenId);
-        emit HistoryInitialized(msg.sender, score, influence);
     }
 
-    // Soulbound real
+    // Soulbound
     function transferFrom(address, address, uint256) external pure { revert Soulbound(); }
     function safeTransferFrom(address, address, uint256) external pure { revert Soulbound(); }
     function safeTransferFrom(address, address, uint256, bytes calldata) external pure { revert Soulbound(); }
     function approve(address, uint256) external pure { revert Soulbound(); }
     function setApprovalForAll(address, bool) external pure { revert Soulbound(); }
 
-    function sync(address user) external onlyAdmin notPaused {
+    // -------------------------
+    // SYNC
+    // -------------------------
+
+    function sync(address user) external notPaused {
         if (tokenOf[user] == 0) revert TokenNotExists();
         if (!registry.isTotem(user)) revert NotRegistered();
         if (status[user].fraudLocked) revert FraudLocked();
 
         History storage h = history[user];
 
-        if (block.timestamp < h.lastUpdate + MIN_SYNC_INTERVAL) {
+        if (h.initialized && block.timestamp < h.lastUpdate + MIN_SYNC_INTERVAL) {
             revert SyncTooFrequent();
         }
 
         (uint256 score, uint256 influence, uint256 timestamp) = oracle.getMetrics(user);
 
-        if (timestamp <= h.lastUpdate || timestamp > block.timestamp + MAX_FUTURE_DRIFT) {
-            revert InvalidTimestamp();
+        if (timestamp > block.timestamp + MAX_FUTURE_DRIFT) revert InvalidTimestamp();
+        if (block.timestamp - timestamp > MAX_STALE_TIME) revert InvalidTimestamp();
+
+        if (!h.initialized) {
+            h.lastScore = score;
+            h.lastInfluence = influence;
+            h.lastUpdate = timestamp;
+            h.initialized = true;
+
+            emit HistoryInitialized(user, score, influence);
+            return;
         }
 
-        // Decay suave (reputación viva)
-        uint256 decay = h.totalScoreAccumulated / 100;
-        if (h.totalScoreAccumulated > decay) {
-            h.totalScoreAccumulated -= decay;
-        }
+        if (timestamp <= h.lastUpdate) revert InvalidTimestamp();
 
-        uint256 delta = 0;
+        uint256 elapsed = block.timestamp - h.lastUpdate;
+
+        if (h.totalScoreAccumulated > 0) {
+            uint256 decay = (h.totalScoreAccumulated * elapsed) / 1 days / 100;
+
+            if (decay >= h.totalScoreAccumulated) {
+                h.totalScoreAccumulated = 0;
+            } else {
+                h.totalScoreAccumulated -= decay;
+            }
+        }
 
         if (score > h.lastScore) {
-            delta = score - h.lastScore;
-        } else if (h.lastUpdate > 0) {
+            h.totalScoreAccumulated += (score - h.lastScore);
+        } else if (score < h.lastScore) {
             h.negativeEvents++;
             emit NegativeEvent(user, h.negativeEvents);
 
             uint256 penalty = (h.lastScore - score) / 3;
             uint256 maxPenalty = h.totalScoreAccumulated / 2;
+
             if (penalty > maxPenalty) penalty = maxPenalty;
 
-            if (h.totalScoreAccumulated > penalty) {
-                h.totalScoreAccumulated -= penalty;
-            } else {
+            if (penalty >= h.totalScoreAccumulated) {
                 h.totalScoreAccumulated = 0;
+            } else {
+                h.totalScoreAccumulated -= penalty;
             }
-        }
-
-        unchecked {
-            h.totalScoreAccumulated += delta;
         }
 
         if (h.totalScoreAccumulated > MAX_ACCUMULATED_SCORE) {
@@ -192,21 +241,116 @@ contract Totem {
         status[user].badge = badge;
 
         emit Sync(user, score, influence, level, badge);
-        emit LevelUpdated(user, level);
-        emit BadgeUpdated(user, badge);
+        emit ScoreAccumulated(user, h.totalScoreAccumulated);
     }
 
-    function setFraudLock(address user, bool locked) external onlyAdmin notPaused {
+    // -------------------------
+    // HYBRID FRAUD DELAY (SAFE)
+    // -------------------------
+
+    function getFraudDelay(address user) public view returns (uint256) {
+        return _getFraudDelay(user, false);
+    }
+
+    function _getFraudDelaySafe(address user) internal returns (uint256) {
+        return _getFraudDelay(user, true);
+    }
+
+    function _getFraudDelay(address user, bool emitOnFail) internal returns (uint256) {
+
+        if (manualFraudDelay != 0) return manualFraudDelay;
+
+        uint256 level = status[user].level;
+        uint256 levelDelay;
+
+        if (level >= 5) levelDelay = 6 hours;
+        else if (level >= 4) levelDelay = 3 hours;
+        else if (level >= 3) levelDelay = 1 hours;
+        else levelDelay = 5 minutes;
+
+        uint256 valueDelay = 0;
+
+        if (address(curve) != address(0)) {
+            try curve.getPrice(user) returns (uint256 price) {
+                if (price >= 1 ether) valueDelay = 6 hours;
+                else if (price >= 0.1 ether) valueDelay = 1 hours;
+                else valueDelay = 5 minutes;
+            } catch {
+                if (emitOnFail) emit CurveReadFailed(user);
+            }
+        }
+
+        return levelDelay > valueDelay ? levelDelay : valueDelay;
+    }
+
+    function requestFraudLock(
+        address user,
+        bool lock,
+        string calldata reason,
+        bytes calldata evidence
+    ) external onlyAdmin {
+
         if (tokenOf[user] == 0) revert TokenNotExists();
-        if (!registry.isTotem(user)) revert NotRegistered();
 
-        status[user].fraudLocked = locked;
-        emit FraudLock(user, locked);
+        uint256 delay = _getFraudDelaySafe(user);
+        uint256 executeAfter = block.timestamp + delay;
+
+        pendingFraud[user] = FraudRequest({
+            executeAfter: executeAfter,
+            lock: lock,
+            reason: reason,
+            evidence: evidence
+        });
+
+        emit FraudLockRequested(user, lock, reason, evidence, executeAfter);
     }
 
-    function isLocked(address user) external view returns (bool) {
-        return status[user].fraudLocked;
+    function executeFraudLock(address user) external onlyAdmin {
+        FraudRequest memory req = pendingFraud[user];
+
+        if (block.timestamp < req.executeAfter) revert FraudDelayNotMet();
+
+        status[user].fraudLocked = req.lock;
+
+        delete pendingFraud[user];
+
+        emit FraudLockExecuted(user, req.lock);
     }
+
+    // -------------------------
+    // ADMIN
+    // -------------------------
+
+    function setPaused(bool _paused) external onlyAdmin {
+        paused = _paused;
+        emit Paused(msg.sender, _paused);
+    }
+
+    function setManualFraudDelay(uint256 delay) external onlyAdmin {
+        manualFraudDelay = delay;
+    }
+
+    function setCurve(address _curve) external onlyAdmin {
+        if (_curve == address(0)) revert ZeroAddress();
+        curve = IBondingCurve(_curve);
+    }
+
+    function startAdminTransfer(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert ZeroAddress();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(admin, newAdmin);
+    }
+
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        admin = pendingAdmin;
+        pendingAdmin = address(0);
+        emit AdminTransferred(admin);
+    }
+
+    // -------------------------
+    // VIEW
+    // -------------------------
 
     function calculateLevel(uint256 total) public pure returns (uint256) {
         if (total > 1_000_000) return 5;
@@ -221,59 +365,5 @@ contract Totem {
         if (score > 8000) return 3;
         if (score > 5000) return 2;
         return 1;
-    }
-
-    function tokenURI(uint256 tokenId) external view returns (string memory) {
-        address user = ownerOf[tokenId];
-        if (user == address(0)) revert TokenNotExists();
-
-        History memory h = history[user];
-        Status memory s = status[user];
-
-        return string(abi.encodePacked(
-            '{"name":"Human Totem #', uint2str(tokenId), '",',
-            '"description":"1 Human = 1 Totem - On-chain economic identity",',
-            '"attributes":[',
-                '{"trait_type":"Score","value":', uint2str(h.lastScore), '},',
-                '{"trait_type":"Influence","value":', uint2str(h.lastInfluence), '},',
-                '{"trait_type":"Accumulated Score","value":', uint2str(h.totalScoreAccumulated), '},',
-                '{"trait_type":"Level","value":', uint2str(s.level), '},',
-                '{"trait_type":"Badge","value":', uint2str(s.badge), '},',
-                '{"trait_type":"Negative Events","value":', uint2str(h.negativeEvents), '},',
-                '{"trait_type":"Fraud Locked","value":', s.fraudLocked ? "true" : "false", '}',
-            ']}'
-        ));
-    }
-
-    function setPaused(bool _paused) external onlyAdmin {
-        paused = _paused;
-        emit Paused(msg.sender, _paused);
-    }
-
-    function startAdminTransfer(address newAdmin) external onlyAdmin {
-        if (newAdmin == address(0)) revert ZeroAddress();
-        pendingAdmin = newAdmin;
-        emit AdminTransferStarted(admin, newAdmin);
-    }
-
-    function acceptAdmin() external {
-        if (msg.sender != pendingAdmin) revert NoPendingAdmin();
-        admin = pendingAdmin;
-        pendingAdmin = address(0);
-        emit AdminTransferred(admin);
-    }
-
-    function uint2str(uint256 _i) internal pure returns (string memory) {
-        if (_i == 0) return "0";
-        uint256 j = _i;
-        uint256 len = 0;
-        while (j != 0) { len++; j /= 10; }
-        bytes memory b = new bytes(len);
-        uint256 k = len;
-        while (_i != 0) {
-            b[--k] = bytes1(uint8(48 + _i % 10));
-            _i /= 10;
-        }
-        return string(b);
     }
 }
