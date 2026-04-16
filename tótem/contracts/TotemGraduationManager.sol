@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./HumanTotem.sol"; // Integración del nuevo contrato
 
 // ---------------- INTERFACES ----------------
 
@@ -70,6 +71,7 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
 
     mapping(address => bool) public graduated;
     mapping(address => address) public ammPair;
+    mapping(address => address) public totemAsset; // Nuevo: mapeo para el contrato HumanTotem
 
     // ---------------- EVENTS ----------------
 
@@ -157,11 +159,19 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
 
     // ---------------- AMM CREATION ----------------
 
-    function _createAMM(address user) internal returns (address pair) {
+    function _createAMM(address user, string memory name, string memory symbol) internal returns (address pair) {
 
         if (ammPair[user] != address(0)) revert PairExists();
 
-        address token = user; // ⚠️ Ajustar si usas ERC20 separado
+        // CAMBIO QUIRÚRGICO: Despliegue del HumanTotem en lugar de usar la dirección del usuario
+        HumanTotem newTotem = new HumanTotem(
+            name,
+            symbol,
+            user,
+            address(totem)
+        );
+        address token = address(newTotem);
+        totemAsset[user] = token;
 
         pair = IUniswapV2Factory(factory).createPair(token, wldToken);
         ammPair[user] = pair;
@@ -174,8 +184,10 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 amountToken = (supply * liquidityBps) / 10_000;
         uint256 amountWLD = (amountToken * price) / 1e18;
 
-        // transfer tokens desde owner (treasury)
-        require(IERC20(token).transferFrom(owner(), address(this), amountToken), "token transfer fail");
+        // CAMBIO QUIRÚRGICO: El manager mintea los tokens necesarios para la liquidez
+        newTotem.mint(address(this), amountToken);
+
+        // El WLD sigue viniendo del owner (treasury) como en tu original
         require(IERC20(wldToken).transferFrom(owner(), address(this), amountWLD), "wld transfer fail");
 
         IERC20(token).approve(router, amountToken);
@@ -195,7 +207,7 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
 
     // ---------------- MAIN ----------------
 
-    function graduate(address user)
+    function graduate(address user, string calldata name, string calldata symbol)
         external
         nonReentrant
         whenNotPaused
@@ -212,8 +224,8 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
         // 🔒 CRÍTICO: congelar curva
         curve.freeze(user);
 
-        // 🚀 crear AMM
-        address pair = _createAMM(user);
+        // 🚀 crear AMM con los datos del nuevo HumanTotem
+        address pair = _createAMM(user, name, symbol);
 
         emit Graduated(user, pair);
     }
