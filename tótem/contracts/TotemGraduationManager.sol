@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./HumanTotem.sol"; // Integración del nuevo contrato
+import "./HumanTotem.sol"; // El guardián de la historia ética
 
 // ---------------- INTERFACES ----------------
 
@@ -71,7 +71,7 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
 
     mapping(address => bool) public graduated;
     mapping(address => address) public ammPair;
-    mapping(address => address) public totemAsset; // Nuevo: mapeo para el contrato HumanTotem
+    mapping(address => address) public totemAsset; // El registro del nuevo Tótem
 
     // ---------------- EVENTS ----------------
 
@@ -163,7 +163,7 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
 
         if (ammPair[user] != address(0)) revert PairExists();
 
-        // CAMBIO QUIRÚRGICO: Despliegue del HumanTotem en lugar de usar la dirección del usuario
+        // 🛡️ AQUÍ NACE EL TÓTEM: Manteniendo la historia y sumando la nueva ley
         HumanTotem newTotem = new HumanTotem(
             name,
             symbol,
@@ -184,10 +184,11 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
         uint256 amountToken = (supply * liquidityBps) / 10_000;
         uint256 amountWLD = (amountToken * price) / 1e18;
 
-        // CAMBIO QUIRÚRGICO: El manager mintea los tokens necesarios para la liquidez
+        // El Manager mintea los tótems para la liquidez inicial
         newTotem.mint(address(this), amountToken);
 
-        // El WLD sigue viniendo del owner (treasury) como en tu original
+        // El WLD se toma de la tesorería según tu lógica original
+        require(IERC20(wldToken).transferFrom(owner(), address(this), amountWLD), "token transfer fail");
         require(IERC20(wldToken).transferFrom(owner(), address(this), amountWLD), "wld transfer fail");
 
         IERC20(token).approve(router, amountToken);
@@ -224,7 +225,7 @@ contract TotemGraduationManager is Ownable2Step, ReentrancyGuard, Pausable {
         // 🔒 CRÍTICO: congelar curva
         curve.freeze(user);
 
-        // 🚀 crear AMM con los datos del nuevo HumanTotem
+        // 🚀 Crear AMM desplegando el nuevo contrato HumanTotem
         address pair = _createAMM(user, name, symbol);
 
         emit Graduated(user, pair);
