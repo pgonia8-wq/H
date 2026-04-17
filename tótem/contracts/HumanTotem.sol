@@ -3,92 +3,119 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-/**
- * @title HumanTotem
- * @dev Este contrato representa el valor económico de un humano. 
- * Es compatible con Uniswap (ERC20) pero está regido por la ética (Reputación).
- */
-interface ITotemReputation {
-    function status(address user) external view returns (
-        bool fraudLocked,
-        uint256 level,
-        uint256 badge
-    );
+interface IOracle {
+    function getScore(address user) external view returns (uint256);
+    function getMetrics(address user) external view returns (uint256 score, uint256 influence, uint256 timestamp);
 }
 
-contract HumanTotem is ERC20, Ownable {
+interface ITotemRegistry {
+    function status(address user) external view returns (bool fraudLocked, uint256 level, uint256 badge);
+}
 
-    address public immutable humanId;      // El humano al que representa este Tótem
-    ITotemReputation public immutable sbt; // El contrato de identidad (SBT)
+/**
+ * @title HumanTotem (ERC20)
+ * @notice El token líquido que nace de la graduación de un Tótem.
+ * @dev Este token consulta constantemente al Oracle para ajustar sus reglas económicas.
+ */
+contract HumanTotem is ERC20, Ownable, ReentrancyGuard {
 
-    // Eventos para transparencia
-    event ReputationRestricted(address indexed from, uint256 level);
-    event FraudLockTriggered(address indexed human);
+    IOracle public immutable oracle;
+    ITotemRegistry public immutable registry;
+    
+    address public immutable humanSubject; // El humano al que pertenece este token
+    address public treasury;               // Destino de las multas por mala reputación
 
-    /**
-     * @param _name Nombre del humano (ej: "Juan")
-     * @param _symbol Símbolo para el mercado (ej: "TUX-JUAN")
-     * @param _human Dirección del humano poseedor del Tótem
-     * @param _sbt Dirección de tu contrato Totem.sol (el de la reputación)
-     */
+    // Configuración de penalizaciones
+    uint256 public constant SCORE_THRESHOLD_LOW = 4000; // Reputación peligrosa
+    uint256 public constant SCORE_THRESHOLD_CRITICAL = 2000; 
+    
+    uint256 public baseFeeBps = 0; // 0% inicial
+    uint256 public penaltyFeeBps = 1000; // 10% de multa si el score es crítico
+
+    event ReputationPenaltyApplied(address indexed from, uint256 amount, uint256 currentScore);
+    event FraudLockActivated();
+
+    error HumanFraudDetected();
+    error TransferRestrictedByReputation();
+
     constructor(
-        string memory _name,
-        string memory _symbol,
-        address _human,
-        address _sbt
-    ) ERC20(
-        string(abi.encodePacked("Totem de ", _name)), 
-        _symbol
-    ) Ownable(msg.sender) {
-        require(_human != address(0), "Zero address");
-        humanId = _human;
-        sbt = ITotemReputation(_sbt);
+        string memory name,
+        string memory symbol,
+        address _humanSubject,
+        address _oracle,
+        address _registry,
+        address _treasury
+    ) ERC20(name, symbol) Ownable(msg.sender) {
+        humanSubject = _humanSubject;
+        oracle = IOracle(_oracle);
+        registry = ITotemRegistry(_registry);
+        treasury = _treasury;
     }
 
     /**
-     * @dev Sobrescribimos la función de transferencia para inyectar la "Variante Humana".
-     * Esta regla se aplica en CUALQUIER movimiento, incluido Uniswap.
-     */
-    function _update(
-        address from,
-        address to,
-        uint256 value
-    ) internal virtual override {
-        // 1. Consultar el estado del humano en el contrato de Reputación
-        (bool fraudLocked, uint256 level, ) = sbt.status(humanId);
-
-        // 2. REGLA DE ORO: Si hay fraude, el Tótem se congela globalmente.
-        // Ninguna ballena ni el dueño puede mover el valor si la ética se rompe.
-        if (fraudLocked) {
-            revert("Mercado Bloqueado: Humano bajo investigacion de fraude");
-        }
-
-        // 3. REGLA DE NIVEL: Protección de Inversores.
-        // Si el nivel baja de 2, restringimos la capacidad de venta del dueño
-        // para evitar que abandone el proyecto (Rug Pull) tras portarse mal.
-        if (level < 2 && from == humanId) {
-            uint256 maxSell = totalSupply() / 200; // Máximo 0.5% del supply por trade
-            require(value <= maxSell, "Nivel bajo: Venta restringida para proteger al mercado");
-            emit ReputationRestricted(from, level);
-        }
-
-        // 4. Continuar con la transferencia si todo es correcto
-        super._update(from, to, value);
-    }
-
-    /**
-     * @dev Función para emitir el suministro inicial. 
-     * Solo puede ser llamada por el GraduationManager durante el despliegue.
+     * @dev Función de minting controlada por el GraduationManager durante el despliegue.
      */
     function mint(address to, uint256 amount) external onlyOwner {
         _mint(to, amount);
     }
 
     /**
-     * @dev Devuelve el humano detrás de este activo.
+     * @dev Sobrescribe la transferencia para inyectar la lógica del Oracle.
      */
-    function getHuman() external view returns (address) {
-        return humanId;
+    function _transfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override {
+        // 1. Verificar bloqueo por fraude en el Registry de World ID
+        (bool fraudLocked,,) = registry.status(humanSubject);
+        if (fraudLocked) revert HumanFraudDetected();
+
+        // 2. Consultar Score actual del humano
+        uint256 currentScore = oracle.getScore(humanSubject);
+        
+        uint256 finalAmount = amount;
+
+        // 3. Lógica de penalización dinámica (Solo en Ventas o transferencias de salida)
+        // Si el score baja del umbral crítico, se aplica una tasa que va al treasury
+        if (currentScore < SCORE_THRESHOLD_LOW && from != owner()) {
+            uint256 fee = (amount * _calculateDynamicFee(currentScore)) / 10000;
+            
+            if (fee > 0) {
+                super._transfer(from, treasury, fee);
+                finalAmount = amount - fee;
+                emit ReputationPenaltyApplied(from, fee, currentScore);
+            }
+        }
+
+        // 4. Ejecutar transferencia final
+        super._transfer(from, to, finalAmount);
+    }
+
+    /**
+     * @dev Calcula la comisión basada en qué tan baja es la reputación.
+     */
+    function _calculateDynamicFee(uint256 score) internal view returns (uint256) {
+        if (score < SCORE_THRESHOLD_CRITICAL) return 2000; // 20% de multa (Crítico)
+        if (score < SCORE_THRESHOLD_LOW) return 1000;      // 10% de multa (Aviso)
+        return baseFeeBps;
+    }
+
+    /**
+     * @notice Permite al protocolo actualizar el destino de las multas.
+     */
+    function setTreasury(address _newTreasury) external onlyOwner {
+        require(_newTreasury != address(0), "Zero address");
+        treasury = _newTreasury;
+    }
+
+    /**
+     * @notice Vista pública para que exchanges vean el "Estado de Salud" del token.
+     */
+    function getHumanHealth() external view returns (uint256 score, bool isLocked) {
+        score = oracle.getScore(humanSubject);
+        (isLocked,,) = registry.status(humanSubject);
     }
 }
