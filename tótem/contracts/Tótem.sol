@@ -74,7 +74,6 @@ contract Totem is IERC721Minimal {
     mapping(address => Status) public status;
     mapping(address => FraudRequest) public pendingFraud;
 
-    // Eventos
     event Mint(address indexed user, uint256 tokenId);
     event HistoryInitialized(address indexed user, uint256 score, uint256 influence);
     event Sync(address indexed user, uint256 score, uint256 influence, uint256 level, uint256 badge);
@@ -89,7 +88,6 @@ contract Totem is IERC721Minimal {
     event AdminTransferred(address indexed newAdmin);
     event CurveReadFailed(address indexed user);
 
-    // Errores
     error NotAdmin();
     error NotRegistered();
     error AlreadyMinted();
@@ -102,8 +100,10 @@ contract Totem is IERC721Minimal {
     error ZeroAddress();
     error NotPendingAdmin();
     error FraudDelayNotMet();
-    error NotRegistry();                    // ← nuevo
+    error NotRegistry();
     error MigrationFailed();
+    // FIX MEDIO-1: explicit error for unauthorized sync caller
+    error SyncNotAuthorized();
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
@@ -168,11 +168,9 @@ contract Totem is IERC721Minimal {
         tokenOf[oldUser] = 0;
         tokenOf[newUser] = tokenId;
 
-        // Transferir también el historial y status para mantener continuidad
         history[newUser] = history[oldUser];
         status[newUser] = status[oldUser];
 
-        // Limpiar oldUser
         delete history[oldUser];
         delete status[oldUser];
         delete pendingFraud[oldUser];
@@ -188,7 +186,17 @@ contract Totem is IERC721Minimal {
     function setApprovalForAll(address, bool) external pure { revert Soulbound(); }
 
     // ====================== SYNC ======================
+    /**
+     * @notice Synchronizes oracle metrics for a user into their on-chain history.
+     * @dev FIX MEDIO-1: Only the user themselves or the admin can trigger a sync.
+     *      Previously any address could call sync() for any user, enabling a
+     *      griefing attack that consumed the user's hourly sync slot at will
+     *      (e.g., right after a score drop to force a penalty accumulation).
+     */
     function sync(address user) external notPaused {
+        // FIX MEDIO-1: Restrict caller to the user or protocol admin only
+        if (msg.sender != user && msg.sender != admin) revert SyncNotAuthorized();
+
         if (tokenOf[user] == 0) revert TokenNotExists();
         if (!registry.isTotem(user)) revert NotRegistered();
         if (status[user].fraudLocked) revert FraudLocked();
