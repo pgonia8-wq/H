@@ -74,20 +74,22 @@ contract Totem is IERC721Minimal {
     mapping(address => Status) public status;
     mapping(address => FraudRequest) public pendingFraud;
 
+    // Eventos
     event Mint(address indexed user, uint256 tokenId);
     event HistoryInitialized(address indexed user, uint256 score, uint256 influence);
     event Sync(address indexed user, uint256 score, uint256 influence, uint256 level, uint256 badge);
     event ScoreAccumulated(address indexed user, uint256 total);
     event NegativeEvent(address indexed user, uint256 totalNegativeEvents);
-
     event FraudLockRequested(address indexed user, bool lock, string reason, bytes evidence, uint256 executeAfter);
     event FraudLockExecuted(address indexed user, bool locked);
+    event TokenMigrated(address indexed oldUser, address indexed newUser, uint256 tokenId);
 
     event Paused(address indexed admin, bool status);
     event AdminTransferStarted(address indexed current, address indexed pending);
     event AdminTransferred(address indexed newAdmin);
     event CurveReadFailed(address indexed user);
 
+    // Errores
     error NotAdmin();
     error NotRegistered();
     error AlreadyMinted();
@@ -100,6 +102,8 @@ contract Totem is IERC721Minimal {
     error ZeroAddress();
     error NotPendingAdmin();
     error FraudDelayNotMet();
+    error NotRegistry();                    // ← nuevo
+    error MigrationFailed();
 
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
@@ -108,6 +112,11 @@ contract Totem is IERC721Minimal {
 
     modifier notPaused() {
         if (paused) revert PausedError();
+        _;
+    }
+
+    modifier onlyRegistry() {
+        if (msg.sender != address(registry)) revert NotRegistry();
         _;
     }
 
@@ -146,6 +155,29 @@ contract Totem is IERC721Minimal {
 
         emit Transfer(address(0), msg.sender, tokenId);
         emit Mint(msg.sender, tokenId);
+    }
+
+    // ====================== MIGRACIÓN (llamada solo por Registry) ======================
+    function migrateToken(address oldUser, address newUser) external onlyRegistry {
+        if (tokenOf[oldUser] == 0) revert TokenNotExists();
+        if (tokenOf[newUser] != 0) revert AlreadyMinted();
+
+        uint256 tokenId = tokenOf[oldUser];
+
+        _ownerOf[tokenId] = newUser;
+        tokenOf[oldUser] = 0;
+        tokenOf[newUser] = tokenId;
+
+        // Transferir también el historial y status para mantener continuidad
+        history[newUser] = history[oldUser];
+        status[newUser] = status[oldUser];
+
+        // Limpiar oldUser
+        delete history[oldUser];
+        delete status[oldUser];
+        delete pendingFraud[oldUser];
+
+        emit TokenMigrated(oldUser, newUser, tokenId);
     }
 
     // ====================== SOULBOUND ======================
@@ -284,12 +316,12 @@ contract Totem is IERC721Minimal {
     }
 
     function setCurve(address _curve) external onlyAdmin {
-        require(_curve != address(0), "Zero address");
+        if (_curve == address(0)) revert ZeroAddress();
         curve = IBondingCurve(_curve);
     }
 
     function startAdminTransfer(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "Zero address");
+        if (newAdmin == address(0)) revert ZeroAddress();
         pendingAdmin = newAdmin;
         emit AdminTransferStarted(admin, newAdmin);
     }
