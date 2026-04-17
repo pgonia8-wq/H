@@ -74,6 +74,7 @@ contract Totem is IERC721Minimal {
     mapping(address => Status) public status;
     mapping(address => FraudRequest) public pendingFraud;
 
+    // ================= EVENTS =================
     event Mint(address indexed user, uint256 tokenId);
     event HistoryInitialized(address indexed user, uint256 score, uint256 influence);
     event Sync(address indexed user, uint256 score, uint256 influence, uint256 level, uint256 badge);
@@ -88,6 +89,7 @@ contract Totem is IERC721Minimal {
     event AdminTransferred(address indexed newAdmin);
     event CurveReadFailed(address indexed user);
 
+    // ================= ERRORS =================
     error NotAdmin();
     error NotRegistered();
     error AlreadyMinted();
@@ -101,8 +103,6 @@ contract Totem is IERC721Minimal {
     error NotPendingAdmin();
     error FraudDelayNotMet();
     error NotRegistry();
-    error MigrationFailed();
-    // FIX MEDIO-1: explicit error for unauthorized sync caller
     error SyncNotAuthorized();
 
     modifier onlyAdmin() {
@@ -130,7 +130,7 @@ contract Totem is IERC721Minimal {
         admin = msg.sender;
     }
 
-    // ====================== ERC721 MINIMAL ======================
+    // ================= ERC721 =================
     function balanceOf(address owner) external view returns (uint256) {
         return tokenOf[owner] == 0 ? 0 : 1;
     }
@@ -141,7 +141,7 @@ contract Totem is IERC721Minimal {
         return owner;
     }
 
-    // ====================== MINT ======================
+    // ================= MINT =================
     function mint() external notPaused {
         if (!registry.isTotem(msg.sender)) revert NotRegistered();
         if (tokenOf[msg.sender] != 0) revert AlreadyMinted();
@@ -157,7 +157,7 @@ contract Totem is IERC721Minimal {
         emit Mint(msg.sender, tokenId);
     }
 
-    // ====================== MIGRACIÓN (llamada solo por Registry) ======================
+    // ================= MIGRATION =================
     function migrateToken(address oldUser, address newUser) external onlyRegistry {
         if (tokenOf[oldUser] == 0) revert TokenNotExists();
         if (tokenOf[newUser] != 0) revert AlreadyMinted();
@@ -178,23 +178,16 @@ contract Totem is IERC721Minimal {
         emit TokenMigrated(oldUser, newUser, tokenId);
     }
 
-    // ====================== SOULBOUND ======================
+    // ================= SOULBOUND =================
     function transferFrom(address, address, uint256) external pure { revert Soulbound(); }
     function safeTransferFrom(address, address, uint256) external pure { revert Soulbound(); }
     function safeTransferFrom(address, address, uint256, bytes calldata) external pure { revert Soulbound(); }
     function approve(address, uint256) external pure { revert Soulbound(); }
     function setApprovalForAll(address, bool) external pure { revert Soulbound(); }
 
-    // ====================== SYNC ======================
-    /**
-     * @notice Synchronizes oracle metrics for a user into their on-chain history.
-     * @dev FIX MEDIO-1: Only the user themselves or the admin can trigger a sync.
-     *      Previously any address could call sync() for any user, enabling a
-     *      griefing attack that consumed the user's hourly sync slot at will
-     *      (e.g., right after a score drop to force a penalty accumulation).
-     */
+    // ================= SYNC =================
     function sync(address user) external notPaused {
-        // FIX MEDIO-1: Restrict caller to the user or protocol admin only
+
         if (msg.sender != user && msg.sender != admin) revert SyncNotAuthorized();
 
         if (tokenOf[user] == 0) revert TokenNotExists();
@@ -209,40 +202,55 @@ contract Totem is IERC721Minimal {
 
         (uint256 score, uint256 influence, uint256 timestamp) = oracle.getMetrics(user);
 
-        if (timestamp > block.timestamp + MAX_FUTURE_DRIFT || block.timestamp - timestamp > MAX_STALE_TIME) {
-            revert InvalidTimestamp();
-        }
+        if (
+            timestamp > block.timestamp + MAX_FUTURE_DRIFT ||
+            block.timestamp - timestamp > MAX_STALE_TIME
+        ) revert InvalidTimestamp();
 
+        // ================= INIT FIX =================
         if (!h.initialized) {
             h.lastScore = score;
             h.lastInfluence = influence;
             h.lastUpdate = timestamp;
             h.initialized = true;
 
+            uint256 level = calculateLevel(0);
+            uint256 badge = calculateBadge(score, 0);
+
+            status[user].level = level;
+            status[user].badge = badge;
+
             emit HistoryInitialized(user, score, influence);
+            emit Sync(user, score, influence, level, badge);
             return;
         }
 
         if (timestamp <= h.lastUpdate) revert InvalidTimestamp();
 
-        // Decay
+        // ================= DECAY =================
         if (h.totalScoreAccumulated > 0) {
             uint256 decay = (h.totalScoreAccumulated * (block.timestamp - h.lastUpdate)) / 1 days / 100;
-            h.totalScoreAccumulated = decay >= h.totalScoreAccumulated ? 0 : h.totalScoreAccumulated - decay;
+            h.totalScoreAccumulated = decay >= h.totalScoreAccumulated
+                ? 0
+                : h.totalScoreAccumulated - decay;
         }
 
-        // Delta + penalización
+        // ================= DELTA =================
         if (score > h.lastScore) {
             h.totalScoreAccumulated += (score - h.lastScore);
         } else if (score < h.lastScore) {
             h.negativeEvents++;
-            emit NegativeEvent(user, h.negativeEvents);
 
             uint256 penalty = (h.lastScore - score) / 3;
             uint256 maxPenalty = h.totalScoreAccumulated / 2;
+
             if (penalty > maxPenalty) penalty = maxPenalty;
 
-            h.totalScoreAccumulated = penalty >= h.totalScoreAccumulated ? 0 : h.totalScoreAccumulated - penalty;
+            h.totalScoreAccumulated = penalty >= h.totalScoreAccumulated
+                ? 0
+                : h.totalScoreAccumulated - penalty;
+
+            emit NegativeEvent(user, h.negativeEvents);
         }
 
         if (h.totalScoreAccumulated > MAX_ACCUMULATED_SCORE) {
@@ -263,17 +271,25 @@ contract Totem is IERC721Minimal {
         emit ScoreAccumulated(user, h.totalScoreAccumulated);
     }
 
-    // ====================== FRAUD ======================
+    // ================= FRAUD =================
     function getFraudDelay(address user) public view returns (uint256) {
         if (manualFraudDelay != 0) return manualFraudDelay;
 
         uint256 level = status[user].level;
-        uint256 levelDelay = level >= 5 ? 6 hours : level >= 4 ? 3 hours : level >= 3 ? 1 hours : 5 minutes;
+        uint256 levelDelay =
+            level >= 5 ? 6 hours :
+            level >= 4 ? 3 hours :
+            level >= 3 ? 1 hours :
+            5 minutes;
 
         uint256 valueDelay = 5 minutes;
+
         if (address(curve) != address(0)) {
             try curve.getPrice(user) returns (uint256 price) {
-                valueDelay = price >= 1 ether ? 6 hours : price >= 0.1 ether ? 1 hours : 5 minutes;
+                valueDelay =
+                    price >= 1 ether ? 6 hours :
+                    price >= 0.1 ether ? 1 hours :
+                    5 minutes;
             } catch {
                 emit CurveReadFailed(user);
             }
@@ -291,16 +307,15 @@ contract Totem is IERC721Minimal {
         if (tokenOf[user] == 0) revert TokenNotExists();
 
         uint256 delay = getFraudDelay(user);
-        uint256 executeAfter = block.timestamp + delay;
 
         pendingFraud[user] = FraudRequest({
-            executeAfter: executeAfter,
+            executeAfter: block.timestamp + delay,
             lock: lock,
             reason: reason,
             evidence: evidence
         });
 
-        emit FraudLockRequested(user, lock, reason, evidence, executeAfter);
+        emit FraudLockRequested(user, lock, reason, evidence, block.timestamp + delay);
     }
 
     function executeFraudLock(address user) external onlyAdmin {
@@ -313,7 +328,7 @@ contract Totem is IERC721Minimal {
         emit FraudLockExecuted(user, req.lock);
     }
 
-    // ====================== ADMIN ======================
+    // ================= ADMIN =================
     function setPaused(bool _paused) external onlyAdmin {
         paused = _paused;
         emit Paused(msg.sender, _paused);
@@ -341,7 +356,7 @@ contract Totem is IERC721Minimal {
         emit AdminTransferred(admin);
     }
 
-    // ====================== VIEW ======================
+    // ================= VIEW =================
     function calculateLevel(uint256 total) public pure returns (uint256) {
         if (total > 1_000_000) return 5;
         if (total > 500_000) return 4;
