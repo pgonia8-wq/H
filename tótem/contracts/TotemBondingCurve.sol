@@ -11,6 +11,7 @@ interface IRegistry {
 
 interface IOracle {
     function getScore(address user) external view returns (uint256);
+    function getInfluence(address user) external view returns (uint256);
 }
 
 contract TotemBondingCurve is ReentrancyGuard, Ownable {
@@ -21,31 +22,22 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
 
     address public treasury;
 
-    // 🔥 Multi Totem
-    mapping(address => address) public totemOwner;
-
-    // 🔒 Balances por usuario
+    mapping(address => uint256) public realSupply;
     mapping(address => mapping(address => uint256)) public balances;
 
-    // 🔒 Supply real por tótem
-    mapping(address => uint256) public realSupply;
-
-    // 🔒 Ventana de venta
     struct SellWindow {
         uint256 sold;
         uint256 lastReset;
     }
-
     mapping(address => mapping(address => SellWindow)) public sellWindows;
 
     uint256 public constant SELL_WINDOW = 1 days;
     uint256 public maxSellBps = 4500; // 45%
 
-    // 🔒 Límites económicos
     uint256 public constant OWNER_MAX_BPS = 2500; // 25%
     uint256 public constant USER_MAX_BPS = 1000;  // 10%
 
-    // 🔒 Curva (intacta)
+    // Curva cuadrática intacta (exacta a tu JS)
     uint256 public constant INITIAL_PRICE_WLD = 55 * 10**7;
     uint256 public constant SCALE = 1e20;
     uint256 public constant CURVE_K = 235;
@@ -58,13 +50,10 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
     uint256 public constant SCORE_MAX = 1075;
     uint256 public constant SCORE_BASE = 1000;
 
-    // EVENTS
     event Buy(address indexed totem, address indexed user, uint256 wldIn, uint256 tokensOut);
     event Sell(address indexed totem, address indexed user, uint256 tokensIn, uint256 wldOut);
     event TreasuryUpdated(address treasury);
-    event TotemOwnerSet(address indexed totem, address indexed owner);
 
-    // ERRORS
     error NotATotem();
     error ZeroAmount();
     error InsufficientBalance();
@@ -72,6 +61,7 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
     error OracleAnomaly();
     error MaxPositionExceeded();
     error SellLimitExceeded();
+    error ZeroAddress();
 
     constructor(
         address _wld,
@@ -79,33 +69,16 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
         address _oracle,
         address _treasury
     ) Ownable(msg.sender) {
+        if (_wld == address(0) || _registry == address(0) || _oracle == address(0) || _treasury == address(0)) 
+            revert ZeroAddress();
+
         wldToken = IERC20(_wld);
         registry = IRegistry(_registry);
         oracle = IOracle(_oracle);
         treasury = _treasury;
     }
 
-    // ================= ADMIN =================
-
-    function setTotemOwner(address totem, address owner) external onlyOwner {
-        require(owner != address(0), "zero");
-        totemOwner[totem] = owner;
-        emit TotemOwnerSet(totem, owner);
-    }
-
-    function setTreasury(address _treasury) external onlyOwner {
-        require(_treasury != address(0), "zero");
-        treasury = _treasury;
-        emit TreasuryUpdated(_treasury);
-    }
-
-    function setMaxSellBps(uint256 _bps) external onlyOwner {
-        require(_bps <= 10000, "invalid");
-        maxSellBps = _bps;
-    }
-
-    // ================= CORE =================
-
+    // ================= MATH (Curva intacta) =================
     function _g(uint256 score) internal pure returns (uint256) {
         if (score < SCORE_MIN || score > SCORE_MAX) revert OracleAnomaly();
         return score;
@@ -130,18 +103,16 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
 
     function _solveBuyEff(uint256 s0Eff, uint256 wldIn) internal pure returns (uint256 s1Eff) {
         uint256 target = V(s0Eff) + wldIn;
-
         s1Eff = s0Eff + (wldIn * 1e18) / dV(s0Eff);
 
-        for (uint256 i = 0; i < 10; i++) {
+        for (uint256 i = 0; i < 12; i++) {
             uint256 v1 = V(s1Eff);
             int256 f = int256(v1) - int256(target);
             int256 df = int256(dV(s1Eff));
-
-            if (df == 0 || f == 0) return s1Eff;
+            if (df == 0 || f == 0) break;
 
             int256 delta = f / df;
-            if (delta == 0) return s1Eff;
+            if (delta == 0) break;
 
             int256 maxStep = int256(s1Eff) / 4;
             if (delta > maxStep) delta = maxStep;
@@ -150,37 +121,13 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
             if (delta > 0) s1Eff -= uint256(delta);
             else s1Eff += uint256(-delta);
         }
-
-        uint256 low = s0Eff;
-        uint256 high = s1Eff > s0Eff ? s1Eff : s0Eff + 1;
-
-        while (V(high) < target) {
-            high *= 2;
-        }
-
-        for (uint256 i = 0; i < 32; i++) {
-            uint256 mid = (low + high) / 2;
-            uint256 v = V(mid);
-
-            if (v > target) high = mid;
-            else low = mid;
-        }
-
-        return (low + high) / 2;
+        return s1Eff;
     }
 
-    // ================= BUY =================
-
+    // ================= BUY (Genesis fix) =================
     function buy(address totem, uint256 amountWldIn, uint256 minTokensOut) external nonReentrant {
-
-        if (!registry.isTotem(msg.sender)) revert NotATotem();
         if (!registry.isTotem(totem)) revert NotATotem();
         if (amountWldIn == 0) revert ZeroAmount();
-
-        // 🔒 GENESIS RULE
-        if (realSupply[totem] == 0) {
-            require(msg.sender == totemOwner[totem], "only owner initializes");
-        }
 
         uint256 score = _g(oracle.getScore(totem));
 
@@ -190,25 +137,21 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
         uint256 s0Eff = _effective(realSupply[totem], score);
         uint256 s1Eff = _solveBuyEff(s0Eff, netWld);
 
-        uint256 tokensOut = ((s1Eff - s0Eff) * SCORE_BASE) / score;
+        uint256 deltaEff = s1Eff - s0Eff;
+        uint256 tokensOut = (deltaEff * SCORE_BASE) / score;
 
         if (tokensOut < minTokensOut) revert SlippageExceeded();
 
         uint256 newBalance = balances[totem][msg.sender] + tokensOut;
-
-        // 🔥 FIX CRÍTICO
         uint256 supplyAfter = realSupply[totem] + tokensOut;
 
-        uint256 max;
-        if (msg.sender == totemOwner[totem]) {
-            max = (supplyAfter * OWNER_MAX_BPS) / 10000;
-        } else {
-            max = (supplyAfter * USER_MAX_BPS) / 10000;
+        // GENESIS BUY: exento de límite de posición (el primer comprador siempre puede inicializar)
+        if (realSupply[totem] != 0) {
+            uint256 maxBps = (msg.sender == totem) ? OWNER_MAX_BPS : USER_MAX_BPS;
+            if (newBalance > (supplyAfter * maxBps) / 10000) revert MaxPositionExceeded();
         }
 
-        if (newBalance > max) revert MaxPositionExceeded();
-
-        require(wldToken.transferFrom(msg.sender, address(this), netWld), "transfer fail");
+        require(wldToken.transferFrom(msg.sender, address(this), netWld), "WLD net fail");
         require(wldToken.transferFrom(msg.sender, treasury, fee), "fee fail");
 
         balances[totem][msg.sender] = newBalance;
@@ -218,10 +161,7 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
     }
 
     // ================= SELL =================
-
     function sell(address totem, uint256 tokensIn, uint256 minWldOut) external nonReentrant {
-
-        if (!registry.isTotem(msg.sender)) revert NotATotem();
         if (!registry.isTotem(totem)) revert NotATotem();
         if (tokensIn == 0) revert ZeroAmount();
 
@@ -229,20 +169,16 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
         if (tokensIn > userBalance) revert InsufficientBalance();
 
         SellWindow storage w = sellWindows[totem][msg.sender];
-
         if (block.timestamp > w.lastReset + SELL_WINDOW) {
             w.sold = 0;
             w.lastReset = block.timestamp;
         }
-
-        uint256 maxSell = (userBalance * maxSellBps) / 10000;
-        if (w.sold + tokensIn > maxSell) revert SellLimitExceeded();
+        if (w.sold + tokensIn > (userBalance * maxSellBps) / 10000) revert SellLimitExceeded();
 
         uint256 score = _g(oracle.getScore(totem));
 
         uint256 s0Real = realSupply[totem];
         uint256 s0Eff = _effective(s0Real, score);
-
         uint256 deltaEff = (tokensIn * score) / SCORE_BASE;
         uint256 s1Eff = s0Eff - deltaEff;
 
@@ -260,5 +196,50 @@ contract TotemBondingCurve is ReentrancyGuard, Ownable {
         require(wldToken.transfer(treasury, fee), "fee fail");
 
         emit Sell(totem, msg.sender, tokensIn, payout);
+    }
+
+    // ================= PREVIEW =================
+    function previewBuy(address totem, uint256 amountWldIn) external view returns (uint256 tokensOut) {
+        if (amountWldIn == 0) return 0;
+
+        uint256 score = oracle.getScore(totem);
+        if (score < SCORE_MIN || score > SCORE_MAX) return 0;
+
+        uint256 fee = (amountWldIn * BUY_FEE_BPS) / FEE_DENOMINATOR;
+        uint256 netWld = amountWldIn - fee;
+
+        uint256 s0Eff = _effective(realSupply[totem], score);
+        uint256 s1Eff = _solveBuyEff(s0Eff, netWld);
+        uint256 deltaEff = s1Eff - s0Eff;
+
+        return (deltaEff * SCORE_BASE) / score;
+    }
+
+    function previewSell(address totem, uint256 tokensIn) external view returns (uint256 wldOut) {
+        if (tokensIn == 0) return 0;
+
+        uint256 score = oracle.getScore(totem);
+        if (score < SCORE_MIN || score > SCORE_MAX) return 0;
+
+        uint256 s0Eff = _effective(realSupply[totem], score);
+        uint256 deltaEff = (tokensIn * score) / SCORE_BASE;
+        uint256 s1Eff = s0Eff - deltaEff;
+
+        uint256 baseValue = V(s0Eff) - V(s1Eff);
+        uint256 fee = (baseValue * SELL_FEE_BPS) / FEE_DENOMINATOR;
+
+        return baseValue - fee;
+    }
+
+    // ================= ADMIN =================
+    function setTreasury(address _treasury) external onlyOwner {
+        if (_treasury == address(0)) revert ZeroAddress();
+        treasury = _treasury;
+        emit TreasuryUpdated(_treasury);
+    }
+
+    function setMaxSellBps(uint256 _bps) external onlyOwner {
+        require(_bps <= 10000, "invalid bps");
+        maxSellBps = _bps;
     }
 }
