@@ -8,11 +8,9 @@ interface IRegistry {
 }
 
 /**
- * HTP Oracle v2
- * - Paid updates (0.01 WLD)
- * - EIP-712 signed metrics
- * - Multi-signer ready
- * - Replay + caller binding protection
+ * @title TotemOracle
+ * @notice Oracle oficial del protocolo HTP - Alimenta score e influence
+ * @dev Versión 2.2 - Correcciones críticas de auditoría: default mínimo, caller estricto, rate limit movido a consumidor
  */
 contract TotemOracle is ReentrancyGuard {
 
@@ -20,8 +18,8 @@ contract TotemOracle is ReentrancyGuard {
     address public immutable PRIMARY_SIGNER;
     IRegistry public immutable registry;
 
-    uint256 public constant UPDATE_FEE = 0.01 ether; // WLD decimals assumed handled off-chain
-    uint256 public constant MIN_INTERVAL = 1 hours;
+    uint256 public constant UPDATE_FEE = 0.01 ether;        // WLD
+    uint256 public constant MIN_INTERVAL = 1 hours;         // mantenido pero soft (solo recomendación)
 
     bool public paused;
 
@@ -30,14 +28,13 @@ contract TotemOracle is ReentrancyGuard {
 
     // ========================= STATE =========================
     struct Metrics {
-        uint256 score;
-        uint256 influence; // base 1000
+        uint256 score;      // 0 = no inicializado
+        uint256 influence;  // 0 = no inicializado
         uint256 timestamp;
     }
 
     mapping(address => Metrics) public metrics;
     mapping(address => uint256) public nonces;
-    mapping(address => uint256) public lastUpdate;
 
     // ========================= EIP712 =========================
     bytes32 public immutable DOMAIN_SEPARATOR;
@@ -56,8 +53,9 @@ contract TotemOracle is ReentrancyGuard {
         uint256 nonce
     );
 
-    event SignerUpdated(address signer, bool allowed);
+    event SignerUpdated(address indexed signer, bool allowed);
     event Paused(bool status);
+    event FeeWithdrawn(address indexed to, uint256 amount);
 
     // ========================= ERRORS =========================
     error NotATotem();
@@ -65,10 +63,11 @@ contract TotemOracle is ReentrancyGuard {
     error InvalidSignature();
     error InvalidNonce();
     error Expired();
-    error RateLimited();
     error OraclePaused();
     error InvalidRange();
     error FeeNotPaid();
+    error ZeroAddress();
+    error CallerMismatch();           // nuevo: caller estricto
 
     modifier whenNotPaused() {
         if (paused) revert OraclePaused();
@@ -76,8 +75,7 @@ contract TotemOracle is ReentrancyGuard {
     }
 
     constructor(address _primarySigner, address _registry) {
-        require(_primarySigner != address(0), "zero");
-        require(_registry != address(0), "zero");
+        if (_primarySigner == address(0) || _registry == address(0)) revert ZeroAddress();
 
         PRIMARY_SIGNER = _primarySigner;
         registry = IRegistry(_registry);
@@ -86,9 +84,7 @@ contract TotemOracle is ReentrancyGuard {
 
         DOMAIN_SEPARATOR = keccak256(
             abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
                 keccak256("HTPOracle"),
                 keccak256("1"),
                 block.chainid,
@@ -97,9 +93,7 @@ contract TotemOracle is ReentrancyGuard {
         );
     }
 
-    // =========================================================
-    // UPDATE (PAID)
-    // =========================================================
+    // ========================= UPDATE (CORREGIDO) =========================
     function update(
         address totem,
         address caller,
@@ -113,14 +107,16 @@ contract TotemOracle is ReentrancyGuard {
         if (!registry.isTotem(totem)) revert NotATotem();
         if (msg.value < UPDATE_FEE) revert FeeNotPaid();
 
+        // Validaciones estrictas
         if (score == 0 || score > 10000) revert InvalidRange();
         if (influence < 925 || influence > 1075) revert InvalidRange();
-
         if (block.timestamp > deadline) revert Expired();
-        if (block.timestamp < lastUpdate[totem] + MIN_INTERVAL) revert RateLimited();
         if (nonce != nonces[totem]) revert InvalidNonce();
 
-        // ================= EIP712 =================
+        // CORRECCIÓN CRÍTICA: Caller estricto - solo el caller firmado puede actualizar
+        if (caller != msg.sender) revert CallerMismatch();
+
+        // EIP-712
         bytes32 structHash = keccak256(
             abi.encode(
                 UPDATE_TYPEHASH,
@@ -138,15 +134,10 @@ contract TotemOracle is ReentrancyGuard {
         );
 
         address recovered = _recover(digest, signature);
-
         if (!authorizedSigners[recovered]) revert NotAuthorizedSigner();
-        if (caller != tx.origin && caller != msg.sender) {
-            // binding anti spoofing (soft constraint)
-        }
 
-        // ================= STATE UPDATE =================
-        nonces[totem] += 1;
-        lastUpdate[totem] = block.timestamp;
+        // Update state
+        nonces[totem] = nonce + 1;
 
         metrics[totem] = Metrics({
             score: score,
@@ -157,41 +148,55 @@ contract TotemOracle is ReentrancyGuard {
         emit MetricsUpdated(totem, score, influence, block.timestamp, nonce);
     }
 
-    // =========================================================
-    // VIEW (HTP BONDING CURVE)
-    // =========================================================
+    // ========================= VIEWS (CORREGIDAS) =========================
     function getInfluence(address user) external view returns (uint256) {
         uint256 inf = metrics[user].influence;
-        return inf == 0 ? 1000 : inf;
+        return inf == 0 ? 925 : inf;        // mínimo posible hasta primera actualización real
     }
 
     function getScore(address user) external view returns (uint256) {
         uint256 s = metrics[user].score;
-        return s == 0 ? 1000 : s;
+        return s == 0 ? 1 : s;              // reputación se gana, no se regala
     }
 
-    // =========================================================
-    // ADMIN
-    // =========================================================
-    function setPaused(bool _p) external {
+    function getMetrics(address user) external view returns (
+        uint256 score,
+        uint256 influence,
+        uint256 timestamp
+    ) {
+        Metrics memory m = metrics[user];
+        score     = m.score     == 0 ? 1    : m.score;
+        influence = m.influence == 0 ? 925  : m.influence;
+        timestamp = m.timestamp;
+    }
+
+    // ========================= ADMIN =========================
+    function setPaused(bool _paused) external {
         if (msg.sender != PRIMARY_SIGNER) revert NotAuthorizedSigner();
-        paused = _p;
-        emit Paused(_p);
+        paused = _paused;
+        emit Paused(_paused);
     }
 
     function authorizeSigner(address signer, bool allowed) external {
         if (msg.sender != PRIMARY_SIGNER) revert NotAuthorizedSigner();
+        if (signer == address(0)) revert ZeroAddress();
         authorizedSigners[signer] = allowed;
         emit SignerUpdated(signer, allowed);
     }
 
-    // =========================================================
-    // INTERNAL
-    // =========================================================
+    function withdrawFees(address to) external {
+        if (msg.sender != PRIMARY_SIGNER) revert NotAuthorizedSigner();
+        if (to == address(0)) revert ZeroAddress();
+
+        uint256 amount = address(this).balance;
+        payable(to).transfer(amount);
+
+        emit FeeWithdrawn(to, amount);
+    }
+
+    // ========================= INTERNAL =========================
     function _recover(bytes32 digest, bytes calldata sig)
-        internal
-        pure
-        returns (address)
+        internal pure returns (address)
     {
         if (sig.length != 65) revert InvalidSignature();
 
@@ -209,4 +214,6 @@ contract TotemOracle is ReentrancyGuard {
 
         return ecrecover(digest, v, r, s);
     }
+
+    receive() external payable {}
 }
