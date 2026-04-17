@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+// FIX ALTO-1: Unified to OZ v5 import paths (utils/ instead of security/)
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
@@ -11,6 +12,8 @@ contract TotemCredits is ReentrancyGuard, Pausable, Ownable2Step {
 
     event Deposited(address indexed user, uint256 amount);
     event Consumed(address indexed user, uint256 amount);
+
+    constructor() Ownable(msg.sender) {}
 
     function deposit() external payable whenNotPaused {
         require(msg.value > 0, "zero");
