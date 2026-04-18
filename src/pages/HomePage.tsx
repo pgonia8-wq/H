@@ -78,7 +78,7 @@ const notifIcon = (type: Notification["type"]) => {
   switch (type) {
     case "like":      return <Heart size={13} className="text-pink-500" />;
     case "comment":   return <MessageCircle size={13} className="text-blue-400" />;
-    case "follow":    return <UserPlus size={13} className="text-green-400" />;
+    case "follow":    return <UserPlus size={13} className="text-emerald-400" />;
     case "mention":   return <AtSign size={13} className="text-violet-400" />;
     case "repost":    return <Repeat2 size={13} className="text-emerald-400" />;
     case "verified":  return <CheckCircle2 size={13} className="text-sky-400" />;
@@ -449,16 +449,7 @@ const HomePage: React.FC<HomePageProps> = ({
   }, [userId]);
 
   // ─────────────────────────────────────────────
-  // CREAR POST — FIX MÓVIL
-  //
-  // Problema: en móvil, supabase.functions.invoke puede fallar si el token de
-  // autenticación no está disponible inmediatamente o la Edge Function no existe.
-  // Solución: intentar primero con Edge Function. Si falla, hacer INSERT directo
-  // respetando exactamente las columnas de la tabla posts:
-  //   id, user_id, content, timestamp, deleted_flag, visibility_score, likes,
-  //   comments, reposts, boosted_until, tags, tips_total, boost_score, views,
-  //   created_at, likes_count, replies_count, image_url, reposted_post_id,
-  //   is_ad, monetized, is_boosted, campaign_id
+  // CREAR POST
   // ─────────────────────────────────────────────
   const handleCreatePost = async () => {
     if (isPosting) return;
@@ -591,7 +582,9 @@ const HomePage: React.FC<HomePageProps> = ({
   // RENDER
   // ─────────────────────────────────────────────
   return (
-    <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "bg-[#09090b] text-white" : "bg-[#fafafa] text-black"}`}>
+    <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${
+      isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f8f9fa] text-black"
+    }`}>
       {userId && <NotificationBanner userId={userId} />}
       <Suspense fallback={null}>
         <AutonomousGrowthBrain />
@@ -601,29 +594,54 @@ const HomePage: React.FC<HomePageProps> = ({
       </Suspense>
 
       {/* ── BANNER VERIFICACIÓN ── */}
-        {!verified && (
-          <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, zIndex: 100, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
-            <button
-              onClick={verifyUser}
-              disabled={verifying}
-              style={{ pointerEvents: "auto", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "white", border: "none", borderRadius: 16, padding: "14px 28px", fontSize: 15, fontWeight: 700, cursor: verifying ? "not-allowed" : "pointer", boxShadow: "0 4px 24px rgba(99,102,241,0.55)", opacity: verifying ? 0.7 : 1, width: "100%", maxWidth: 360 }}
-            >
-              {verifying ? "Verificando..." : "✦ Verificate con World ID"}
-            </button>
-          </div>
-        )}
+      {!verified && (
+        <div style={{
+          position: "fixed",
+          bottom: 80,
+          left: 0,
+          right: 0,
+          zIndex: 100,
+          display: "flex",
+          justifyContent: "center",
+          padding: "0 16px",
+          pointerEvents: "none",
+        }}>
+          <button
+            onClick={verifyUser}
+            disabled={verifying}
+            style={{
+              pointerEvents: "auto",
+              background: "linear-gradient(135deg, #6366f1, #a855f7)",
+              color: "white",
+              border: "none",
+              borderRadius: 20,
+              padding: "15px 28px",
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: verifying ? "not-allowed" : "pointer",
+              boxShadow: "0 6px 28px rgba(99,102,241,0.50)",
+              opacity: verifying ? 0.7 : 1,
+              width: "100%",
+              maxWidth: 360,
+              letterSpacing: "0.01em",
+            }}
+          >
+            {verifying ? "Verificando..." : "✦ Verificate con World ID"}
+          </button>
+        </div>
+      )}
 
-        {/* ── HEADER FLOTANTE ── */}
+      {/* ── HEADER FLOTANTE ── */}
       <header
         className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
-          isDark ? "bg-[#09090b]/85 border-white/[0.09]" : "bg-white/90 border-black/[0.07]"
+          isDark ? "bg-[#0a0a0a]/88 border-white/[0.09]" : "bg-white/92 border-black/[0.07]"
         }`}
         style={{
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
+          backdropFilter: "blur(28px)",
+          WebkitBackdropFilter: "blur(28px)",
           boxShadow: isDark
-            ? "0 8px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)"
-            : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)",
+            ? "0 8px 32px rgba(0,0,0,0.60), 0 2px 8px rgba(0,0,0,0.35)"
+            : "0 8px 32px rgba(0,0,0,0.09), 0 2px 8px rgba(0,0,0,0.05)",
         }}
       >
         {/* Controles centrales */}
@@ -634,7 +652,10 @@ const HomePage: React.FC<HomePageProps> = ({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-white"
-            style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)", boxShadow: "0 0 18px rgba(139,92,246,0.35)" }}
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+              boxShadow: "0 0 18px rgba(168,85,247,0.35)",
+            }}
           >
             <Plus size={15} />
             <span className="hidden sm:inline">{t("post") || "Post"}</span>
@@ -646,7 +667,9 @@ const HomePage: React.FC<HomePageProps> = ({
               onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
+              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+                isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
+              }`}
             >
               <Mail size={19} />
             </motion.button>
@@ -672,7 +695,9 @@ const HomePage: React.FC<HomePageProps> = ({
               onClick={() => setShowNotifications(true)}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
+              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+                isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
+              }`}
             >
               <motion.div
                 animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
@@ -702,7 +727,9 @@ const HomePage: React.FC<HomePageProps> = ({
             onClick={toggleTheme}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
-            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
+            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+              isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
+            }`}
           >
             <AnimatePresence mode="wait" initial={false}>
               <motion.span
@@ -720,9 +747,11 @@ const HomePage: React.FC<HomePageProps> = ({
           {/* Token mini-app */}
           <motion.button
             onClick={() => setShowTokenApp(true)}
-              whileHover={{ scale: 1.08 }}
+            whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
-            className={`w-9 h-9 flex items-center justify-center rounded-full text-base transition-colors ${isDark ? "text-gray-300 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/5"}`}
+            className={`w-9 h-9 flex items-center justify-center rounded-full text-base transition-colors ${
+              isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
+            }`}
             title="Token Market"
           >
             🪙
@@ -733,32 +762,38 @@ const HomePage: React.FC<HomePageProps> = ({
             onClick={() => setLanguage(language === "es" ? "en" : "es")}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.94 }}
-            className={`h-9 px-3 flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${isDark ? "text-gray-300 hover:text-white bg-white/5 hover:bg-white/10" : "text-gray-600 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"}`}
+            className={`h-9 px-3 flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${
+              isDark
+                ? "text-gray-400 hover:text-white bg-white/[0.05] hover:bg-white/10"
+                : "text-gray-500 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"
+            }`}
           >
             <Globe size={13} />
             {language.toUpperCase()}
           </motion.button>
         </div>
 
-          {/* Avatar */}
-          <motion.div
-            className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${isDark ? "ring-white/10 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"}`}
-            onClick={() => setShowProfileModal(true)}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
-          >
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
-            ) : (
-              <div
-                className="w-full h-full flex items-center justify-center text-sm font-bold"
-                style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)", color: "#fff" }}
-              >
-                {(username || "H")[0].toUpperCase()}
-              </div>
-            )}
-          </motion.div>
+        {/* Avatar */}
+        <motion.div
+          className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${
+            isDark ? "ring-white/10 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"
+          }`}
+          onClick={() => setShowProfileModal(true)}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.94 }}
+          style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
+        >
+          {profile?.avatar_url ? (
+            <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
+          ) : (
+            <div
+              className="w-full h-full flex items-center justify-center text-sm font-bold"
+              style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff" }}
+            >
+              {(username || "H")[0].toUpperCase()}
+            </div>
+          )}
+        </motion.div>
       </header>
 
       {/* ── FEED ── */}
@@ -797,63 +832,88 @@ const HomePage: React.FC<HomePageProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            style={{ backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.82)" }}
+            style={{ backdropFilter: "blur(16px)", background: "rgba(0,0,0,0.82)" }}
             onClick={() => setShowNewPostModal(false)}
           >
             <motion.div
               key="create-post-modal"
-              className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${isDark ? "bg-gray-950 border border-white/10" : "bg-white border border-gray-200"}`}
+              className={`relative w-full max-w-md rounded-3xl shadow-2xl overflow-hidden ${
+                isDark ? "bg-[#111113] border border-white/[0.08]" : "bg-white border border-gray-100"
+              }`}
               initial={{ opacity: 0, scale: 0.92, y: 24 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 24 }}
               transition={{ type: "spring", stiffness: 340, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute inset-x-0 top-0 h-1 rounded-t-3xl" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }} />
+              {/* Gradient top accent */}
+              <div className="absolute inset-x-0 top-0 h-1.5 rounded-t-3xl" style={{ background: "linear-gradient(90deg, #6366f1, #a855f7, #a78bfa)" }} />
+
+              {/* Header */}
               <div className="flex items-center justify-between px-6 pt-6 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+                  <div className="w-9 h-9 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}>
                     <Send size={14} className="text-white -rotate-12" />
                   </div>
-                  <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>{t("create_post")}</h2>
+                  <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>
+                    {t("create_post")}
+                  </h2>
                 </div>
                 <motion.button
                   whileHover={{ scale: 1.1, rotate: 90 }}
                   whileTap={{ scale: 0.9 }}
                   transition={{ type: "spring", stiffness: 400, damping: 20 }}
                   onClick={() => setShowNewPostModal(false)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                    isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  }`}
                 >
                   <X size={16} />
                 </motion.button>
               </div>
 
+              {/* Textarea */}
               <div className="px-6">
-                <div className={`relative rounded-2xl overflow-hidden ${isDark ? "bg-gray-900 ring-1 ring-white/10 focus-within:ring-violet-500" : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400"}`}>
+                <div className={`relative rounded-2xl overflow-hidden transition-shadow ${
+                  isDark
+                    ? "bg-white/[0.04] ring-1 ring-white/[0.08] focus-within:ring-violet-500/60"
+                    : "bg-gray-50 ring-1 ring-gray-200 focus-within:ring-violet-400/60"
+                }`}>
                   <textarea
                     value={newPostContent}
                     onChange={(e) => setNewPostContent(e.target.value)}
-                    className={`w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${isDark ? "text-white placeholder-gray-500" : "text-gray-900 placeholder-gray-400"}`}
+                    className={`w-full h-32 p-4 resize-none focus:outline-none bg-transparent text-sm leading-relaxed ${
+                      isDark ? "text-white placeholder-gray-600" : "text-gray-900 placeholder-gray-400"
+                    }`}
                     placeholder={t("whats_happening")}
                     maxLength={maxChars}
                     autoFocus
                   />
-                  <div className={`absolute bottom-3 right-3 text-xs font-medium tabular-nums ${newPostContent.length > maxChars * 0.85 ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"}`}>
+                  <div className={`absolute bottom-3 right-3 text-xs font-medium tabular-nums ${
+                    newPostContent.length > maxChars * 0.85 ? "text-red-400" : isDark ? "text-gray-600" : "text-gray-400"
+                  }`}>
                     {newPostContent.length}/{maxChars}
                   </div>
                 </div>
               </div>
 
+              {/* Image preview */}
               <AnimatePresence>
                 {imagePreview && (
-                  <motion.div className="px-6 mt-4" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25 }}>
+                  <motion.div
+                    className="px-6 mt-4"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                  >
                     <div className="relative group rounded-2xl overflow-hidden shadow-lg max-h-60">
                       <img src={imagePreview} alt="Preview" className="w-full object-cover max-h-60" />
                       <motion.button
                         whileHover={{ scale: 1.1 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => { setNewPostImage(null); setImagePreview(null); }}
-                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border border-white/10"
                       >
                         <X size={12} className="text-white" />
                       </motion.button>
@@ -862,20 +922,30 @@ const HomePage: React.FC<HomePageProps> = ({
                 )}
               </AnimatePresence>
 
+              {/* Error */}
               <AnimatePresence>
                 {postError && (
                   <motion.div
-                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
-                    className="mx-6 mt-3 px-3 py-2 rounded-xl bg-red-900/60 border border-red-500/40 text-xs text-red-300 flex items-center justify-between gap-2"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    className="mx-6 mt-3 px-4 py-2.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 flex items-center justify-between gap-2"
                   >
                     <span className="truncate">⚠ {postError}</span>
-                    <button onClick={() => setPostError(null)} className="flex-shrink-0 text-red-400 hover:text-red-200"><X size={13} /></button>
+                    <button onClick={() => setPostError(null)} className="flex-shrink-0 text-red-400 hover:text-red-200 transition">
+                      <X size={13} />
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
 
+              {/* Footer actions */}
               <div className="flex items-center gap-3 px-6 py-5 mt-2">
-                <label className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${isDark ? "text-gray-400 hover:text-violet-400 hover:bg-violet-500/10" : "text-gray-500 hover:text-violet-600 hover:bg-violet-50"}`}>
+                <label className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
+                  isDark
+                    ? "text-gray-500 hover:text-violet-400 hover:bg-violet-500/10"
+                    : "text-gray-400 hover:text-violet-600 hover:bg-violet-50"
+                }`}>
                   <input
                     type="file"
                     accept="image/*"
@@ -886,7 +956,6 @@ const HomePage: React.FC<HomePageProps> = ({
                         setNewPostImage(file);
                         setImagePreview(URL.createObjectURL(file));
                       }
-                      // Reset el input para poder volver a seleccionar el mismo archivo
                       e.target.value = "";
                     }}
                   />
@@ -895,20 +964,24 @@ const HomePage: React.FC<HomePageProps> = ({
                 </label>
                 <div className="flex-1" />
                 <motion.button
-                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => setShowNewPostModal(false)}
-                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${isDark ? "text-gray-300 bg-white/5 hover:bg-white/10" : "text-gray-600 bg-gray-100 hover:bg-gray-200"}`}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                    isDark ? "text-gray-400 bg-white/[0.05] hover:bg-white/10" : "text-gray-600 bg-gray-100 hover:bg-gray-200"
+                  }`}
                 >
                   {t("cancel")}
                 </motion.button>
                 <motion.button
-                  whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                  whileHover={{ scale: 1.04 }}
+                  whileTap={{ scale: 0.96 }}
                   onClick={handleCreatePost}
                   disabled={!newPostContent.trim() || isPosting}
                   className="relative px-5 py-2.5 rounded-xl text-sm font-semibold text-white overflow-hidden disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                    boxShadow: newPostContent.trim() ? "0 0 20px rgba(139,92,246,0.4)" : "none",
+                    background: "linear-gradient(135deg, #6366f1, #a855f7)",
+                    boxShadow: newPostContent.trim() ? "0 0 20px rgba(168,85,247,0.40)" : "none",
                   }}
                 >
                   <span className="relative flex items-center gap-2">
@@ -930,18 +1003,29 @@ const HomePage: React.FC<HomePageProps> = ({
       <AnimatePresence>
         {showInbox && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ backdropFilter: "blur(16px)", background: "rgba(0,0,0,0.75)" }}
             onClick={() => setShowInbox(false)}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 30 }}
+              initial={{ opacity: 0, scale: 0.92, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 30 }}
               transition={{ type: "spring", stiffness: 340, damping: 28 }}
-              className="w-full max-w-md bg-[#111113] border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+              className={`w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border ${
+                isDark ? "bg-[#111113] border-white/[0.08]" : "bg-white border-gray-100"
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
               {userId && (
-                <Suspense fallback={<div className="h-64 flex items-center justify-center text-gray-500 text-sm">Cargando...</div>}>
+                <Suspense fallback={
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: "#a855f7", borderRightColor: "#6366f1" }} />
+                  </div>
+                }>
                   <Inbox
                     isOpen={true}
                     onClose={() => setShowInbox(false)}
@@ -967,14 +1051,18 @@ const HomePage: React.FC<HomePageProps> = ({
           <motion.div
             key="notif-overlay"
             className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            style={{ backdropFilter: "blur(10px)", background: "rgba(0,0,0,0.6)" }}
+            style={{ backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.65)" }}
             onClick={() => setShowNotifications(false)}
           >
             <motion.div
               key="notif-modal"
-              className={`relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col ${isDark ? "bg-[#111113] border border-white/[0.08]" : "bg-white border border-gray-200/80"}`}
+              className={`relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col border ${
+                isDark ? "bg-[#111113] border-white/[0.08]" : "bg-white border-gray-100"
+              }`}
               style={{ maxHeight: "85vh" }}
               initial={{ opacity: 0, y: 60, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -982,57 +1070,83 @@ const HomePage: React.FC<HomePageProps> = ({
               transition={{ type: "spring", stiffness: 360, damping: 30 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)" }} />
+              {/* Top gradient accent */}
+              <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: "linear-gradient(90deg, #6366f1, #a855f7, #a78bfa)" }} />
 
+              {/* Header */}
               <div className={`flex items-center justify-between px-5 pt-5 pb-3 border-b ${isDark ? "border-white/[0.07]" : "border-gray-100"}`}>
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
-                    <Bell size={14} className="text-white" />
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}>
+                    <Bell size={15} className="text-white" />
                   </div>
                   <div>
-                    <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>{t("notifications") || "Notificaciones"}</h2>
-                    {unreadNotifCount > 0 && <p className="text-xs text-violet-400 font-medium">{unreadNotifCount} sin leer</p>}
+                    <h2 className={`text-base font-bold leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
+                      {t("notifications") || "Notificaciones"}
+                    </h2>
+                    {unreadNotifCount > 0 && (
+                      <p className="text-xs text-violet-400 font-medium">{unreadNotifCount} sin leer</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {unreadNotifCount > 0 && (
-                    <button onClick={markAllNotifsRead} className="text-xs font-medium text-violet-400 hover:text-violet-300 px-2 py-1 rounded-lg hover:bg-violet-500/10">
+                    <button
+                      onClick={markAllNotifsRead}
+                      className="text-xs font-medium text-violet-400 hover:text-violet-300 px-2 py-1 rounded-lg hover:bg-violet-500/10 transition"
+                    >
                       Marcar todo
                     </button>
                   )}
                   <motion.button
-                    whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}
+                    whileHover={{ scale: 1.1, rotate: 90 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => setShowNotifications(false)}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                      isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                    }`}
                   >
                     <X size={15} />
                   </motion.button>
                 </div>
               </div>
 
+              {/* Notifications list */}
               <div className="overflow-y-auto flex-1">
                 {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <span className="text-3xl mb-2">🔔</span>
-                    <p className="text-sm text-gray-500">Sin notificaciones</p>
+                  <div className="flex flex-col items-center justify-center py-14 text-center gap-3">
+                    <div
+                      className="w-14 h-14 rounded-2xl flex items-center justify-center"
+                      style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12))", border: "1px solid rgba(99,102,241,0.18)" }}
+                    >
+                      <Bell size={22} className="text-indigo-400" />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${isDark ? "text-gray-400" : "text-gray-600"}`}>Sin notificaciones</p>
+                      <p className={`text-xs mt-0.5 ${isDark ? "text-gray-600" : "text-gray-400"}`}>Las actividades aparecerán aquí</p>
+                    </div>
                   </div>
                 ) : (
                   notifications.map((notif) => (
                     <div
                       key={notif.id}
                       className={`flex items-start gap-3 px-5 py-3.5 border-b transition-colors ${
-                        isDark ? "border-white/[0.04] hover:bg-white/[0.02]" : "border-gray-50 hover:bg-gray-50"
-                      } ${!notif.read ? (isDark ? "bg-violet-500/[0.04]" : "bg-violet-50/50") : ""}`}
+                        isDark ? "border-white/[0.04] hover:bg-white/[0.02]" : "border-gray-50 hover:bg-gray-50/70"
+                      } ${!notif.read ? (isDark ? "bg-violet-500/[0.04]" : "bg-violet-50/40") : ""}`}
                     >
                       <div className="relative flex-shrink-0">
                         {notif.avatar ? (
                           <img src={notif.avatar} className="w-9 h-9 rounded-full object-cover" alt={notif.user} />
                         ) : (
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                            style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}
+                          >
                             {(notif.user || "?")[0].toUpperCase()}
                           </div>
                         )}
-                        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ${isDark ? "bg-[#111113]" : "bg-white"}`}>
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center ${
+                          isDark ? "bg-[#111113]" : "bg-white"
+                        }`}>
                           {notifIcon(notif.type)}
                         </div>
                       </div>
@@ -1043,7 +1157,9 @@ const HomePage: React.FC<HomePageProps> = ({
                         </p>
                         <p className="text-xs text-gray-500 mt-0.5">{notif.time}</p>
                       </div>
-                      {!notif.read && <div className="w-2 h-2 rounded-full bg-violet-500 flex-shrink-0 mt-1.5" />}
+                      {!notif.read && (
+                        <div className="w-2 h-2 rounded-full flex-shrink-0 mt-2" style={{ background: "#a855f7" }} />
+                      )}
                     </div>
                   ))
                 )}
@@ -1052,6 +1168,7 @@ const HomePage: React.FC<HomePageProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
       {/* ── TOKEN MINI-APP OVERLAY ── */}
       <AnimatePresence>
         {showTokenApp && (
@@ -1062,11 +1179,11 @@ const HomePage: React.FC<HomePageProps> = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
             transition={{ type: "spring", stiffness: 340, damping: 28 }}
-            style={{ background: "#0d0e14" }}
+            style={{ background: "#0a0a0a" }}
           >
             {/* Barra superior con botón cerrar */}
             <div
-              className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+              className="flex items-center justify-between px-5 py-3 flex-shrink-0"
               style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
             >
               <span className="text-white font-semibold text-sm flex items-center gap-2">
@@ -1077,7 +1194,7 @@ const HomePage: React.FC<HomePageProps> = ({
                 whileHover={{ scale: 1.1, rotate: 90 }}
                 whileTap={{ scale: 0.9 }}
                 transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition"
               >
                 <X size={16} />
               </motion.button>
@@ -1086,8 +1203,11 @@ const HomePage: React.FC<HomePageProps> = ({
             {/* iframe de la token app — solo se monta tras el delay de 10s */}
             {!tokenPreloaded ? (
               <div className="flex-1 flex items-center justify-center flex-col gap-3">
-                <div className="w-8 h-8 rounded-full border-2 border-violet-500/30 border-t-violet-400 animate-spin" />
-                <p className="text-gray-400 text-sm">Preparando Token Market…</p>
+                <div
+                  className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
+                  style={{ borderTopColor: "#a855f7", borderRightColor: "#6366f1" }}
+                />
+                <p className="text-gray-500 text-sm">Preparando Token Market…</p>
               </div>
             ) : TOKEN_APP_URL ? (
               <iframe
@@ -1101,9 +1221,9 @@ const HomePage: React.FC<HomePageProps> = ({
               <div className="flex-1 flex items-center justify-center flex-col gap-4 text-center px-6">
                 <span className="text-4xl">🪙</span>
                 <p className="text-white font-semibold text-lg">Token Market</p>
-                <p className="text-gray-400 text-sm max-w-xs">
-                  Define <code className="bg-white/10 px-1 rounded text-violet-300">VITE_TOKEN_APP_URL</code> en tu{" "}
-                  <code className="bg-white/10 px-1 rounded text-violet-300">.env</code> con la URL donde está desplegada la token app.
+                <p className="text-gray-500 text-sm max-w-xs">
+                  Define <code className="bg-white/10 px-1.5 py-0.5 rounded-lg text-violet-300">VITE_TOKEN_APP_URL</code> en tu{" "}
+                  <code className="bg-white/10 px-1.5 py-0.5 rounded-lg text-violet-300">.env</code> con la URL donde está desplegada la token app.
                 </p>
               </div>
             )}
