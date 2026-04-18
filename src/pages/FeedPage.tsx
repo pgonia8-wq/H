@@ -20,6 +20,9 @@ import {
   Lock,
   X,
   CheckCircle2,
+  Globe,
+  BookOpen,
+  PenSquare,
 } from "lucide-react";
 
 const RECEIVER = import.meta.env.VITE_PAYMENT_RECEIVER || "";
@@ -53,27 +56,27 @@ const TAB_PAGE_SIZE = 10;
 
 // ── Beneficios (sin cambios) ────────────────────────────────────────────
 const premiumBenefits = [
-  { icon: <Edit3 size={18} />, text: "Publicaciones más largas (2,000 caracteres)" },
-  { icon: <Zap size={18} />, text: "Prioridad en el feed" },
-  { icon: <Star size={18} />, text: "Badge Premium exclusivo" },
-  { icon: <MessageCircle size={18} />, text: "Salas Classic" },
-  { icon: <Shield size={18} />, text: "Sin anuncios" },
-  { icon: <Edit3 size={18} />, text: "Editar posts hasta 30 minutos" },
-  { icon: <Eye size={18} />, text: "Ver visitas a tu perfil" },
-  { icon: <Users size={18} />, text: "Soporte prioritario" },
+  { icon: <Edit3 size={16} />, text: "Publicaciones más largas (2,000 caracteres)" },
+  { icon: <Zap size={16} />, text: "Prioridad en el feed" },
+  { icon: <Star size={16} />, text: "Badge Premium exclusivo" },
+  { icon: <MessageCircle size={16} />, text: "Salas Classic" },
+  { icon: <Shield size={16} />, text: "Sin anuncios" },
+  { icon: <Edit3 size={16} />, text: "Editar posts hasta 30 minutos" },
+  { icon: <Eye size={16} />, text: "Ver visitas a tu perfil" },
+  { icon: <Users size={16} />, text: "Soporte prioritario" },
 ];
 
 const premiumPlusBenefits = [
-  { icon: <CheckCircle2 size={18} />, text: "Todo lo incluido en Premium" },
-  { icon: <Edit3 size={18} />, text: "Publicaciones ilimitadas (10,000 caracteres)" },
-  { icon: <Crown size={18} />, text: "Badge dorado animado" },
-  { icon: <Trophy size={18} />, text: "Salas Gold y VIP Lounge" },
-  { icon: <Zap size={18} />, text: "Prioridad máxima en el feed" },
-  { icon: <Eye size={18} />, text: "Ver likes y reposts anónimos" },
-  { icon: <Edit3 size={18} />, text: "Editar posts sin límite de tiempo" },
-  { icon: <BarChart2 size={18} />, text: "Analíticas avanzadas" },
-  { icon: <Shield size={18} />, text: "Soporte VIP 24/7" },
-  { icon: <Sparkles size={18} />, text: "Invitaciones exclusivas a eventos" },
+  { icon: <CheckCircle2 size={16} />, text: "Todo lo incluido en Premium" },
+  { icon: <Edit3 size={16} />, text: "Publicaciones ilimitadas (10,000 caracteres)" },
+  { icon: <Crown size={16} />, text: "Badge dorado animado" },
+  { icon: <Trophy size={16} />, text: "Salas Gold y VIP Lounge" },
+  { icon: <Zap size={16} />, text: "Prioridad máxima en el feed" },
+  { icon: <Eye size={16} />, text: "Ver likes y reposts anónimos" },
+  { icon: <Edit3 size={16} />, text: "Editar posts sin límite de tiempo" },
+  { icon: <BarChart2 size={16} />, text: "Analíticas avanzadas" },
+  { icon: <Shield size={16} />, text: "Soporte VIP 24/7" },
+  { icon: <Sparkles size={16} />, text: "Invitaciones exclusivas a eventos" },
 ];
 
 const sortPosts = (posts: any[]) => {
@@ -169,7 +172,6 @@ const FeedPage: React.FC<FeedPageProps> = ({
       setFollowingLoading(true);
 
       try {
-        // 1. Obtener IDs de usuarios seguidos
         const { data: follows } = await supabase
           .from("follows")
           .select("following_id")
@@ -186,7 +188,6 @@ const FeedPage: React.FC<FeedPageProps> = ({
           return;
         }
 
-        // 2. Traer posts de esos usuarios (cursor-based)
         let query = supabase
           .from("posts")
           .select("*")
@@ -300,39 +301,39 @@ const FeedPage: React.FC<FeedPageProps> = ({
     };
   }, [activeTab, fetchFollowing, fetchMine]);
 
-    useEffect(() => {
-  if (activeTab !== "global") return;
-  if (!onLoadMoreGlobal) return;
-  if (!globalHasMore) return;
+  useEffect(() => {
+    if (activeTab !== "global") return;
+    if (!onLoadMoreGlobal) return;
+    if (!globalHasMore) return;
 
-  const observer = new IntersectionObserver(
-  (entries) => {
-    const first = entries[0];
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          onLoadMoreGlobal();
+        }
+      },
+      {
+        root: scrollRef.current,
+        rootMargin: "200px",
+        threshold: 0,
+      }
+    );
 
-    if (first.isIntersecting) {
-      onLoadMoreGlobal();
-    }
-  },
-  {
-    root: scrollRef.current, // 🔥 IMPORTANTE
-    rootMargin: "200px",
-    threshold: 0,
-  }
-);
+    const current = loaderRef.current;
+    if (current) observer.observe(current);
 
-  const current = loaderRef.current;
-  if (current) observer.observe(current);
+    return () => {
+      if (current) observer.unobserve(current);
+    };
+  }, [activeTab, onLoadMoreGlobal, globalHasMore]);
 
-  return () => {
-    if (current) observer.unobserve(current);
-  };
-}, [activeTab, onLoadMoreGlobal, globalHasMore]);
   // ── Qué posts mostrar según tab activo ───────────────────────────────
   const activePosts =
     activeTab === "global"
-      ? sortPosts(posts)           // comportamiento original intacto
+      ? sortPosts(posts)
       : activeTab === "following"
-      ? sortPosts(followingPosts)  // mismo algoritmo de score
+      ? sortPosts(followingPosts)
       : sortPosts(minePosts);
 
   const activeLoading =
@@ -343,11 +344,12 @@ const FeedPage: React.FC<FeedPageProps> = ({
       : mineLoading;
 
   const activeHasMore =
-  activeTab === "following"
-    ? followingHasMore
-    : activeTab === "mine"
-    ? mineHasMore
-    : globalHasMore;
+    activeTab === "following"
+      ? followingHasMore
+      : activeTab === "mine"
+      ? mineHasMore
+      : globalHasMore;
+
   // ── Upgrade logic (sin cambios) ───────────────────────────────────────
   useEffect(() => {
     if (!selectedTier) return;
@@ -441,314 +443,347 @@ const FeedPage: React.FC<FeedPageProps> = ({
   return (
     <div
       ref={scrollRef}
-      className={`flex flex-col p-4 overflow-y-auto ${isDark ? "bg-gray-900 text-white" : "bg-white text-black"}`}
+      className={`flex flex-col w-full max-w-xl mx-auto px-0 overflow-y-auto ${
+        isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f8f9fa] text-gray-900"
+      }`}
     >
-      {/* ── TABS (NUEVO) ─────────────────────────────────────────── */}
-      <div
-        className={`flex rounded-2xl mb-4 p-1 ${
-          isDark ? "bg-gray-800/60" : "bg-gray-100"
-        }`}
-      >
-        {([
-          { key: "global",    label: t("tab_global") },
-          { key: "following", label: t("tab_following") },
-          { key: "mine",      label: t("tab_mine") },
-        ] as { key: FeedTab; label: string }[]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-all ${
-              activeTab === key
-                ? isDark
-                  ? "bg-gray-700 text-white shadow-sm"
-                  : "bg-white text-gray-900 shadow-sm"
-                : isDark
-                ? "text-gray-400 hover:text-gray-200"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── WHY STAY BANNER ──────────────────────────────────────── */}
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl mb-4 ${
-        isDark
-          ? "bg-gradient-to-r from-emerald-950/40 to-emerald-900/20 border border-emerald-800/30"
-          : "bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100"
-      }`}>
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
-          isDark ? "bg-emerald-500/20" : "bg-emerald-100"
-        }`}>
-          <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <p className={`text-xs font-medium leading-snug ${isDark ? "text-emerald-300/80" : "text-emerald-700"}`}>
-          {(() => { const txt = t ? t("earn_wld_banner") : null; return (txt && txt !== "earn_wld_banner") ? txt : "Gana WLD publicando y conectando con humanos reales"; })()}
-        </p>
-      </div>
-
-      {/* ── UPGRADE BUTTON (sin cambios) ─────────────────────────── */}
-      <div className="mb-6">
-        <motion.button
-          whileHover={{ scale: 1.02, brightness: 1.1 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={handleUpgrade}
-          className="w-full py-3 rounded-xl font-bold shadow-lg bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-white tracking-wide text-base"
-          style={{ boxShadow: "0 4px 24px 0 rgba(99,60,220,0.25)" }}
+      <div className="px-4 pt-4">
+        {/* ── TABS ─────────────────────────────────────────────────── */}
+        <div
+          className={`flex rounded-2xl mb-4 p-1.5 gap-1 ${
+            isDark ? "bg-[#111113] border border-white/[0.06]" : "bg-white border border-gray-100 shadow-sm"
+          }`}
         >
-          {t ? t("upgrade") : "✦ Upgrade"}
-        </motion.button>
-      </div>
+          {([
+            { key: "global",    label: t("tab_global"),    icon: <Globe size={13} /> },
+            { key: "following", label: t("tab_following"), icon: <Users size={13} /> },
+            { key: "mine",      label: t("tab_mine"),      icon: <PenSquare size={13} /> },
+          ] as { key: FeedTab; label: string; icon: React.ReactNode }[]).map(({ key, label, icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                activeTab === key
+                  ? "text-white shadow-md"
+                  : isDark
+                    ? "text-gray-500 hover:text-gray-300"
+                    : "text-gray-400 hover:text-gray-600"
+              }`}
+              style={
+                activeTab === key
+                  ? { background: "linear-gradient(135deg, #6366f1, #a855f7)", boxShadow: "0 2px 12px rgba(99,102,241,0.40)" }
+                  : undefined
+              }
+            >
+              {icon}
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
 
-      {/* ── UPGRADE OPTIONS (sin cambios) ────────────────────────── */}
-      <AnimatePresence>
-        {showUpgradeOptions && (
-          <motion.div
-            key="upgrade-options"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="flex gap-3 mb-6"
+        {/* ── WHY STAY BANNER ──────────────────────────────────────── */}
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl mb-4 ${
+          isDark
+            ? "bg-gradient-to-r from-emerald-950/50 to-emerald-900/20 border border-emerald-800/25"
+            : "bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100"
+        }`}>
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            isDark ? "bg-emerald-500/20" : "bg-emerald-100"
+          }`}>
+            <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className={`text-xs font-medium leading-snug ${isDark ? "text-emerald-300/80" : "text-emerald-700"}`}>
+            {(() => { const txt = t ? t("earn_wld_banner") : null; return (txt && txt !== "earn_wld_banner") ? txt : "Gana WLD publicando y conectando con humanos reales"; })()}
+          </p>
+        </div>
+
+        {/* ── UPGRADE BUTTON ───────────────────────────────────────── */}
+        <div className="mb-5">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleUpgrade}
+            className="relative w-full py-3.5 rounded-2xl font-bold text-white tracking-wide text-sm overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 50%, #a855f7 100%)",
+              boxShadow: "0 6px 28px rgba(99,102,241,0.40)",
+            }}
           >
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => selectTier("premium")}
-              className="flex-1 py-5 rounded-2xl font-bold flex flex-col items-center gap-2 relative overflow-hidden"
-              style={{
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #a78bfa 100%)",
-                boxShadow: "0 6px 32px 0 rgba(99,60,220,0.30)",
-              }}
-            >
-              <Star size={26} className="text-yellow-300 drop-shadow" />
-              <span className="text-white text-lg tracking-wide">Premium</span>
-              <span className="text-indigo-200 text-xs font-normal">{t("acceso_prioritario")}</span>
-            </motion.button>
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              <Sparkles size={15} />
+              {t ? t("upgrade") : "Upgrade Premium"}
+            </span>
+          </motion.button>
+        </div>
 
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => selectTier("premium+")}
-              className="flex-1 py-5 rounded-2xl font-bold flex flex-col items-center gap-2 relative overflow-hidden"
-              style={{
-                background: "linear-gradient(135deg, #b45309 0%, #d97706 40%, #fbbf24 80%, #fde68a 100%)",
-                boxShadow: "0 6px 32px 0 rgba(217,119,6,0.35)",
-              }}
+        {/* ── UPGRADE OPTIONS ───────────────────────────────────────── */}
+        <AnimatePresence>
+          {showUpgradeOptions && (
+            <motion.div
+              key="upgrade-options"
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="flex gap-3 mb-5 overflow-hidden"
             >
-              <Crown size={26} className="text-white drop-shadow" />
-              <span className="text-white text-lg tracking-wide">Premium+</span>
-              <span className="text-yellow-100 text-xs font-normal">{t("nivel_maximo_vip")}</span>
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => selectTier("premium")}
+                className="flex-1 py-5 rounded-2xl font-bold flex flex-col items-center gap-2 relative overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #a78bfa 100%)",
+                  boxShadow: "0 8px 32px rgba(99,60,220,0.35)",
+                }}
+              >
+                <Star size={24} className="text-yellow-300 drop-shadow" />
+                <span className="text-white text-base tracking-wide">Premium</span>
+                <span className="text-indigo-200 text-xs font-normal">{t("acceso_prioritario")}</span>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => selectTier("premium+")}
+                className="flex-1 py-5 rounded-2xl font-bold flex flex-col items-center gap-2 relative overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, #b45309 0%, #d97706 40%, #fbbf24 80%, #fde68a 100%)",
+                  boxShadow: "0 8px 32px rgba(217,119,6,0.40)",
+                }}
+              >
+                <Crown size={24} className="text-white drop-shadow" />
+                <span className="text-white text-base tracking-wide">Premium+</span>
+                <span className="text-yellow-100 text-xs font-normal">{t("nivel_maximo_vip")}</span>
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* ── POSTS según tab activo ───────────────────────────────── */}
       {activeLoading && activePosts.length === 0 ? (
-        <p className="text-center py-10">{t ? t("cargando") : "Cargando..."}</p>
-      ) : error && activeTab === "global" ? (
-        <p className="text-red-500 text-center py-10">{error}</p>
-      ) : activePosts.length === 0 && !activeLoading ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <span className="text-4xl">
-            {activeTab === "following" ? "👥" : activeTab === "mine" ? "✍️" : "🌍"}
-          </span>
-          <p className={`text-sm font-medium ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-            {activeTab === "following"
-              ? t("no_posts_following")
-              : activeTab === "mine"
-              ? t("no_posts_mine")
-              : t("no_posts_global")}
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <div
+            className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
+            style={{ borderTopColor: "#a855f7", borderRightColor: "#6366f1" }}
+          />
+          <p className={`text-xs font-medium ${isDark ? "text-gray-600" : "text-gray-400"}`}>
+            {t ? t("cargando") : "Cargando..."}
           </p>
         </div>
+      ) : error && activeTab === "global" ? (
+        <div className="flex flex-col items-center justify-center py-16 px-6 gap-3 text-center">
+          <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center">
+            <X size={18} className="text-red-400" />
+          </div>
+          <p className="text-sm font-medium text-red-400">{error}</p>
+        </div>
+      ) : activePosts.length === 0 && !activeLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 px-6 text-center gap-4 animate-fade-in">
+          <div
+            className="w-20 h-20 rounded-3xl flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12))", border: "1px solid rgba(99,102,241,0.18)" }}
+          >
+            <span className="text-3xl">
+              {activeTab === "following" ? "👥" : activeTab === "mine" ? "✍️" : "🌍"}
+            </span>
+          </div>
+          <div>
+            <p className={`text-base font-semibold ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+              {activeTab === "following"
+                ? t("no_posts_following")
+                : activeTab === "mine"
+                ? t("no_posts_mine")
+                : t("no_posts_global")}
+            </p>
+            <p className={`text-sm mt-1 ${isDark ? "text-gray-600" : "text-gray-400"}`}>
+              {activeTab === "following"
+                ? "Sigue a alguien para ver sus posts aquí."
+                : activeTab === "mine"
+                ? "Publica algo y aparecerá aquí."
+                : "Sé el primero en publicar."}
+            </p>
+          </div>
+        </div>
       ) : (
-        <div className="space-y-5">
+        <div className="flex flex-col">
           {activePosts.map((post) => (
             <PostCard key={post.id} post={post} currentUserId={currentUserId} />
           ))}
           {activeTab === "global" && <div ref={loaderRef} className="h-10" />}
 
-
-          {/* Loader de más posts (tabs following/mine) */}
+          {/* Loader de más posts */}
           {activeLoading && activePosts.length > 0 && (
-            <div className="flex justify-center py-4">
-              <div className="w-5 h-5 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
+            <div className="flex justify-center py-6">
+              <div
+                className="w-6 h-6 rounded-full border-2 border-transparent animate-spin"
+                style={{ borderTopColor: "#a855f7", borderRightColor: "#6366f1" }}
+              />
             </div>
           )}
-  
 
-          {/* Fin del feed */}
-          {!activeHasMore && activeTab !== "global" && activePosts.length > 0 && (
-            <p className={`text-center text-xs py-6 ${isDark ? "text-gray-600" : "text-gray-400"}`}>
-              — Fin del feed —
-            </p>
+          {/* End of feed */}
+          {!activeHasMore && activePosts.length > 0 && !activeLoading && (
+            <div className={`flex flex-col items-center justify-center py-10 gap-2 text-center`}>
+              <div className={`w-8 h-[1px] rounded-full mb-1 ${isDark ? "bg-white/10" : "bg-gray-200"}`} />
+              <p className={`text-xs font-medium ${isDark ? "text-gray-700" : "text-gray-400"}`}>
+                Has llegado al final
+              </p>
+            </div>
           )}
         </div>
       )}
 
-      {upgradeError && (
-        <p className="text-red-500 text-center py-4">{upgradeError}</p>
-      )}
-
-      {/* ── MODAL UPGRADE (sin cambios) ──────────────────────────── */}
+      {/* ── SLIDE MODAL (upgrade details) ─────────────────────────── */}
       <AnimatePresence>
         {showSlideModal && selectedTier && (
           <motion.div
-            key="modal-backdrop"
+            key="slide-modal-overlay"
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center px-3"
-            style={{ backdropFilter: "blur(16px)", background: "rgba(0,0,0,0.72)" }}
-            onClick={(e) => { if (e.target === e.currentTarget) cancelUpgrade(); }}
+            style={{ backdropFilter: "blur(12px)", background: "rgba(0,0,0,0.75)" }}
+            onClick={cancelUpgrade}
           >
             <motion.div
-              key="modal-content"
-              initial={{ opacity: 0, scale: 0.93, y: 32 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.93, y: 32 }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-md rounded-3xl overflow-hidden relative"
-              style={{
-                background: isPremiumPlus
-                  ? "linear-gradient(160deg, #1a1206 0%, #2d1e07 30%, #1c1400 60%, #111 100%)"
-                  : "linear-gradient(160deg, #0f0c1e 0%, #1a1040 40%, #0d0a1e 100%)",
-                boxShadow: isPremiumPlus
-                  ? "0 32px 80px 0 rgba(217,119,6,0.40), 0 0 0 1px rgba(251,191,36,0.15)"
-                  : "0 32px 80px 0 rgba(99,60,220,0.45), 0 0 0 1px rgba(139,92,246,0.18)",
-              }}
+              key="slide-modal"
+              className={`relative w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col ${
+                isDark ? "bg-[#111113] border border-white/[0.08]" : "bg-white border border-gray-200"
+              }`}
+              style={{ maxHeight: "88vh" }}
+              initial={{ opacity: 0, y: 80 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 80 }}
+              transition={{ type: "spring", stiffness: 320, damping: 30 }}
+              onClick={(e) => e.stopPropagation()}
             >
+              {/* Gradient accent top */}
               <div
-                className="absolute inset-x-0 top-0 h-1 rounded-t-3xl"
+                className="absolute inset-x-0 top-0 h-1.5 rounded-t-3xl"
                 style={{
                   background: isPremiumPlus
-                    ? "linear-gradient(90deg, #b45309, #fbbf24, #fde68a, #fbbf24, #b45309)"
-                    : "linear-gradient(90deg, #4f46e5, #7c3aed, #a78bfa, #7c3aed, #4f46e5)",
+                    ? "linear-gradient(90deg, #b45309, #fbbf24)"
+                    : "linear-gradient(90deg, #6366f1, #a855f7)",
                 }}
               />
 
-              <button
-                onClick={cancelUpgrade}
-                className="absolute top-4 right-4 z-10 rounded-full p-1.5 text-gray-400 hover:text-white transition-colors"
-                style={{ background: "rgba(255,255,255,0.08)" }}
-              >
-                <X size={18} />
-              </button>
-
-              <div className="p-7 pb-2">
-                <div className="flex flex-col items-center mb-5">
-                  <motion.div
-                    animate={
-                      isPremiumPlus
-                        ? { rotate: [0, -8, 8, -4, 4, 0] }
-                        : { scale: [1, 1.12, 1] }
-                    }
-                    transition={{ repeat: Infinity, duration: 3.5, ease: "easeInOut" }}
-                    className="mb-3"
-                  >
-                    {isPremiumPlus ? (
-                      <Crown size={48} className="text-yellow-400 drop-shadow-lg" />
-                    ) : (
-                      <Star size={48} className="text-violet-400 drop-shadow-lg" />
-                    )}
-                  </motion.div>
-
-                  <h2 className="text-2xl font-extrabold text-white text-center leading-tight mb-1">
-                    {isPremiumPlus ? "¡Conviértete en Premium+!" : "¡Desbloquea Premium!"}
-                  </h2>
-                  <p
-                    className="text-sm text-center font-medium"
-                    style={{ color: isPremiumPlus ? "#fde68a" : "#c4b5fd" }}
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 pt-7 pb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center"
+                    style={{
+                      background: isPremiumPlus
+                        ? "linear-gradient(135deg, #b45309, #fbbf24)"
+                        : "linear-gradient(135deg, #6366f1, #a855f7)",
+                    }}
                   >
                     {isPremiumPlus
-                      ? "El nivel máximo con ventajas únicas"
-                      : "Lleva tu experiencia al siguiente nivel"}
-                  </p>
+                      ? <Crown size={18} className="text-white" />
+                      : <Star size={18} className="text-white" />
+                    }
+                  </div>
+                  <div>
+                    <h2 className={`text-lg font-bold tracking-tight ${isDark ? "text-white" : "text-gray-900"}`}>
+                      {selectedTier === "premium+" ? "Premium+" : "Premium"}
+                    </h2>
+                    {price > 0 && (
+                      <p className={`text-xs font-semibold ${isPremiumPlus ? "text-yellow-400" : "text-indigo-400"}`}>
+                        {price} WLD / mes
+                      </p>
+                    )}
+                  </div>
                 </div>
-
-                <div
-                  className="rounded-2xl p-4 mb-5 overflow-y-auto"
-                  style={{
-                    maxHeight: "38vh",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                  }}
+                <button
+                  onClick={cancelUpgrade}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition ${
+                    isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                  }`}
                 >
-                  <ul className="space-y-2.5">
-                    {benefits.map((b, i) => (
-                      <motion.li
-                        key={i}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.045, duration: 0.25 }}
-                        className="flex items-center gap-3"
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Benefits list */}
+              <div className="px-6 pb-4 flex-1 overflow-y-auto">
+                <div className="flex flex-col gap-2.5">
+                  {benefits.map((b, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border ${
+                        isDark
+                          ? "bg-white/[0.03] border-white/[0.06]"
+                          : "bg-gray-50 border-gray-100"
+                      }`}
+                    >
+                      <div
+                        className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center"
+                        style={{
+                          background: isPremiumPlus
+                            ? "linear-gradient(135deg, rgba(180,83,9,0.2), rgba(251,191,36,0.2))"
+                            : "linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))",
+                        }}
                       >
-                        <span
-                          className="flex-shrink-0 rounded-full p-1.5"
-                          style={{
-                            background: isPremiumPlus
-                              ? "rgba(251,191,36,0.15)"
-                              : "rgba(139,92,246,0.18)",
-                            color: isPremiumPlus ? "#fbbf24" : "#a78bfa",
-                          }}
-                        >
+                        <span className={isPremiumPlus ? "text-yellow-400" : "text-indigo-400"}>
                           {b.icon}
                         </span>
-                        <span className="text-sm text-gray-200 leading-snug">{b.text}</span>
-                      </motion.li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div
-                  className="flex items-center justify-center gap-2 mb-5 rounded-xl py-2.5"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
-                >
-                  <Lock size={14} style={{ color: isPremiumPlus ? "#fbbf24" : "#a78bfa" }} />
-                  <span className="text-white font-bold text-lg">
-                    {price ? `${price} WLD` : "..."}
-                  </span>
-                  <span className="text-gray-400 text-sm">pago único</span>
+                      </div>
+                      <span className={`text-sm font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}>
+                        {b.text}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="px-7 pb-7 flex flex-col gap-3">
-                <motion.button
-                  whileHover={{ scale: 1.02, filter: "brightness(1.1)" }}
-                  whileTap={{ scale: 0.97 }}
+              {/* Error */}
+              {upgradeError && (
+                <div className="mx-6 mb-3 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400 text-center">
+                  {upgradeError}
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 px-6 pb-8 pt-2">
+                <button
+                  onClick={cancelUpgrade}
+                  className={`flex-1 py-3 rounded-2xl text-sm font-medium border transition ${
+                    isDark
+                      ? "border-white/10 text-gray-400 hover:bg-white/[0.04]"
+                      : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                  }`}
+                >
+                  Cancelar
+                </button>
+                <button
                   onClick={confirmUpgrade}
-                  disabled={loadingUpgrade}
-                  className="w-full py-4 rounded-2xl font-extrabold text-base tracking-wide transition-all"
+                  disabled={loadingUpgrade || !price}
+                  className="flex-1 py-3 rounded-2xl text-sm font-bold text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     background: isPremiumPlus
-                      ? "linear-gradient(90deg, #b45309, #d97706, #fbbf24)"
-                      : "linear-gradient(90deg, #4f46e5, #7c3aed, #8b5cf6)",
-                    color: isPremiumPlus ? "#1a1206" : "#fff",
+                      ? "linear-gradient(135deg, #b45309, #fbbf24)"
+                      : "linear-gradient(135deg, #6366f1, #a855f7)",
                     boxShadow: isPremiumPlus
-                      ? "0 6px 28px 0 rgba(217,119,6,0.45)"
-                      : "0 6px 28px 0 rgba(99,60,220,0.45)",
-                    opacity: loadingUpgrade ? 0.7 : 1,
+                      ? "0 4px 20px rgba(217,119,6,0.40)"
+                      : "0 4px 20px rgba(99,102,241,0.40)",
                   }}
                 >
-                  {loadingUpgrade
-                    ? t ? t("procesando") : "Procesando..."
-                    : `Aceptar y pagar ${price ? `${price} WLD` : ""}`}
-                </motion.button>
-
-                <motion.button
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={cancelUpgrade}
-                  className="w-full py-3.5 rounded-2xl font-semibold text-sm text-gray-400 hover:text-gray-200 transition-colors"
-                  style={{ background: "rgba(255,255,255,0.06)" }}
-                >
-                  {t ? t("cancelar") : "Cancelar"}
-                </motion.button>
+                  {loadingUpgrade ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      Procesando...
+                    </span>
+                  ) : price > 0 ? (
+                    `Activar por ${price} WLD`
+                  ) : (
+                    "Calculando..."
+                  )}
+                </button>
               </div>
             </motion.div>
           </motion.div>
