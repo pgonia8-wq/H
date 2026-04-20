@@ -684,11 +684,11 @@ const HomePage: React.FC<HomePageProps> = ({
           isDark ? "bg-[#0a0a0a]/92 border-white/[0.09]" : "bg-white/95 border-black/[0.07]"
         }`}
         style={{
-          backdropFilter: "blur(28px)",
-          WebkitBackdropFilter: "blur(28px)",
+          backdropFilter: "blur(36px)",
+          WebkitBackdropFilter: "blur(36px)",
           boxShadow: isDark
-            ? "0 8px 40px rgba(0,0,0,0.80), 0 2px 12px rgba(0,0,0,0.60), inset 0 1px 0 rgba(255,255,255,0.06)"
-            : "0 8px 40px rgba(0,0,0,0.18), 0 2px 12px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.90)",
+            ? "0 25px 50px -12px rgba(0,0,0,0.85), 0 8px 24px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.40)"
+            : "0 25px 50px -12px rgba(0,0,0,0.22), 0 8px 24px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,1), inset 0 -1px 0 rgba(0,0,0,0.04)",
         }}
       >
         {/* ── BOTÓN +Post ── */}

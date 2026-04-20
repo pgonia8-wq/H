@@ -715,35 +715,35 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
     <div
       ref={postRef}
       className={`
-        relative w-full px-4 pt-5 pb-4
-        border-b transition-colors duration-200
+        relative w-full px-4 pt-5 pb-4 mb-3
+        rounded-2xl border transition-all duration-200
         ${isBoosted
           ? isDark
-            ? "border-orange-800/25"
-            : "border-orange-200/50"
+            ? "border-orange-500/20"
+            : "border-orange-300/40"
           : isDark
-            ? "border-white/[0.07]"
-            : "border-black/[0.06]"
+            ? "border-white/[0.08]"
+            : "border-black/[0.07]"
         }
       `}
       style={isBoosted ? {
-        backdropFilter: "blur(32px)",
-        WebkitBackdropFilter: "blur(32px)",
+        backdropFilter: "blur(40px)",
+        WebkitBackdropFilter: "blur(40px)",
         background: isDark
-          ? "rgba(30,16,8,0.82)"
-          : "rgba(255,245,235,0.82)",
+          ? "rgba(28,14,4,0.60)"
+          : "rgba(255,248,240,0.72)",
         boxShadow: isDark
-          ? "0 8px 32px rgba(0,0,0,0.60), 0 2px 8px rgba(0,0,0,0.40), inset 0 1px 0 rgba(251,146,60,0.10)"
-          : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,1)",
+          ? "0 25px 50px -12px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.50), inset 0 1px 0 rgba(251,146,60,0.12), inset 0 -1px 0 rgba(0,0,0,0.30)"
+          : "0 25px 50px -12px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.95)",
       } : {
-        backdropFilter: "blur(32px)",
-        WebkitBackdropFilter: "blur(32px)",
+        backdropFilter: "blur(40px)",
+        WebkitBackdropFilter: "blur(40px)",
         background: isDark
-          ? "rgba(18,18,20,0.80)"
-          : "rgba(255,255,255,0.80)",
+          ? "rgba(14,14,18,0.58)"
+          : "rgba(255,255,255,0.72)",
         boxShadow: isDark
-          ? "0 8px 32px rgba(0,0,0,0.60), 0 2px 8px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)"
-          : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,1)",
+          ? "0 25px 50px -12px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.30)"
+          : "0 25px 50px -12px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,1)",
       }}
       onClick={isAd ? handleAdClick : undefined}
     >
