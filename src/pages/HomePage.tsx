@@ -680,7 +680,7 @@ const HomePage: React.FC<HomePageProps> = ({
 
       {/* ── HEADER FLOTANTE ── */}
       <header
-        className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-3 py-2 rounded-2xl border ${
+        className={`fixed top-3 left-3 right-3 z-30 flex items-center gap-1.5 px-2 py-2 rounded-2xl border ${
           isDark ? "bg-[#0a0a0a]/92 border-white/[0.09]" : "bg-white/95 border-black/[0.07]"
         }`}
         style={{
@@ -691,147 +691,141 @@ const HomePage: React.FC<HomePageProps> = ({
             : "0 8px 40px rgba(0,0,0,0.18), 0 2px 12px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.90)",
         }}
       >
-        {/* ── ZONA IZQUIERDA: +Post + Inbox ── */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* ── BOTÓN +Post ── */}
+        <motion.button
+          onClick={() => setShowNewPostModal(true)}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex-1 h-10 flex items-center justify-center rounded-xl"
+          style={{
+            background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
+            color: "#ffffff",
+          }}
+        >
+          <Plus size={17} />
+        </motion.button>
 
-          {/* +Post */}
+        {/* ── BOTÓN Mail ── */}
+        <div className="relative flex-1">
           <motion.button
-            onClick={() => setShowNewPostModal(true)}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            className="w-9 h-9 flex items-center justify-center rounded-xl relative overflow-hidden flex-shrink-0"
+            onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-full h-10 flex items-center justify-center rounded-xl"
             style={{
               background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
               border: "1px solid rgba(255,255,255,0.14)",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
               color: "#ffffff",
             }}
           >
-            <Plus size={16} />
+            <Mail size={17} />
           </motion.button>
-
-          {/* Inbox */}
-          <div className="relative">
-            <motion.button
-              onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
-              className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
-              style={{
-                background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-                border: "1px solid rgba(255,255,255,0.14)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
-                color: "#ffffff",
-              }}
-            >
-              <Mail size={16} />
-            </motion.button>
-            <AnimatePresence>
-              {unreadTotal > 0 && (
-                <motion.span
-                  key="mail-badge"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                  className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 leading-none shadow-md"
-                >
-                  {unreadTotal > 99 ? "99+" : unreadTotal}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* ── ZONA DERECHA: Bell + Chat + Avatar ── */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-
-          {/* Notificaciones */}
-          <div className="relative">
-            <motion.button
-              onClick={() => setShowNotifications(true)}
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.94 }}
-              className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
-              style={{
-                background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-                border: "1px solid rgba(255,255,255,0.14)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
-                color: "#ffffff",
-              }}
-            >
-              <motion.div
-                animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
-                transition={{ duration: 0.5, delay: 0.3 }}
+          <AnimatePresence>
+            {unreadTotal > 0 && (
+              <motion.span
+                key="mail-badge"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 24 }}
+                className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 leading-none shadow-md pointer-events-none"
               >
-                <Bell size={16} />
-              </motion.div>
-            </motion.button>
-            <AnimatePresence>
-              {unreadNotifCount > 0 && (
-                <motion.span
-                  key="bell-badge"
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                  className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-violet-500 text-white text-[9px] font-bold px-1 leading-none shadow-md"
-                >
-                  {unreadNotifCount}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
+                {unreadTotal > 99 ? "99+" : unreadTotal}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </div>
 
-          {/* Chat */}
+        {/* ── BOTÓN Bell ── */}
+        <div className="relative flex-1">
           <motion.button
-            onClick={handleHeaderChat}
-            disabled={headerChatLoading || checkingAccessHeader}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0 disabled:opacity-50"
+            onClick={() => setShowNotifications(true)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="w-full h-10 flex items-center justify-center rounded-xl"
             style={{
               background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
               border: "1px solid rgba(255,255,255,0.14)",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
               color: "#ffffff",
             }}
           >
-            <MessageCircle size={16} />
+            <motion.div
+              animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <Bell size={17} />
+            </motion.div>
           </motion.button>
-
-          {/* Avatar con badge World Verified */}
-          <motion.div
-            className="relative cursor-pointer flex-shrink-0"
-            onClick={() => setShowProfileModal(true)}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-          >
-            <div
-              className={`w-9 h-9 rounded-full overflow-hidden ring-2 transition-all ${
-                isDark ? "ring-white/20 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"
-              }`}
-              style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
-            >
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
-              ) : (
-                <div
-                  className="w-full h-full flex items-center justify-center text-sm font-bold"
-                  style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff" }}
-                >
-                  {(username || "H")[0].toUpperCase()}
-                </div>
-              )}
-            </div>
-            <div
-              className="absolute bottom-0 right-0 w-[13px] h-[13px] rounded-full flex items-center justify-center shadow-md"
-              style={{ background: "#22c55e", border: isDark ? "1.5px solid #0a0a0a" : "1.5px solid #ffffff" }}
-            >
-              <span className="text-white font-extrabold leading-none" style={{ fontSize: 7 }}>W</span>
-            </div>
-          </motion.div>
+          <AnimatePresence>
+            {unreadNotifCount > 0 && (
+              <motion.span
+                key="bell-badge"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 24 }}
+                className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-violet-500 text-white text-[9px] font-bold px-1 leading-none shadow-md pointer-events-none"
+              >
+                {unreadNotifCount}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </div>
+
+        {/* ── BOTÓN Chat ── */}
+        <motion.button
+          onClick={handleHeaderChat}
+          disabled={headerChatLoading || checkingAccessHeader}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          className="flex-1 h-10 flex items-center justify-center rounded-xl disabled:opacity-50"
+          style={{
+            background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+            border: "1px solid rgba(255,255,255,0.14)",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
+            color: "#ffffff",
+          }}
+        >
+          <MessageCircle size={17} />
+        </motion.button>
+
+        {/* ── AVATAR (mismo tamaño y forma) ── */}
+        <motion.div
+          className="relative flex-1 h-10 cursor-pointer"
+          onClick={() => setShowProfileModal(true)}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <div
+            className="w-full h-full rounded-xl overflow-hidden"
+            style={{
+              background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
+            }}
+          >
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center text-sm font-bold"
+                style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff" }}
+              >
+                {(username || "H")[0].toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div
+            className="absolute bottom-0.5 right-0.5 w-[13px] h-[13px] rounded-full flex items-center justify-center shadow-md"
+            style={{ background: "#22c55e", border: isDark ? "1.5px solid #0a0a0a" : "1.5px solid #ffffff" }}
+          >
+            <span className="text-white font-extrabold leading-none" style={{ fontSize: 7 }}>W</span>
+          </div>
+        </motion.div>
       </header>
 
       {/* ── BANNER CARRUSEL: Gana WLD ── */}
@@ -855,15 +849,22 @@ const HomePage: React.FC<HomePageProps> = ({
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-8 px-8 text-[10px] font-bold tracking-wide"
-              style={{
+              className="inline-flex items-center gap-8 px-8 text-[11px] font-bold tracking-wide"
+              style={isDark ? {
                 background: "linear-gradient(90deg, #00ffc8 0%, #00e5ff 28%, #00ff94 55%, #00cfff 80%, #00ffc8 100%)",
                 backgroundSize: "200% auto",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 backgroundClip: "text",
                 animation: "metalShimmer 4s linear infinite",
-                filter: "drop-shadow(0 0 6px rgba(0,229,255,0.55))",
+                filter: "drop-shadow(0 0 5px rgba(0,229,255,0.50))",
+              } : {
+                background: "linear-gradient(90deg, #1a1a1a 0%, #3a3a3a 25%, #111111 50%, #4a4a4a 75%, #1a1a1a 100%)",
+                backgroundSize: "200% auto",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+                animation: "metalShimmer 5s linear infinite",
               }}
             >
               <span>✦ Gana WLD publicando y conectando con humanos reales</span>

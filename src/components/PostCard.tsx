@@ -832,17 +832,16 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             {currentUserId && currentUserId !== post.user_id && (
               <button
                 onClick={toggleFollow}
-                className={`
-                  ml-auto flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-200 hover:scale-105 active:scale-95
-                  ${isFollowing
-                    ? isDark
-                      ? "border-white/10 text-gray-400 hover:border-red-500/40 hover:text-red-400 hover:bg-red-500/[0.08]"
-                      : "border-gray-200 text-gray-500 hover:border-red-300 hover:text-red-500"
-                    : isDark
-                      ? "border-indigo-500/40 text-indigo-400 hover:bg-indigo-500/[0.12]"
-                      : "border-indigo-300 text-indigo-500 hover:bg-indigo-50"
-                  }
-                `}
+                className="ml-auto flex-shrink-0 px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
+                style={isFollowing ? {
+                  border: isDark ? "1px solid rgba(255,255,255,0.10)" : "1px solid rgba(0,0,0,0.12)",
+                  color: isDark ? "#6b7280" : "#9ca3af",
+                } : {
+                  background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.18)",
+                  color: "#ffffff",
+                }}
               >
                 {loadingAction === "follow" ? "..." : isFollowing ? t("following") : t("follow")}
               </button>
