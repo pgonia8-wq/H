@@ -737,21 +737,8 @@ const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
 
-        {/* ── ZONA DERECHA: Utilidades + Avatar ── */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-
-          {/* Token mini-app */}
-          <motion.button
-            onClick={() => setShowTokenApp(true)}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            className={`w-8 h-8 flex items-center justify-center rounded-full text-base transition-colors ${
-              isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
-            }`}
-            title="Token Market"
-          >
-            🪙
-          </motion.button>
+        {/* ── ZONA DERECHA: Tema + Avatar ── */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
 
           {/* Tema */}
           <motion.button
@@ -773,21 +760,6 @@ const HomePage: React.FC<HomePageProps> = ({
                 {isDark ? <Sun size={16} /> : <Moon size={16} />}
               </motion.span>
             </AnimatePresence>
-          </motion.button>
-
-          {/* Idioma */}
-          <motion.button
-            onClick={() => setLanguage(language === "es" ? "en" : "es")}
-            whileHover={{ scale: 1.06 }}
-            whileTap={{ scale: 0.94 }}
-            className={`h-8 px-2.5 flex items-center gap-1 rounded-full text-[11px] font-semibold transition-colors ${
-              isDark
-                ? "text-gray-400 hover:text-white bg-white/[0.05] hover:bg-white/10"
-                : "text-gray-500 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"
-            }`}
-          >
-            <Globe size={11} />
-            {language.toUpperCase()}
           </motion.button>
 
           {/* Avatar con badge World Verified */}
@@ -846,6 +818,7 @@ const HomePage: React.FC<HomePageProps> = ({
             currentUserId={userId}
             onClose={() => setShowProfileModal(false)}
             onProfileUpdated={handleProfileUpdated}
+            onOpenTokenApp={() => { setShowProfileModal(false); setShowTokenApp(true); }}
           />
         </Suspense>
       )}
