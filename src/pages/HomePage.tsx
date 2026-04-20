@@ -687,8 +687,8 @@ const HomePage: React.FC<HomePageProps> = ({
           backdropFilter: "blur(28px)",
           WebkitBackdropFilter: "blur(28px)",
           boxShadow: isDark
-            ? "0 8px 32px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.40)"
-            : "0 8px 32px rgba(0,0,0,0.09), 0 2px 8px rgba(0,0,0,0.05)",
+            ? "0 8px 40px rgba(0,0,0,0.80), 0 2px 12px rgba(0,0,0,0.60), inset 0 1px 0 rgba(255,255,255,0.06)"
+            : "0 8px 40px rgba(0,0,0,0.18), 0 2px 12px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.90)",
         }}
       >
         {/* ── ZONA IZQUIERDA: +Post + Inbox ── */}
@@ -700,16 +700,11 @@ const HomePage: React.FC<HomePageProps> = ({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold relative overflow-hidden"
-            style={isDark ? {
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%)",
-              boxShadow: "0 2px 16px rgba(99,102,241,0.40), inset 0 1px 0 rgba(255,255,255,0.15)",
-              border: "1px solid rgba(139,92,246,0.50)",
-              color: "#fff",
-            } : {
-              background: "linear-gradient(160deg, #ffffff 0%, #f0f0f5 55%, #e4e4ef 100%)",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.13), inset 0 1px 0 rgba(255,255,255,1)",
-              border: "1px solid rgba(0,0,0,0.10)",
-              color: "#18181b",
+            style={{
+              background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+              border: "1px solid rgba(255,255,255,0.13)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+              color: "#ffffff",
             }}
           >
             <Plus size={12} className="relative z-10" />
@@ -723,16 +718,11 @@ const HomePage: React.FC<HomePageProps> = ({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.94 }}
               className="w-8 h-8 flex items-center justify-center rounded-xl"
-              style={isDark ? {
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%)",
-                boxShadow: "0 2px 16px rgba(99,102,241,0.40), inset 0 1px 0 rgba(255,255,255,0.15)",
-                border: "1px solid rgba(139,92,246,0.50)",
-                color: "#fff",
-              } : {
-                background: "linear-gradient(160deg, #ffffff 0%, #f0f0f5 55%, #e4e4ef 100%)",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.13), inset 0 1px 0 rgba(255,255,255,1)",
-                border: "1px solid rgba(0,0,0,0.10)",
-                color: "#18181b",
+              style={{
+                background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+                border: "1px solid rgba(255,255,255,0.13)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+                color: "#ffffff",
               }}
             >
               <Mail size={14} />
@@ -764,16 +754,11 @@ const HomePage: React.FC<HomePageProps> = ({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.94 }}
               className="w-8 h-8 flex items-center justify-center rounded-xl"
-              style={isDark ? {
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%)",
-                boxShadow: "0 2px 16px rgba(99,102,241,0.40), inset 0 1px 0 rgba(255,255,255,0.15)",
-                border: "1px solid rgba(139,92,246,0.50)",
-                color: "#fff",
-              } : {
-                background: "linear-gradient(160deg, #ffffff 0%, #f0f0f5 55%, #e4e4ef 100%)",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.13), inset 0 1px 0 rgba(255,255,255,1)",
-                border: "1px solid rgba(0,0,0,0.10)",
-                color: "#18181b",
+              style={{
+                background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+                border: "1px solid rgba(255,255,255,0.13)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+                color: "#ffffff",
               }}
             >
               <motion.div
@@ -806,16 +791,11 @@ const HomePage: React.FC<HomePageProps> = ({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold relative overflow-hidden disabled:opacity-50"
-            style={isDark ? {
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%)",
-              boxShadow: "0 2px 16px rgba(99,102,241,0.40), inset 0 1px 0 rgba(255,255,255,0.15)",
-              border: "1px solid rgba(139,92,246,0.50)",
-              color: "#fff",
-            } : {
-              background: "linear-gradient(160deg, #ffffff 0%, #f0f0f5 55%, #e4e4ef 100%)",
-              boxShadow: "0 2px 10px rgba(0,0,0,0.13), inset 0 1px 0 rgba(255,255,255,1)",
-              border: "1px solid rgba(0,0,0,0.10)",
-              color: "#18181b",
+            style={{
+              background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
+              border: "1px solid rgba(255,255,255,0.13)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+              color: "#ffffff",
             }}
           >
             <MessageCircle size={13} className="relative z-10 flex-shrink-0" />

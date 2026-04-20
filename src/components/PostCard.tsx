@@ -727,23 +727,23 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         }
       `}
       style={isBoosted ? {
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        backdropFilter: "blur(32px)",
+        WebkitBackdropFilter: "blur(32px)",
         background: isDark
-          ? "linear-gradient(180deg, rgba(120,53,15,0.18) 0%, rgba(17,17,19,0.95) 100%)"
-          : "linear-gradient(180deg, rgba(255,237,213,0.60) 0%, #ffffff 100%)",
+          ? "rgba(30,16,8,0.82)"
+          : "rgba(255,245,235,0.82)",
         boxShadow: isDark
-          ? "0 4px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(251,146,60,0.08)"
-          : "0 4px 20px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,1)",
+          ? "0 8px 32px rgba(0,0,0,0.60), 0 2px 8px rgba(0,0,0,0.40), inset 0 1px 0 rgba(251,146,60,0.10)"
+          : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,1)",
       } : {
-        backdropFilter: "blur(20px)",
-        WebkitBackdropFilter: "blur(20px)",
+        backdropFilter: "blur(32px)",
+        WebkitBackdropFilter: "blur(32px)",
         background: isDark
-          ? "linear-gradient(180deg, #1a1a1d 0%, #111113 100%)"
-          : "linear-gradient(180deg, #ffffff 0%, #fafafa 60%, #f4f4f8 100%)",
+          ? "rgba(18,18,20,0.80)"
+          : "rgba(255,255,255,0.80)",
         boxShadow: isDark
-          ? "0 4px 24px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)"
-          : "0 4px 20px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,1)",
+          ? "0 8px 32px rgba(0,0,0,0.60), 0 2px 8px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)"
+          : "0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,1)",
       }}
       onClick={isAd ? handleAdClick : undefined}
     >
@@ -788,10 +788,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
               />
             ) : (
               <div
-                className="w-full h-full flex items-center justify-center text-white text-sm font-bold"
-                style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}
+                className="w-full h-full flex items-center justify-center text-sm font-black"
+                style={{
+                  background: "linear-gradient(160deg, #d4d4d4 0%, #a8a8a8 45%, #c0c0c0 100%)",
+                  color: "#111111",
+                  textShadow: "0 1px 2px rgba(255,255,255,0.4)",
+                }}
               >
-                {postProfile?.username?.[0]?.toUpperCase() || "?"}
+                {postProfile?.username?.[0]?.toUpperCase() || "H"}
               </div>
             )}
           </div>
