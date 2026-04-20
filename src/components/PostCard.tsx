@@ -753,29 +753,36 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
 
       {/* Header */}
       <div className="flex items-start gap-3 min-w-0">
-        {/* Avatar */}
-        <div
-          className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 cursor-pointer transition-all duration-200 hover:ring-2 hover:ring-offset-1 hover:scale-105"
-          style={{
-            background: isDark ? "#1f2937" : "#e5e7eb",
-            ringOffsetColor: isDark ? "#0a0a0a" : "#ffffff",
-          }}
-          onClick={openUserProfile}
-        >
-          {postProfile?.avatar_url ? (
-            <img
-              src={postProfile.avatar_url}
-              alt={t("avatar")}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div
-              className="w-full h-full flex items-center justify-center text-white text-sm font-bold"
-              style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}
-            >
-              {postProfile?.username?.[0]?.toUpperCase() || "?"}
-            </div>
-          )}
+        {/* Avatar 52px con badge World Verified */}
+        <div className="relative flex-shrink-0 cursor-pointer" onClick={openUserProfile}>
+          <div
+            className={`w-[52px] h-[52px] rounded-full overflow-hidden transition-all duration-200 hover:scale-105 ${
+              isDark ? "ring-2 ring-white/20" : "ring-2 ring-black/10"
+            }`}
+            style={{ background: isDark ? "#1f2937" : "#e5e7eb" }}
+          >
+            {postProfile?.avatar_url ? (
+              <img
+                src={postProfile.avatar_url}
+                alt={t("avatar")}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div
+                className="w-full h-full flex items-center justify-center text-white text-sm font-bold"
+                style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)" }}
+              >
+                {postProfile?.username?.[0]?.toUpperCase() || "?"}
+              </div>
+            )}
+          </div>
+          {/* World Verified badge */}
+          <div
+            className="absolute bottom-0 right-0 w-[18px] h-[18px] rounded-full flex items-center justify-center shadow-md"
+            style={{ background: "#22c55e", border: isDark ? "2px solid #0a0a0a" : "2px solid #ffffff" }}
+          >
+            <span className="text-white font-extrabold leading-none" style={{ fontSize: 9 }}>W</span>
+          </div>
         </div>
 
         {/* Body */}
@@ -871,187 +878,195 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           )}
 
           {/* ── Action bar ─────────────────────────────────────── */}
-          <div className="flex items-center flex-wrap gap-0.5 mt-3.5 -ml-2">
-            {/* Like */}
-            <div className="relative">
-              <button
-                onClick={handleLike}
-                disabled={loadingAction === "like"}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                  liked
-                    ? "text-pink-500 bg-pink-500/10"
-                    : isDark
-                      ? "text-gray-600 hover:text-pink-400 hover:bg-pink-500/[0.08]"
-                      : "text-gray-400 hover:text-pink-500 hover:bg-pink-50"
-                }`}
-              >
-                <svg className="w-4 h-4" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-                </svg>
-                {likes > 0 && <span className="tabular-nums">{likes}</span>}
-              </button>
-              {showWldAnimation && LIKE_VALUE_WLD > 0 && (
-                <span
-                  className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-400 pointer-events-none whitespace-nowrap"
-                  style={{ animation: "wldFloat 1.2s ease-out forwards" }}
-                >
-                  +{LIKE_VALUE_WLD} WLD
-                </span>
-              )}
-              {showLikeTooltip && (
-                <div className={`absolute bottom-full left-0 mb-2 w-52 px-3 py-2.5 rounded-2xl text-xs shadow-xl z-30 ${
-                  isDark ? "bg-[#1a1a1d] text-gray-200 border border-white/[0.08]" : "bg-white text-gray-700 border border-gray-100 shadow-lg"
-                }`}>
-                  Cada like suma valor. Publica y gana WLD con el engagement de tu contenido.
-                </div>
-              )}
-            </div>
+          <div className="flex items-center mt-4 gap-1 min-w-0">
 
-            {/* Comment */}
-            <button
-              onClick={() => {
-                setShowCommentInput((v) => !v);
-                setShowComments((v) => !v);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isDark
-                  ? "text-gray-600 hover:text-blue-400 hover:bg-blue-500/[0.08]"
-                  : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
-              </svg>
-              {comments > 0 && <span className="tabular-nums">{comments}</span>}
-            </button>
+            {/* ── Izquierda: Like · Comment · Repost ── */}
+            <div className="flex items-center gap-0.5">
 
-            {/* Repost */}
-            <button
-              onClick={handleRepost}
-              disabled={loadingAction === "repost"}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isDark
-                  ? "text-gray-600 hover:text-emerald-400 hover:bg-emerald-500/[0.08]"
-                  : "text-gray-400 hover:text-emerald-500 hover:bg-emerald-50"
-              }`}
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z" />
-              </svg>
-              {reposts > 0 && <span className="tabular-nums">{reposts}</span>}
-            </button>
-
-            {/* Tip */}
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min={1}
-                value={tipAmount}
-                onChange={(e) => setTipAmount(e.target.value === "" ? "" : Number(e.target.value))}
-                className={`w-11 text-xs text-center rounded-lg border px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition ${
-                  isDark
-                    ? "bg-white/[0.04] border-white/[0.08] text-white"
-                    : "bg-gray-50 border-gray-200 text-gray-800"
-                }`}
-              />
-              <button
-                onClick={handleTip}
-                disabled={loadingAction === "tip"}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                  isDark
-                    ? "text-yellow-500 hover:bg-yellow-500/[0.08]"
-                    : "text-yellow-600 hover:bg-yellow-50"
-                }`}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {t("tip")}
-              </button>
-            </div>
-
-            {/* Boost */}
-            <button
-              onClick={handleBoost}
-              disabled={loadingAction === "boost"}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isDark
-                  ? "text-orange-400 hover:bg-orange-500/[0.08]"
-                  : "text-orange-500 hover:bg-orange-50"
-              }`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-              </svg>
-              Boost
-            </button>
-
-            {/* Chat */}
-            <button
-              onClick={handleChatCreadores}
-              disabled={loadingAction === "subscription" || checkingAccess}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-95 ${
-                isDark
-                  ? "text-violet-400 hover:bg-violet-500/[0.08]"
-                  : "text-violet-600 hover:bg-violet-50"
-              }`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
-              </svg>
-              {hasChatAccess ? t("chat") : t("chat_exclusivo")}
-            </button>
-
-            {/* Options menu */}
-            {currentUserId && (
-              <div className="relative ml-auto">
+              {/* Like */}
+              <div className="relative">
                 <button
-                  onClick={() => setShowOptionsMenu((v) => !v)}
-                  className={`p-1.5 rounded-full transition-colors ${
-                    isDark ? "text-gray-700 hover:text-gray-400 hover:bg-white/[0.05]" : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"
+                  onClick={handleLike}
+                  disabled={loadingAction === "like"}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-[0.97] ${
+                    liked
+                      ? "text-pink-500 bg-pink-500/10"
+                      : isDark
+                        ? "text-gray-500 hover:text-pink-400 hover:bg-pink-500/[0.09]"
+                        : "text-gray-400 hover:text-pink-500 hover:bg-pink-50"
                   }`}
                 >
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                  <svg className="w-4 h-4" fill={liked ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
                   </svg>
+                  {likes > 0 && <span className="tabular-nums">{likes}</span>}
                 </button>
-
-                {showOptionsMenu && (
-                  <div className={`absolute right-0 top-8 z-20 rounded-2xl border shadow-2xl overflow-hidden w-40 ${
-                    isDark ? "bg-[#141416] border-white/[0.08]" : "bg-white border-gray-100 shadow-xl"
+                {showWldAnimation && LIKE_VALUE_WLD > 0 && (
+                  <span
+                    className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-400 pointer-events-none whitespace-nowrap"
+                    style={{ animation: "wldFloat 1.2s ease-out forwards" }}
+                  >
+                    +{LIKE_VALUE_WLD} WLD
+                  </span>
+                )}
+                {showLikeTooltip && (
+                  <div className={`absolute bottom-full left-0 mb-2 w-52 px-3 py-2.5 rounded-2xl text-xs shadow-xl z-30 ${
+                    isDark ? "bg-[#1a1a1d] text-gray-200 border border-white/[0.08]" : "bg-white text-gray-700 border border-gray-100 shadow-lg"
                   }`}>
-                    {currentUserId !== post.user_id && (
-                      <>
-                        <button
-                          onClick={() => { setShowOptionsMenu(false); setShowReportModal(true); }}
-                          className={`w-full text-left px-4 py-2.5 text-sm transition ${
-                            isDark ? "text-orange-400 hover:bg-white/[0.04]" : "text-orange-500 hover:bg-gray-50"
-                          }`}
-                        >
-                          Reportar
-                        </button>
-                        <button
-                          onClick={handleBlock}
-                          className={`w-full text-left px-4 py-2.5 text-sm transition ${
-                            isDark ? "text-red-400 hover:bg-white/[0.04]" : "text-red-500 hover:bg-gray-50"
-                          }`}
-                        >
-                          Bloquear
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => setShowOptionsMenu(false)}
-                      className={`w-full text-left px-4 py-2.5 text-sm transition ${
-                        isDark ? "text-gray-500 hover:bg-white/[0.04]" : "text-gray-400 hover:bg-gray-50"
-                      }`}
-                    >
-                      Cerrar
-                    </button>
+                    Cada like suma valor. Publica y gana WLD con el engagement de tu contenido.
                   </div>
                 )}
               </div>
-            )}
+
+              {/* Comment */}
+              <button
+                onClick={() => {
+                  setShowCommentInput((v) => !v);
+                  setShowComments((v) => !v);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-[0.97] ${
+                  isDark
+                    ? "text-gray-500 hover:text-blue-400 hover:bg-blue-500/[0.09]"
+                    : "text-gray-400 hover:text-blue-500 hover:bg-blue-50"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                </svg>
+                {comments > 0 && <span className="tabular-nums">{comments}</span>}
+              </button>
+
+              {/* Repost */}
+              <button
+                onClick={handleRepost}
+                disabled={loadingAction === "repost"}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-[0.97] ${
+                  isDark
+                    ? "text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/[0.09]"
+                    : "text-gray-400 hover:text-emerald-500 hover:bg-emerald-50"
+                }`}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z" />
+                </svg>
+                {reposts > 0 && <span className="tabular-nums">{reposts}</span>}
+              </button>
+            </div>
+
+            {/* ── Derecha: Tip · Boost · Chat · Options ── */}
+            <div className="flex items-center gap-0.5 ml-auto">
+
+              {/* Tip */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={tipAmount}
+                  onChange={(e) => setTipAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                  className={`w-10 text-xs text-center rounded-lg border px-1 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500/60 transition ${
+                    isDark
+                      ? "bg-white/[0.04] border-white/[0.08] text-white"
+                      : "bg-gray-50 border-gray-200 text-gray-800"
+                  }`}
+                />
+                <button
+                  onClick={handleTip}
+                  disabled={loadingAction === "tip"}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 hover:scale-105 active:scale-[0.97] text-black shadow-sm ${
+                    loadingAction === "tip" ? "opacity-60" : ""
+                  }`}
+                  style={{ background: "linear-gradient(135deg, #f59e0b, #fb923c)", boxShadow: "0 2px 10px rgba(245,158,11,0.35)" }}
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {t("tip")}
+                </button>
+              </div>
+
+              {/* Boost */}
+              <button
+                onClick={handleBoost}
+                disabled={loadingAction === "boost"}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-[0.97] ${
+                  isDark
+                    ? "text-orange-400 hover:bg-orange-500/[0.09]"
+                    : "text-orange-500 hover:bg-orange-50"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                </svg>
+                Boost
+              </button>
+
+              {/* Chat */}
+              <button
+                onClick={handleChatCreadores}
+                disabled={loadingAction === "subscription" || checkingAccess}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium transition-all duration-150 hover:scale-105 active:scale-[0.97] ${
+                  isDark
+                    ? "text-violet-400 hover:bg-violet-500/[0.09]"
+                    : "text-violet-600 hover:bg-violet-50"
+                }`}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+                </svg>
+                {hasChatAccess ? t("chat") : t("chat_exclusivo")}
+              </button>
+
+              {/* Options menu */}
+              {currentUserId && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowOptionsMenu((v) => !v)}
+                    className={`p-1.5 rounded-full transition-colors ${
+                      isDark ? "text-gray-600 hover:text-gray-400 hover:bg-white/[0.06]" : "text-gray-300 hover:text-gray-500 hover:bg-gray-100"
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                    </svg>
+                  </button>
+
+                  {showOptionsMenu && (
+                    <div className={`absolute right-0 top-8 z-20 rounded-2xl border shadow-2xl overflow-hidden w-40 ${
+                      isDark ? "bg-[#141416] border-white/[0.08]" : "bg-white border-gray-100 shadow-xl"
+                    }`}>
+                      {currentUserId !== post.user_id && (
+                        <>
+                          <button
+                            onClick={() => { setShowOptionsMenu(false); setShowReportModal(true); }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                              isDark ? "text-orange-400 hover:bg-white/[0.04]" : "text-orange-500 hover:bg-gray-50"
+                            }`}
+                          >
+                            Reportar
+                          </button>
+                          <button
+                            onClick={handleBlock}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                              isDark ? "text-red-400 hover:bg-white/[0.04]" : "text-red-500 hover:bg-gray-50"
+                            }`}
+                          >
+                            Bloquear
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => setShowOptionsMenu(false)}
+                        className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                          isDark ? "text-gray-500 hover:bg-white/[0.04]" : "text-gray-400 hover:bg-gray-50"
+                        }`}
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Comment input */}
