@@ -582,7 +582,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
           <p className="text-sm font-medium text-red-400">{error}</p>
         </div>
       ) : activePosts.length === 0 && !activeLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 px-6 text-center gap-4 animate-fade-in">
+        <div className="flex flex-col items-center justify-center py-20 px-6 text-center gap-4">
           <div
             className="w-20 h-20 rounded-3xl flex items-center justify-center"
             style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.12), rgba(168,85,247,0.12))", border: "1px solid rgba(99,102,241,0.18)" }}
@@ -610,8 +610,13 @@ const FeedPage: React.FC<FeedPageProps> = ({
         </div>
       ) : (
         <div className="flex flex-col">
-          {activePosts.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+          {activePosts.map((post, idx) => (
+            <div key={post.id}>
+              <PostCard post={post} currentUserId={currentUserId} />
+              {idx < activePosts.length - 1 && (
+                <div className={`mx-4 h-px ${isDark ? "bg-white/[0.05]" : "bg-gray-100"}`} />
+              )}
+            </div>
           ))}
           {activeTab === "global" && <div ref={loaderRef} className="h-10" />}
 
@@ -627,10 +632,15 @@ const FeedPage: React.FC<FeedPageProps> = ({
 
           {/* End of feed */}
           {!activeHasMore && activePosts.length > 0 && !activeLoading && (
-            <div className={`flex flex-col items-center justify-center py-10 gap-2 text-center`}>
-              <div className={`w-8 h-[1px] rounded-full mb-1 ${isDark ? "bg-white/10" : "bg-gray-200"}`} />
+            <div className="flex flex-col items-center justify-center py-10 gap-2 text-center">
+              <div
+                className="w-8 h-8 rounded-2xl flex items-center justify-center mb-1"
+                style={{ background: "linear-gradient(135deg,rgba(99,102,241,0.12),rgba(168,85,247,0.12))", border: "1px solid rgba(99,102,241,0.15)" }}
+              >
+                <span className="font-black text-transparent bg-clip-text" style={{ backgroundImage: "linear-gradient(135deg,#6366f1,#a855f7)", fontSize: 13 }}>H</span>
+              </div>
               <p className={`text-xs font-medium ${isDark ? "text-gray-700" : "text-gray-400"}`}>
-                Has llegado al final
+                Has visto todo por ahora
               </p>
             </div>
           )}
