@@ -633,8 +633,8 @@ const HomePage: React.FC<HomePageProps> = ({
 
       {/* ── HEADER FLOTANTE ── */}
       <header
-        className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between px-4 py-2.5 rounded-2xl border ${
-          isDark ? "bg-[#0a0a0a]/88 border-white/[0.09]" : "bg-white/92 border-black/[0.07]"
+        className={`fixed top-3 left-3 right-3 z-30 flex items-center justify-between gap-2 px-3 py-2 rounded-2xl border ${
+          isDark ? "bg-[#0a0a0a]/90 border-white/[0.09]" : "bg-white/94 border-black/[0.07]"
         }`}
         style={{
           backdropFilter: "blur(28px)",
@@ -644,21 +644,35 @@ const HomePage: React.FC<HomePageProps> = ({
             : "0 8px 32px rgba(0,0,0,0.09), 0 2px 8px rgba(0,0,0,0.05)",
         }}
       >
-        {/* Controles centrales */}
-        <div className="flex items-center gap-1.5">
+        {/* ── ZONA IZQUIERDA: Logo ── */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", boxShadow: "0 0 14px rgba(168,85,247,0.40)" }}
+          >
+            <span className="text-white font-black text-sm leading-none">H</span>
+          </div>
+          <span className={`text-sm font-bold tracking-tight hidden sm:block ${isDark ? "text-white" : "text-gray-900"}`}>
+            by humans
+          </span>
+        </div>
+
+        {/* ── ZONA CENTRAL: Acciones principales ── */}
+        <div className="flex items-center gap-1">
+
           {/* Nuevo Post */}
           <motion.button
             onClick={() => setShowNewPostModal(true)}
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold text-white"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold text-white"
             style={{
               background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
-              boxShadow: "0 0 18px rgba(168,85,247,0.35)",
+              boxShadow: "0 0 14px rgba(168,85,247,0.35)",
             }}
           >
-            <Plus size={15} />
-            <span className="hidden sm:inline">{t("post") || "Post"}</span>
+            <Plus size={13} />
+            <span>{t("post") || "Post"}</span>
           </motion.button>
 
           {/* Inbox */}
@@ -671,7 +685,7 @@ const HomePage: React.FC<HomePageProps> = ({
                 isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
               }`}
             >
-              <Mail size={19} />
+              <Mail size={18} />
             </motion.button>
             <AnimatePresence>
               {unreadTotal > 0 && (
@@ -681,7 +695,7 @@ const HomePage: React.FC<HomePageProps> = ({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                  className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1 leading-none shadow-md"
+                  className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold px-1 leading-none shadow-md"
                 >
                   {unreadTotal > 99 ? "99+" : unreadTotal}
                 </motion.span>
@@ -703,7 +717,7 @@ const HomePage: React.FC<HomePageProps> = ({
                 animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
                 transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <Bell size={19} />
+                <Bell size={18} />
               </motion.div>
             </motion.button>
             <AnimatePresence>
@@ -714,20 +728,37 @@ const HomePage: React.FC<HomePageProps> = ({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0, opacity: 0 }}
                   transition={{ type: "spring", stiffness: 500, damping: 24 }}
-                  className="absolute -top-0.5 -right-0.5 min-w-[17px] h-[17px] flex items-center justify-center rounded-full bg-violet-500 text-white text-[10px] font-bold px-1 leading-none shadow-md"
+                  className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full bg-violet-500 text-white text-[9px] font-bold px-1 leading-none shadow-md"
                 >
                   {unreadNotifCount}
                 </motion.span>
               )}
             </AnimatePresence>
           </div>
+        </div>
+
+        {/* ── ZONA DERECHA: Utilidades + Avatar ── */}
+        <div className="flex items-center gap-1 flex-shrink-0">
+
+          {/* Token mini-app */}
+          <motion.button
+            onClick={() => setShowTokenApp(true)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+            className={`w-8 h-8 flex items-center justify-center rounded-full text-base transition-colors ${
+              isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
+            }`}
+            title="Token Market"
+          >
+            🪙
+          </motion.button>
 
           {/* Tema */}
           <motion.button
             onClick={toggleTheme}
             whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.94 }}
-            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
+            className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
               isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
             }`}
           >
@@ -739,22 +770,9 @@ const HomePage: React.FC<HomePageProps> = ({
                 exit={{ opacity: 0, rotate: 30, scale: 0.6 }}
                 transition={{ duration: 0.2 }}
               >
-                {isDark ? <Sun size={18} /> : <Moon size={18} />}
+                {isDark ? <Sun size={16} /> : <Moon size={16} />}
               </motion.span>
             </AnimatePresence>
-          </motion.button>
-
-          {/* Token mini-app */}
-          <motion.button
-            onClick={() => setShowTokenApp(true)}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            className={`w-9 h-9 flex items-center justify-center rounded-full text-base transition-colors ${
-              isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-500 hover:text-gray-900 hover:bg-black/[0.05]"
-            }`}
-            title="Token Market"
-          >
-            🪙
           </motion.button>
 
           {/* Idioma */}
@@ -762,38 +780,48 @@ const HomePage: React.FC<HomePageProps> = ({
             onClick={() => setLanguage(language === "es" ? "en" : "es")}
             whileHover={{ scale: 1.06 }}
             whileTap={{ scale: 0.94 }}
-            className={`h-9 px-3 flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${
+            className={`h-8 px-2.5 flex items-center gap-1 rounded-full text-[11px] font-semibold transition-colors ${
               isDark
                 ? "text-gray-400 hover:text-white bg-white/[0.05] hover:bg-white/10"
                 : "text-gray-500 hover:text-gray-900 bg-black/[0.04] hover:bg-black/[0.08]"
             }`}
           >
-            <Globe size={13} />
+            <Globe size={11} />
             {language.toUpperCase()}
           </motion.button>
-        </div>
 
-        {/* Avatar */}
-        <motion.div
-          className={`w-9 h-9 rounded-full overflow-hidden cursor-pointer ring-2 transition-all ${
-            isDark ? "ring-white/10 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"
-          }`}
-          onClick={() => setShowProfileModal(true)}
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.94 }}
-          style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
-        >
-          {profile?.avatar_url ? (
-            <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
-          ) : (
+          {/* Avatar con badge World Verified */}
+          <motion.div
+            className="relative cursor-pointer flex-shrink-0"
+            onClick={() => setShowProfileModal(true)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.94 }}
+          >
             <div
-              className="w-full h-full flex items-center justify-center text-sm font-bold"
-              style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff" }}
+              className={`w-9 h-9 rounded-full overflow-hidden ring-2 transition-all ${
+                isDark ? "ring-white/20 hover:ring-violet-500/60" : "ring-black/10 hover:ring-violet-400/60"
+              }`}
+              style={{ background: isDark ? "#27272a" : "#e4e4e7" }}
             >
-              {(username || "H")[0].toUpperCase()}
+              {profile?.avatar_url ? (
+                <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
+              ) : (
+                <div
+                  className="w-full h-full flex items-center justify-center text-sm font-bold"
+                  style={{ background: "linear-gradient(135deg, #6366f1, #a855f7)", color: "#fff" }}
+                >
+                  {(username || "H")[0].toUpperCase()}
+                </div>
+              )}
             </div>
-          )}
-        </motion.div>
+            <div
+              className="absolute bottom-0 right-0 w-[13px] h-[13px] rounded-full flex items-center justify-center shadow-md"
+              style={{ background: "#22c55e", border: isDark ? "1.5px solid #0a0a0a" : "1.5px solid #ffffff" }}
+            >
+              <span className="text-white font-extrabold leading-none" style={{ fontSize: 7 }}>W</span>
+            </div>
+          </motion.div>
+        </div>
       </header>
 
       {/* ── FEED ── */}
