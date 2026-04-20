@@ -443,7 +443,7 @@ const FeedPage: React.FC<FeedPageProps> = ({
     <div
       ref={scrollRef}
       className={`flex flex-col w-full max-w-xl mx-auto px-0 overflow-y-auto ${
-        isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f8f9fa] text-gray-900"
+        isDark ? "text-white" : "text-gray-900"
       }`}
     >
       <div className="px-4 pt-4">

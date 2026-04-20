@@ -629,9 +629,25 @@ const HomePage: React.FC<HomePageProps> = ({
   // RENDER
   // ─────────────────────────────────────────────
   return (
-    <div className={`min-h-screen overflow-y-auto overflow-x-hidden ${
-      isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f8f9fa] text-black"
-    }`}>
+    <div
+      className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "text-white" : "text-black"}`}
+      style={isDark ? {
+        background: [
+          "radial-gradient(ellipse at 12% 18%, rgba(99,102,241,0.22) 0%, transparent 52%)",
+          "radial-gradient(ellipse at 88% 72%, rgba(168,85,247,0.18) 0%, transparent 52%)",
+          "radial-gradient(ellipse at 62% 10%, rgba(6,182,212,0.14) 0%, transparent 44%)",
+          "radial-gradient(ellipse at 35% 88%, rgba(16,185,129,0.10) 0%, transparent 44%)",
+          "#06060d",
+        ].join(","),
+      } : {
+        background: [
+          "radial-gradient(ellipse at 12% 18%, rgba(99,102,241,0.12) 0%, transparent 52%)",
+          "radial-gradient(ellipse at 88% 72%, rgba(168,85,247,0.09) 0%, transparent 52%)",
+          "radial-gradient(ellipse at 62% 10%, rgba(6,182,212,0.08) 0%, transparent 44%)",
+          "#f2f2fb",
+        ].join(","),
+      }}
+    >
       {userId && <NotificationBanner userId={userId} />}
       <Suspense fallback={null}>
         <AutonomousGrowthBrain />
@@ -809,7 +825,7 @@ const HomePage: React.FC<HomePageProps> = ({
             }}
           >
             {profile?.avatar_url ? (
-              <img src={profile.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
+              <img src={profile.avatar_url} className="block w-full h-full object-cover object-center" alt="Avatar" />
             ) : (
               <div
                 className="w-full h-full flex items-center justify-center text-sm font-bold"

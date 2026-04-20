@@ -736,14 +736,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
           ? "0 25px 50px -12px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.50), inset 0 1px 0 rgba(251,146,60,0.12), inset 0 -1px 0 rgba(0,0,0,0.30)"
           : "0 25px 50px -12px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.10), inset 0 1px 0 rgba(255,255,255,0.95)",
       } : {
-        backdropFilter: "blur(40px)",
-        WebkitBackdropFilter: "blur(40px)",
+        backdropFilter: "blur(48px)",
+        WebkitBackdropFilter: "blur(48px)",
         background: isDark
-          ? "rgba(14,14,18,0.58)"
-          : "rgba(255,255,255,0.72)",
+          ? "rgba(10,10,16,0.46)"
+          : "rgba(255,255,255,0.58)",
         boxShadow: isDark
-          ? "0 25px 50px -12px rgba(0,0,0,0.70), 0 8px 24px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(0,0,0,0.30)"
-          : "0 25px 50px -12px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,1)",
+          ? "0 25px 50px -12px rgba(0,0,0,0.72), 0 8px 24px rgba(0,0,0,0.52), inset 0 1px 0 rgba(255,255,255,0.09), inset 0 -1px 0 rgba(0,0,0,0.32)"
+          : "0 25px 50px -12px rgba(80,60,140,0.14), 0 8px 24px rgba(0,0,0,0.09), inset 0 1px 0 rgba(255,255,255,1)",
       }}
       onClick={isAd ? handleAdClick : undefined}
     >
