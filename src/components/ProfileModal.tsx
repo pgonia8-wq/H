@@ -95,6 +95,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [sendingComplaint, setSendingComplaint] = useState(false);
 
   const { theme, username: globalUsername } = useContext(ThemeContext);
+  const isDark = theme === "dark";
 
   // isOwnProfile: true cuando id es null (propio perfil sin id explícito)
   // o cuando id coincide con currentUserId
@@ -396,17 +397,29 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-start justify-center z-50 px-2 overflow-y-auto pt-6 pb-10"
+        className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-start justify-center z-50 px-2 overflow-y-auto pt-6 pb-10"
         onClick={onClose}
       >
         <div
-          className="bg-gray-950 rounded-3xl w-full max-w-lg border border-white/10 relative overflow-hidden shadow-2xl"
+          className={`rounded-3xl w-full max-w-lg relative overflow-hidden shadow-2xl border ${
+            isDark
+              ? "bg-[#111113] border-white/[0.08]"
+              : "bg-white border-gray-200 shadow-2xl"
+          }`}
           onClick={e => e.stopPropagation()}
         >
-          <div className="h-28 bg-gradient-to-br from-purple-900 via-indigo-900 to-gray-900 relative">
+          {/* Cover gradient */}
+          <div
+            className="h-28 relative"
+            style={{
+              background: isDark
+                ? "linear-gradient(135deg, #1e1060 0%, #2d1b69 50%, #111113 100%)"
+                : "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)",
+            }}
+          >
             <button
               onClick={onClose}
-              className="absolute top-3 right-3 bg-black/40 hover:bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg transition"
+              className="absolute top-3 right-3 bg-black/40 hover:bg-black/60 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg transition backdrop-blur-sm"
               aria-label={t("cerrar_modal")}
             >
               ×
@@ -421,7 +434,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="px-5 pb-0">
             <div className="flex items-end justify-between -mt-14 mb-3">
               <div className="relative">
-                <div className="w-24 h-24 rounded-full border-4 border-gray-950 overflow-hidden bg-gray-800 shadow-xl">
+                <div
+                  className={`w-24 h-24 rounded-full border-4 overflow-hidden shadow-xl ${
+                    isDark ? "border-[#111113] bg-gray-800" : "border-white bg-gray-200"
+                  }`}
+                >
                   {uploadingAvatar && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-20 rounded-full">
                       <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-purple-500" />
@@ -435,7 +452,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
                 {isOwnProfile && (
                   <div className="absolute bottom-0 right-0 w-7 h-7 z-10">
-                    <div className="bg-purple-600 rounded-full w-7 h-7 flex items-center justify-center shadow-md pointer-events-none">
+                    <div className="bg-indigo-600 rounded-full w-7 h-7 flex items-center justify-center shadow-md pointer-events-none" style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}>
                       <span className="text-xs">✏️</span>
                     </div>
                     <input
@@ -453,14 +470,17 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                 <div className="flex gap-2 mt-10">
                   <button
                     onClick={() => { setPreviewAvatar(null); setSelectedFile(null); }}
-                    className="px-3 py-1.5 bg-gray-700 text-white text-sm rounded-full hover:bg-gray-600 transition"
+                    className={`px-3 py-1.5 text-sm rounded-full transition ${
+                      isDark ? "bg-white/[0.07] text-gray-300 hover:bg-white/[0.12]" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
                   >
                     {t("cancelar")}
                   </button>
                   <button
                     onClick={handleUploadAvatar}
                     disabled={uploadingAvatar}
-                    className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-full disabled:opacity-50 transition"
+                    className="px-3 py-1.5 text-white text-sm rounded-full disabled:opacity-50 transition"
+                    style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}
                   >
                     {uploadingAvatar ? t("subiendo") : t("guardar_avatar")}
                   </button>
@@ -469,16 +489,16 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
 
             {loading ? (
-              <p className="text-white text-center py-8">{t("cargando_perfil")}</p>
+              <p className={`text-center py-8 ${isDark ? "text-gray-400" : "text-gray-500"}`}>{t("cargando_perfil")}</p>
             ) : (
               <>
                 <div className="mb-1">
-                  <p className="text-white text-lg font-bold leading-tight">@{profile.username}</p>
-                  {profile.name ? <p className="text-gray-400 text-sm">{profile.name}</p> : null}
+                  <p className={`text-lg font-bold leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>@{profile.username}</p>
+                  {profile.name ? <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>{profile.name}</p> : null}
                 </div>
 
                 {profile.bio ? (
-                  <p className="text-gray-300 text-sm mb-2 leading-snug">{profile.bio}</p>
+                  <p className={`text-sm mb-2 leading-snug ${isDark ? "text-gray-300" : "text-gray-700"}`}>{profile.bio}</p>
                 ) : null}
 
                 {(profile.city || selectedCountryObj?.name) && (
@@ -487,18 +507,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                   </div>
                 )}
 
-                <div className="flex gap-6 text-center border-y border-white/10 py-3 mb-5">
+                <div className={`flex gap-6 text-center border-y py-3 mb-5 ${isDark ? "border-white/[0.08]" : "border-gray-100"}`}>
                   <div>
-                    <p className="text-white font-bold text-base">{profile.posts_count}</p>
-                    <p className="text-gray-500 text-xs">{t("publicaciones") || "Posts"}</p>
+                    <p className={`font-bold text-base ${isDark ? "text-white" : "text-gray-900"}`}>{profile.posts_count}</p>
+                    <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("publicaciones") || "Posts"}</p>
                   </div>
                   <div>
-                    <p className="text-white font-bold text-base">{profile.followers_count}</p>
-                    <p className="text-gray-500 text-xs">{t("seguidores") || "Seguidores"}</p>
+                    <p className={`font-bold text-base ${isDark ? "text-white" : "text-gray-900"}`}>{profile.followers_count}</p>
+                    <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("seguidores") || "Seguidores"}</p>
                   </div>
                   <div>
-                    <p className="text-white font-bold text-base">{profile.following_count}</p>
-                    <p className="text-gray-500 text-xs">{t("siguiendo") || "Siguiendo"}</p>
+                    <p className={`font-bold text-base ${isDark ? "text-white" : "text-gray-900"}`}>{profile.following_count}</p>
+                    <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("siguiendo") || "Siguiendo"}</p>
                   </div>
                 </div>
 
@@ -508,26 +528,31 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     {profile.name && (
                       <div>
                         <p className="text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</p>
-                        <p className="text-white text-sm px-3 py-2 bg-gray-900/50 rounded-xl">{profile.name}</p>
+                        <p className={`text-sm px-3 py-2 rounded-xl ${isDark ? "text-white bg-white/[0.04]" : "text-gray-800 bg-gray-50"}`}>{profile.name}</p>
                       </div>
                     )}
                     {profile.bio && (
                       <div>
                         <p className="text-xs text-gray-500 mb-1">{t("biografia") || "Biografía"}</p>
-                        <p className="text-gray-300 text-sm px-3 py-2 bg-gray-900/50 rounded-xl">{profile.bio}</p>
+                        <p className={`text-sm px-3 py-2 rounded-xl ${isDark ? "text-gray-300 bg-white/[0.04]" : "text-gray-700 bg-gray-50"}`}>{profile.bio}</p>
                       </div>
                     )}
                     {onOpenChat && currentUserId && (
                       <button
                         onClick={() => { onOpenChat(profile.id); onClose(); }}
-                        className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm transition"
+                        className="w-full py-3 text-white rounded-2xl font-semibold text-sm transition"
+                        style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}
                       >
                         {t("enviar_mensaje") || "Enviar mensaje"}
                       </button>
                     )}
                     <button
                       onClick={() => setShowComplaintModal(true)}
-                      className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-white/10 text-gray-300 hover:text-white rounded-2xl text-sm transition flex items-center justify-center gap-2"
+                      className={`w-full py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2 border ${
+                        isDark
+                          ? "bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-gray-400 hover:text-white"
+                          : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
+                      }`}
                     >
                       <span>💬</span>
                       <span>{t("contacto") || "Contacto"}</span>
@@ -535,15 +560,23 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                   </div>
                 ) : (
                   <>
-                    <div className="flex border-b border-white/10 mb-5">
+                    <div className={`flex border-b mb-5 ${isDark ? "border-white/[0.08]" : "border-gray-100"}`}>
                       <button
-                        className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "info" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
+                        className={`flex-1 pb-2 text-sm font-medium transition ${
+                          activeTab === "info"
+                            ? "text-violet-400 border-b-2 border-violet-500"
+                            : isDark ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600"
+                        }`}
                         onClick={() => setActiveTab("info")}
                       >
                         {t("informacion") || "Información"}
                       </button>
                       <button
-                        className={`flex-1 pb-2 text-sm font-medium transition ${activeTab === "location" ? "text-purple-400 border-b-2 border-purple-500" : "text-gray-500 hover:text-gray-300"}`}
+                        className={`flex-1 pb-2 text-sm font-medium transition ${
+                          activeTab === "location"
+                            ? "text-violet-400 border-b-2 border-violet-500"
+                            : isDark ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600"
+                        }`}
                         onClick={() => setActiveTab("location")}
                       >
                         {t("ubicacion") || "Ubicación"}
@@ -553,20 +586,24 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     {activeTab === "info" && (
                       <div className="space-y-4 pb-2">
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">{t("nombre") || "Nombre visible"}</label>
+                          <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("nombre") || "Nombre visible"}</label>
                           <input
                             type="text"
                             value={profile.name}
                             onChange={e => setProfile(prev => ({ ...prev, name: e.target.value }))}
-                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 transition ${
+                              isDark
+                                ? "bg-white/[0.05] border border-white/[0.09] text-white placeholder-gray-600"
+                                : "bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400"
+                            }`}
                             placeholder={t("tu_nombre") || "Tu nombre"}
                           />
                         </div>
 
                         <div>
                           <div className="flex justify-between mb-1">
-                            <label className="text-xs text-gray-500">{t("biografia") || "Biografía"}</label>
-                            <span className="text-xs text-gray-600">{bioLength}/160</span>
+                            <label className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("biografia") || "Biografía"}</label>
+                            <span className={`text-xs ${isDark ? "text-gray-600" : "text-gray-400"}`}>{bioLength}/160</span>
                           </div>
                           <textarea
                             value={profile.bio}
@@ -576,26 +613,36 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                                 setBioLength(e.target.value.length);
                               }
                             }}
-                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none h-20"
+                            className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 resize-none h-20 transition ${
+                              isDark
+                                ? "bg-white/[0.05] border border-white/[0.09] text-white placeholder-gray-600"
+                                : "bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400"
+                            }`}
                             placeholder={t("cuentanos_sobre_ti") || "Cuéntanos sobre ti..."}
                           />
                         </div>
 
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">{t("fecha_nacimiento")}</label>
+                          <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("fecha_nacimiento")}</label>
                           <input
                             type="date"
                             value={profile.birthdate}
                             onChange={e => setProfile(prev => ({ ...prev, birthdate: e.target.value }))}
-                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 transition ${
+                              isDark
+                                ? "bg-white/[0.05] border border-white/[0.09] text-white"
+                                : "bg-gray-50 border border-gray-200 text-gray-900"
+                            }`}
                           />
                         </div>
 
-                        <div className="flex items-center justify-between bg-gray-900 border border-white/10 rounded-xl px-4 py-3">
-                          <label className="text-sm text-gray-300">{t("perfil_visible") || "Perfil visible"}</label>
+                        <div className={`flex items-center justify-between rounded-xl px-4 py-3 border ${
+                          isDark ? "bg-white/[0.04] border-white/[0.08]" : "bg-gray-50 border-gray-200"
+                        }`}>
+                          <label className={`text-sm ${isDark ? "text-gray-300" : "text-gray-700"}`}>{t("perfil_visible") || "Perfil visible"}</label>
                           <button
                             onClick={toggleProfileVisibility}
-                            className={`relative w-11 h-6 rounded-full transition-colors ${profile.profile_visible ? "bg-purple-600" : "bg-gray-700"}`}
+                            className={`relative w-11 h-6 rounded-full transition-colors ${profile.profile_visible ? "bg-violet-600" : isDark ? "bg-gray-700" : "bg-gray-300"}`}
                           >
                             <span
                               className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${profile.profile_visible ? "translate-x-5" : "translate-x-0"}`}
@@ -608,20 +655,26 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                     {activeTab === "location" && (
                       <div className="space-y-4 pb-2">
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">{t("ubicacion_texto") || "Descripción de ubicación"}</label>
+                          <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("ubicacion_texto") || "Descripción de ubicación"}</label>
                           <input
                             type="text"
                             value={profile.location_text}
                             onChange={e => setProfile(prev => ({ ...prev, location_text: e.target.value }))}
-                            className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 transition ${
+                              isDark
+                                ? "bg-white/[0.05] border border-white/[0.09] text-white placeholder-gray-600"
+                                : "bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400"
+                            }`}
                             placeholder={t("ej_ciudad_creativa") || "ej. Ciudad de México, CDMX"}
                           />
                         </div>
 
                         <div>
-                          <label className="block text-xs text-gray-500 mb-1">{t("pais") || "País"}</label>
+                          <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("pais") || "País"}</label>
                           {isCountryLocked() ? (
-                            <div className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-gray-400 text-sm flex items-center justify-between">
+                            <div className={`w-full p-3 rounded-xl text-sm flex items-center justify-between border ${
+                              isDark ? "bg-white/[0.04] border-white/[0.08] text-gray-400" : "bg-gray-50 border-gray-200 text-gray-500"
+                            }`}>
                               <span>{selectedCountryObj?.name || profile.country}</span>
                               <span className="text-xs text-orange-400 ml-2">
                                 🔒 {countryLockDaysLeft()} {t("dias_restantes") || "días restantes"}
@@ -636,7 +689,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                                 state: "",
                                 city: "",
                               }))}
-                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                              className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 appearance-none transition ${
+                                isDark
+                                  ? "bg-white/[0.05] border border-white/[0.09] text-white"
+                                  : "bg-gray-50 border border-gray-200 text-gray-900"
+                              }`}
                             >
                               <option value="">{t("seleccionar_pais") || "Seleccionar país"}</option>
                               {countries.map(c => (
@@ -655,7 +712,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
                         {profile.country && states.length > 0 && (
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t("estado") || "Estado / Provincia"}</label>
+                            <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("estado") || "Estado / Provincia"}</label>
                             <select
                               value={profile.state}
                               onChange={e => setProfile(prev => ({
@@ -663,7 +720,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                                 state: e.target.value,
                                 city: "",
                               }))}
-                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                              className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 appearance-none transition ${
+                                isDark
+                                  ? "bg-white/[0.05] border border-white/[0.09] text-white"
+                                  : "bg-gray-50 border border-gray-200 text-gray-900"
+                              }`}
                             >
                               <option value="">{t("seleccionar_estado") || "Seleccionar estado"}</option>
                               {states.map(s => (
@@ -675,11 +736,15 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
                         {profile.state && cities.length > 0 && (
                           <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t("ciudad") || "Ciudad"}</label>
+                            <label className={`block text-xs mb-1 ${isDark ? "text-gray-500" : "text-gray-400"}`}>{t("ciudad") || "Ciudad"}</label>
                             <select
                               value={profile.city}
                               onChange={e => setProfile(prev => ({ ...prev, city: e.target.value }))}
-                              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+                              className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 appearance-none transition ${
+                                isDark
+                                  ? "bg-white/[0.05] border border-white/[0.09] text-white"
+                                  : "bg-gray-50 border border-gray-200 text-gray-900"
+                              }`}
                             >
                               <option value="">{t("seleccionar_ciudad") || "Seleccionar ciudad"}</option>
                               {cities.map(c => (
@@ -696,7 +761,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                         e.stopPropagation();
                         setShowDashboard(true);
                       }}
-                      className="mt-4 w-full bg-purple-600 text-white py-2 rounded-xl font-semibold"
+                      className="mt-4 w-full py-2 rounded-xl font-semibold text-white text-sm transition"
+                      style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}
                     >
                       Creator Dashboard
                     </button>
@@ -706,13 +772,18 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                         <button
                           onClick={handleSave}
                           disabled={saving}
-                          className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
+                          className="flex-1 py-3 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
+                          style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}
                         >
                           {saving ? t("guardando") : t("guardar")}
                         </button>
                         <button
                           onClick={onClose}
-                          className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl text-sm transition"
+                          className={`flex-1 py-3 rounded-2xl text-sm transition ${
+                            isDark
+                              ? "bg-white/[0.06] hover:bg-white/[0.10] text-gray-300"
+                              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                          }`}
                         >
                           {t("cancelar")}
                         </button>
@@ -721,7 +792,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                       {showUpgradeButton && (
                         <button
                           onClick={handlePremiumChat}
-                          className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-2xl font-semibold text-sm transition"
+                          className="w-full py-3 text-white rounded-2xl font-semibold text-sm transition"
+                          style={{ background: "linear-gradient(135deg,#a855f7,#6366f1)" }}
                         >
                           {t("suscribirse_chat_premium", { amount: 5 })}
                         </button>
@@ -729,7 +801,11 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
                       <button
                         onClick={() => setShowComplaintModal(true)}
-                        className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-white/10 text-gray-300 hover:text-white rounded-2xl text-sm transition flex items-center justify-center gap-2"
+                        className={`w-full py-3 rounded-2xl text-sm transition flex items-center justify-center gap-2 border ${
+                          isDark
+                            ? "bg-white/[0.04] hover:bg-white/[0.07] border-white/[0.08] text-gray-400 hover:text-white"
+                            : "bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-500 hover:text-gray-800"
+                        }`}
                       >
                         <span>💬</span>
                         <span>{t("contacto") || "Contacto"}</span>
@@ -745,26 +821,32 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
       {showComplaintModal && (
         <div
-          className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[60] px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] px-4"
           onClick={() => setShowComplaintModal(false)}
         >
           <div
-            className="bg-gray-950 border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+            className={`rounded-3xl p-6 w-full max-w-sm shadow-2xl border ${
+              isDark ? "bg-[#111113] border-white/[0.08]" : "bg-white border-gray-200"
+            }`}
             onClick={e => e.stopPropagation()}
           >
+            {/* Accent top */}
+            <div className="absolute inset-x-6 top-0 h-0.5 rounded-full" style={{ background: "linear-gradient(90deg,#6366f1,#a855f7)" }} />
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-bold text-base">
+              <h3 className={`font-bold text-base ${isDark ? "text-white" : "text-gray-900"}`}>
                 {t("quejas_sugerencias") || "Quejas y sugerencias"}
               </h3>
               <button
                 onClick={() => setShowComplaintModal(false)}
-                className="text-gray-500 hover:text-white text-xl"
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xl transition ${
+                  isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-800 hover:bg-gray-100"
+                }`}
               >
                 ×
               </button>
             </div>
 
-            <p className="text-gray-400 text-xs mb-4">
+            <p className={`text-xs mb-4 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
               {t("quejas_descripcion") || "Tu mensaje nos ayuda a mejorar. Lo revisaremos a la brevedad."}
             </p>
 
@@ -772,14 +854,19 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
               value={complaintMessage}
               onChange={e => setComplaintMessage(e.target.value)}
               rows={5}
-              className="w-full bg-gray-900 border border-white/10 p-3 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none mb-4"
+              className={`w-full p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/60 resize-none mb-4 transition ${
+                isDark
+                  ? "bg-white/[0.05] border border-white/[0.09] text-white placeholder-gray-600"
+                  : "bg-gray-50 border border-gray-200 text-gray-900 placeholder-gray-400"
+              }`}
               placeholder={t("escribe_tu_mensaje") || "Escribe tu mensaje aquí..."}
             />
 
             <button
               onClick={handleSendComplaint}
               disabled={sendingComplaint || !complaintMessage.trim()}
-              className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
+              className="w-full py-3 text-white rounded-2xl font-semibold text-sm disabled:opacity-50 transition"
+              style={{ background: "linear-gradient(135deg,#6366f1,#a855f7)" }}
             >
               {sendingComplaint ? (t("enviando") || "Enviando...") : (t("enviar") || "Enviar")}
             </button>
@@ -788,8 +875,15 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4">
-          <div className="px-5 py-3 rounded-2xl text-sm font-medium shadow-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-4 pointer-events-none">
+          <div
+            className={`px-5 py-3 rounded-2xl text-sm font-semibold shadow-2xl border backdrop-blur-xl ${
+              toast.type === "error"
+                ? "bg-red-500/10 border-red-500/20 text-red-300"
+                : "text-white border-white/10"
+            }`}
+            style={toast.type !== "error" ? { background: "linear-gradient(135deg,rgba(99,102,241,0.85),rgba(168,85,247,0.85))", boxShadow: "0 8px 32px rgba(168,85,247,0.35)" } : {}}
+          >
             {toast.message}
           </div>
         </div>
