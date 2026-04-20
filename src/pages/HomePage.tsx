@@ -718,13 +718,16 @@ const HomePage: React.FC<HomePageProps> = ({
           <div className="relative">
             <motion.button
               onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
-              whileHover={{ scale: 1.08 }}
+              whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
-                isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]"
-              }`}
+              className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+              style={{
+                background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+                color: isDark ? "#a1a1aa" : "#52525b",
+                border: isDark ? "1px solid rgba(255,255,255,0.09)" : "1px solid rgba(0,0,0,0.08)",
+              }}
             >
-              <Mail size={17} />
+              <Mail size={15} />
             </motion.button>
             <AnimatePresence>
               {unreadTotal > 0 && (
@@ -743,30 +746,24 @@ const HomePage: React.FC<HomePageProps> = ({
           </div>
         </div>
 
-        {/* ── CENTRO: Logo H con shimmer metálico (absolute centered) ── */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center pointer-events-none">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, #6366f1, #a855f7)",
-              boxShadow: isDark ? "0 0 20px rgba(168,85,247,0.55)" : "0 0 14px rgba(99,102,241,0.38)",
-            }}
-          >
-            <span
-              className="font-black text-base leading-none select-none"
-              style={{
-                background: "linear-gradient(90deg, #c4b5fd 0%, #ffffff 35%, #e879f9 55%, #ffffff 70%, #a78bfa 100%)",
-                backgroundSize: "200% auto",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-                animation: "metalShimmer 2.8s linear infinite",
-              }}
-            >
-              H
-            </span>
-          </div>
-        </div>
+        {/* ── CENTRO: Logo real de la app ── */}
+        <motion.div
+          className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center cursor-pointer"
+          onClick={() => setShowProfileModal(true)}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.94 }}
+          style={{
+            filter: isDark
+              ? "drop-shadow(0 0 10px rgba(168,85,247,0.45))"
+              : "drop-shadow(0 2px 6px rgba(0,0,0,0.30))",
+          }}
+        >
+          <img
+            src="/logo-carbono.png"
+            alt="H by Humans"
+            className="w-10 h-10 object-contain rounded-xl"
+          />
+        </motion.div>
 
         {/* ── ZONA DERECHA: Bell + Chat + Avatar ── */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -775,17 +772,20 @@ const HomePage: React.FC<HomePageProps> = ({
           <div className="relative">
             <motion.button
               onClick={() => setShowNotifications(true)}
-              whileHover={{ scale: 1.08 }}
+              whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.94 }}
-              className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${
-                isDark ? "text-gray-400 hover:text-white hover:bg-white/10" : "text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]"
-              }`}
+              className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+              style={{
+                background: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)",
+                color: isDark ? "#a1a1aa" : "#52525b",
+                border: isDark ? "1px solid rgba(255,255,255,0.09)" : "1px solid rgba(0,0,0,0.08)",
+              }}
             >
               <motion.div
                 animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
                 transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <Bell size={17} />
+                <Bell size={15} />
               </motion.div>
             </motion.button>
             <AnimatePresence>
