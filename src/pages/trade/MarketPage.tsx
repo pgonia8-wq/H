@@ -14,6 +14,28 @@ import {
   type TotemProfile,
 } from "../../lib/tradeApi";
 import TotemCard from "./components/TotemCard";
+import PriceChart, { type PricePoint } from "./components/PriceChart";
+
+// ── DEBUG: data realista para validar integración del PriceChart ───────────
+//   48 puntos horarios (24h × 2). Curva coherente con tendencia leve al alza,
+//   sin ruido absurdo. Determinista (mismo array en cada render).
+//   Eliminar este bloque cuando TotemDashboard (Fase 4) consuma data real.
+const DEBUG_PRICE_DATA: PricePoint[] = (() => {
+  const out: PricePoint[] = [];
+  const now   = Date.now();
+  const HOUR  = 3600_000;
+  let price   = 0.000128;
+  const drift = 0.0000004;          // tendencia suave alcista
+  // micro-oscilaciones sinusoidales (dos frecuencias) → curva orgánica
+  for (let i = 47; i >= 0; i--) {
+    const t   = now - i * (HOUR / 2);
+    const wave1 = Math.sin(i * 0.42) * 0.0000055;
+    const wave2 = Math.cos(i * 0.18) * 0.0000028;
+    out.push({ time: t, price: Math.max(0.00001, price + wave1 + wave2) });
+    price += drift;
+  }
+  return out;
+})();
 
 // ── Tipos ───────────────────────────────────────────────────────────────────
 interface Props {
@@ -213,6 +235,56 @@ export default function MarketPage({ isDark, onSelectTotem }: Props) {
           );
         })}
       </div>
+
+      {/* ─── DEBUG PREVIEW PriceChart (solo dev) ────────────────────────── */}
+      {import.meta.env.DEV && (
+        <div style={{
+          marginBottom: 16,
+          padding: "14px 14px 8px",
+          borderRadius: 24,
+          background: isDark ? "#111113" : "#ffffff",
+          border: isDark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
+          boxShadow: isDark
+            ? "0 8px 28px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.04)"
+            : "0 4px 14px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.80)",
+          position: "relative",
+          overflow: "hidden",
+        }}>
+          {/* Header del card: identidad + precio actual */}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 8 }}>
+            <div>
+              <div style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: 1.5,
+                color: isDark ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.50)",
+                textTransform: "uppercase", marginBottom: 2,
+              }}>
+                Debug · Price 24h
+              </div>
+              <div style={{
+                fontSize: 22, fontWeight: 900, letterSpacing: -0.5,
+                color: isDark ? "#ffffff" : "#111827",
+                fontVariantNumeric: "tabular-nums", lineHeight: 1.05,
+              }}>
+                {DEBUG_PRICE_DATA[DEBUG_PRICE_DATA.length - 1].price.toFixed(6)}{" "}
+                <span style={{ fontSize: 11, fontWeight: 700, color: txtMuted, letterSpacing: 1 }}>WLD</span>
+              </div>
+            </div>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 3,
+              fontSize: 11, fontWeight: 800,
+              color: "#22c55e",
+              padding: "4px 8px", borderRadius: 8,
+              background: "rgba(34,197,94,0.10)",
+              border: "1px solid rgba(34,197,94,0.20)",
+              fontVariantNumeric: "tabular-nums",
+            }}>
+              ↑ {(((DEBUG_PRICE_DATA[DEBUG_PRICE_DATA.length - 1].price - DEBUG_PRICE_DATA[0].price)
+                  / DEBUG_PRICE_DATA[0].price) * 100).toFixed(2)}%
+            </div>
+          </div>
+          <PriceChart data={DEBUG_PRICE_DATA} isDark={isDark} height={200} />
+        </div>
+      )}
 
       {/* ─── 3 ESTADOS EXPLÍCITOS: LOADING · ERROR · EMPTY · SUCCESS ───── */}
       {loading ? (
