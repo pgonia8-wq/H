@@ -719,13 +719,14 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
         border-b transition-colors duration-200
         ${isBoosted
           ? isDark
-            ? "bg-gradient-to-b from-orange-950/15 via-[#0a0a0a] to-[#0a0a0a] border-orange-800/25"
+            ? "bg-gradient-to-b from-orange-950/20 via-zinc-950/85 to-zinc-950/85 border-orange-800/25"
             : "bg-gradient-to-b from-orange-50/80 via-white to-white border-orange-100"
           : isDark
-            ? "bg-[#0a0a0a] border-white/[0.06] hover:bg-white/[0.015]"
-            : "bg-white border-gray-100 hover:bg-gray-50/50"
+            ? "border-white/[0.08] hover:bg-white/[0.02]"
+            : "bg-white/95 border-gray-100/80 hover:bg-gray-50/50"
         }
       `}
+      style={isDark ? { backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" } : undefined}
       onClick={isAd ? handleAdClick : undefined}
     >
 
@@ -956,51 +957,61 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
             {/* ── Derecha: Tip · Boost · Chat · Options ── */}
             <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
 
-              {/* Tip — botón compacto, monto fijo 1 WLD */}
+              {/* Tip — peso metálico con destello plata */}
               <button
                 onClick={handleTip}
                 disabled={loadingAction === "tip"}
                 title={`Tip ${tipAmount} WLD`}
-                className={`flex items-center gap-1 pl-2 pr-2.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-150 hover:scale-105 active:scale-[0.97] text-black shadow-sm flex-shrink-0 ${
+                className={`relative flex items-center gap-1 pl-2.5 pr-3 py-1.5 rounded-full text-xs font-bold transition-all duration-150 hover:scale-105 active:scale-[0.97] overflow-hidden flex-shrink-0 ${
                   loadingAction === "tip" ? "opacity-60" : ""
                 }`}
-                style={{ background: "linear-gradient(135deg, #f59e0b, #fb923c)", boxShadow: "0 2px 8px rgba(245,158,11,0.30)" }}
+                style={{
+                  background: isDark
+                    ? "linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)"
+                    : "linear-gradient(135deg, #1f1f1f 0%, #2a2a2a 100%)",
+                  border: "1px solid rgba(161,161,170,0.30)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.40), inset 0 1px 0 rgba(161,161,170,0.12)",
+                  color: "#d4d4d8",
+                }}
               >
-                <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {t("tip")}
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: "linear-gradient(90deg, transparent 20%, rgba(161,161,170,0.22) 50%, transparent 80%)",
+                    animation: "tipShimmer 2.8s linear infinite",
+                  }}
+                />
+                <span className="relative z-10 text-[13px] font-black leading-none" style={{ color: "#a1a1aa" }}>₱</span>
+                <span className="relative z-10">{t("tip")}</span>
               </button>
 
-              {/* Boost — icono únicamente */}
+              {/* Boost — rayo metálico con destello rojo-fuego */}
               <button
                 onClick={handleBoost}
                 disabled={loadingAction === "boost"}
                 title="Boost (5 WLD)"
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-all duration-150 hover:scale-105 active:scale-[0.97] flex-shrink-0 ${
-                  isDark
-                    ? "text-orange-400 hover:bg-orange-500/[0.12]"
-                    : "text-orange-500 hover:bg-orange-50"
+                className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-[0.97] overflow-hidden flex-shrink-0 ${
+                  loadingAction === "boost" ? "opacity-60" : ""
                 }`}
+                style={{
+                  background: isDark
+                    ? "linear-gradient(135deg, #1a0d0d 0%, #2d1010 100%)"
+                    : "linear-gradient(135deg, #1a0505 0%, #2a0a0a 100%)",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(239,68,68,0.10)",
+                }}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: "linear-gradient(90deg, transparent 20%, rgba(239,68,68,0.28) 50%, transparent 80%)",
+                    animation: "boostFlare 2.2s linear infinite",
+                  }}
+                />
+                <svg className="w-3.5 h-3.5 relative z-10" fill="none" stroke="#ef4444" strokeWidth={2.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                </svg>
-              </button>
-
-              {/* Chat — icono únicamente */}
-              <button
-                onClick={handleChatCreadores}
-                disabled={loadingAction === "subscription" || checkingAccess}
-                title={hasChatAccess ? t("chat") : t("chat_exclusivo")}
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-xs transition-all duration-150 hover:scale-105 active:scale-[0.97] flex-shrink-0 ${
-                  isDark
-                    ? "text-violet-400 hover:bg-violet-500/[0.12]"
-                    : "text-violet-600 hover:bg-violet-50"
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
                 </svg>
               </button>
 

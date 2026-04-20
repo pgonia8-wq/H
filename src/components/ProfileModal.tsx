@@ -97,8 +97,10 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintMessage, setComplaintMessage] = useState("");
   const [sendingComplaint, setSendingComplaint] = useState(false);
+  const [showUpgradePicker, setShowUpgradePicker] = useState(false);
+  const [upgradingModal, setUpgradingModal] = useState(false);
 
-  const { theme, username: globalUsername } = useContext(ThemeContext);
+  const { theme, toggleTheme, username: globalUsername } = useContext(ThemeContext) as any;
   const isDark = theme === "dark";
 
   // isOwnProfile: true cuando id es null (propio perfil sin id explícito)
@@ -388,6 +390,41 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       window.location.href = "/chat/premium";
     } catch (err: any) {
       setToast({ message: err.message || t("error_pago"), type: "error" });
+    }
+  };
+
+  const handleModalUpgrade = async (tier: "premium" | "premium+") => {
+    if (!currentUserId) return;
+    if (!MiniKit.isInstalled()) {
+      setToast({ message: t("minikit_no_detectado") || "Abre desde World App", type: "error" });
+      return;
+    }
+    setUpgradingModal(true);
+    const price = tier === "premium+" ? 10 : 5;
+    try {
+      const payRes = await MiniKit.commandsAsync.pay({
+        reference: generatePayReference(),
+        to: RECEIVER,
+        tokens: [{ symbol: Tokens.WLD, token_amount: tokenToDecimals(price, Tokens.WLD).toString() }],
+        description: `Upgrade ${tier} — ${price} WLD`,
+      });
+      if (payRes?.finalPayload?.status !== "success") throw new Error(t("pago_cancelado") || "Pago cancelado");
+      const verifyRes = await fetch("/api/verifyPayment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactionId: payRes.finalPayload.transaction_id, userId: currentUserId, action: `upgrade_${tier}` }),
+      });
+      if (verifyRes.ok) {
+        setToast({ message: `✦ ¡Upgrade a ${tier.toUpperCase()} exitoso!`, type: "success" });
+        setShowUpgradePicker(false);
+        await refreshProfile();
+      } else {
+        throw new Error("Error al verificar el pago");
+      }
+    } catch (err: any) {
+      setToast({ message: err.message || t("error_pago") || "Error", type: "error" });
+    } finally {
+      setUpgradingModal(false);
     }
   };
 
@@ -803,16 +840,58 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                         </button>
                       )}
 
-                      {/* ── Idioma + Token Market ── */}
+                      {/* ── Upgrade Premium ── */}
+                      <button
+                        onClick={() => setShowUpgradePicker(v => !v)}
+                        disabled={upgradingModal}
+                        className="w-full py-3 rounded-2xl font-bold text-white text-sm transition relative overflow-hidden disabled:opacity-60"
+                        style={{
+                          background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 45%, #a855f7 75%, #c084fc 100%)",
+                          boxShadow: "0 4px 20px rgba(99,102,241,0.40)",
+                        }}
+                      >
+                        <span className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(105deg,transparent 35%,rgba(255,255,255,0.13) 50%,transparent 65%)", animation: "shimmerSlide 2.6s linear infinite" }} />
+                        <span className="relative z-10 flex items-center justify-center gap-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                          </svg>
+                          ✦ {showUpgradePicker ? "Elige tu plan" : "Upgrade Premium"}
+                        </span>
+                      </button>
+
+                      {showUpgradePicker && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleModalUpgrade("premium")}
+                            disabled={upgradingModal}
+                            className="flex-1 py-4 rounded-2xl font-bold flex flex-col items-center gap-1.5 relative overflow-hidden text-white disabled:opacity-60"
+                            style={{ background: "linear-gradient(135deg,#4f46e5 0%,#7c3aed 60%,#a78bfa 100%)", boxShadow: "0 4px 20px rgba(99,60,220,0.30)" }}
+                          >
+                            <svg className="w-5 h-5 text-yellow-300" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                            <span className="text-sm">Premium</span>
+                            <span className="text-indigo-200 text-[10px]">5 WLD / mes</span>
+                          </button>
+                          <button
+                            onClick={() => handleModalUpgrade("premium+")}
+                            disabled={upgradingModal}
+                            className="flex-1 py-4 rounded-2xl font-bold flex flex-col items-center gap-1.5 relative overflow-hidden text-white disabled:opacity-60"
+                            style={{ background: "linear-gradient(135deg,#b45309 0%,#d97706 40%,#fbbf24 80%)", boxShadow: "0 4px 20px rgba(217,119,6,0.35)" }}
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm2.7-2h8.6l1-5.4-3.6 3.2L12 7.4l-2.7 5.4-3.6-3.2.1.1 1.9 4.3z"/></svg>
+                            <span className="text-sm">Premium+</span>
+                            <span className="text-yellow-100 text-[10px]">10 WLD / mes</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ── Idioma + Tema + Token Market ── */}
                         <div className="flex gap-2">
                           {/* Toggle de idioma */}
                           <button
                             onClick={() => setLanguage(language === "es" ? "en" : "es")}
                             className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 hover:scale-[1.02]"
                             style={{
-                              background: isDark
-                                ? "rgba(255,255,255,0.05)"
-                                : "rgba(99,102,241,0.06)",
+                              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(99,102,241,0.06)",
                               border: isDark ? "1px solid rgba(255,255,255,0.09)" : "1px solid rgba(99,102,241,0.16)",
                               color: isDark ? "rgba(255,255,255,0.70)" : "#4f46e5",
                             }}
@@ -821,6 +900,28 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802" />
                             </svg>
                             <span className="text-xs font-bold uppercase tracking-wide">{language === "es" ? "ES" : "EN"}</span>
+                          </button>
+
+                          {/* Toggle de tema */}
+                          <button
+                            onClick={toggleTheme}
+                            className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 hover:scale-[1.02]"
+                            style={{
+                              background: isDark ? "rgba(255,255,255,0.05)" : "rgba(99,102,241,0.06)",
+                              border: isDark ? "1px solid rgba(255,255,255,0.09)" : "1px solid rgba(99,102,241,0.16)",
+                              color: isDark ? "rgba(255,255,255,0.70)" : "#4f46e5",
+                            }}
+                          >
+                            {isDark ? (
+                              <svg className="w-4 h-4 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                              </svg>
+                            )}
+                            <span className="text-xs font-bold uppercase tracking-wide">{isDark ? "Light" : "Dark"}</span>
                           </button>
 
                           {/* Token Market */}
