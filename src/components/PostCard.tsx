@@ -788,12 +788,8 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
               />
             ) : (
               <div
-                className="w-full h-full flex items-center justify-center text-sm font-black"
-                style={{
-                  background: "linear-gradient(160deg, #d4d4d4 0%, #a8a8a8 45%, #c0c0c0 100%)",
-                  color: "#111111",
-                  textShadow: "0 1px 2px rgba(255,255,255,0.4)",
-                }}
+                className="w-full h-full flex items-center justify-center text-white text-sm font-bold"
+                style={{ background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)" }}
               >
                 {postProfile?.username?.[0]?.toUpperCase() || "H"}
               </div>

@@ -697,35 +697,34 @@ const HomePage: React.FC<HomePageProps> = ({
           {/* +Post */}
           <motion.button
             onClick={() => setShowNewPostModal(true)}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold relative overflow-hidden"
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.94 }}
+            className="w-9 h-9 flex items-center justify-center rounded-xl relative overflow-hidden flex-shrink-0"
             style={{
               background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-              border: "1px solid rgba(255,255,255,0.13)",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
               color: "#ffffff",
             }}
           >
-            <Plus size={12} className="relative z-10" />
-            <span className="relative z-10">{t("post") || "Post"}</span>
+            <Plus size={16} />
           </motion.button>
 
           {/* Inbox */}
           <div className="relative">
             <motion.button
               onClick={() => { setShowInbox(true); setUnreadMessages(0); }}
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.94 }}
-              className="w-8 h-8 flex items-center justify-center rounded-xl"
+              className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
               style={{
                 background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-                border: "1px solid rgba(255,255,255,0.13)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
                 color: "#ffffff",
               }}
             >
-              <Mail size={14} />
+              <Mail size={16} />
             </motion.button>
             <AnimatePresence>
               {unreadTotal > 0 && (
@@ -751,13 +750,13 @@ const HomePage: React.FC<HomePageProps> = ({
           <div className="relative">
             <motion.button
               onClick={() => setShowNotifications(true)}
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ scale: 1.06 }}
               whileTap={{ scale: 0.94 }}
-              className="w-8 h-8 flex items-center justify-center rounded-xl"
+              className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0"
               style={{
                 background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-                border: "1px solid rgba(255,255,255,0.13)",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+                border: "1px solid rgba(255,255,255,0.14)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
                 color: "#ffffff",
               }}
             >
@@ -765,7 +764,7 @@ const HomePage: React.FC<HomePageProps> = ({
                 animate={unreadNotifCount > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
                 transition={{ duration: 0.5, delay: 0.3 }}
               >
-                <Bell size={15} />
+                <Bell size={16} />
               </motion.div>
             </motion.button>
             <AnimatePresence>
@@ -788,18 +787,17 @@ const HomePage: React.FC<HomePageProps> = ({
           <motion.button
             onClick={handleHeaderChat}
             disabled={headerChatLoading || checkingAccessHeader}
-            whileHover={{ scale: 1.04 }}
-            whileTap={{ scale: 0.96 }}
-            className="flex items-center gap-1.5 px-3 h-8 rounded-xl text-xs font-semibold relative overflow-hidden disabled:opacity-50"
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.94 }}
+            className="w-9 h-9 flex items-center justify-center rounded-xl flex-shrink-0 disabled:opacity-50"
             style={{
               background: "linear-gradient(160deg, #2c2c2c 0%, #1a1a1a 45%, #0f0f0f 100%)",
-              border: "1px solid rgba(255,255,255,0.13)",
-              boxShadow: "0 4px 14px rgba(0,0,0,0.70), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -1px 0 rgba(0,0,0,0.40)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              boxShadow: "0 4px 14px rgba(0,0,0,0.70), 0 1px 4px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -1px 0 rgba(0,0,0,0.45)",
               color: "#ffffff",
             }}
           >
-            <MessageCircle size={13} className="relative z-10 flex-shrink-0" />
-            <span className="relative z-10">Chat</span>
+            <MessageCircle size={16} />
           </motion.button>
 
           {/* Avatar con badge World Verified */}
@@ -859,12 +857,13 @@ const HomePage: React.FC<HomePageProps> = ({
               key={i}
               className="inline-flex items-center gap-8 px-8 text-[10px] font-bold tracking-wide"
               style={{
-                background: "linear-gradient(90deg, #10b981 0%, #06b6d4 30%, #34d399 55%, #0891b2 80%, #10b981 100%)",
+                background: "linear-gradient(90deg, #00ffc8 0%, #00e5ff 28%, #00ff94 55%, #00cfff 80%, #00ffc8 100%)",
                 backgroundSize: "200% auto",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 backgroundClip: "text",
-                animation: "metalShimmer 5s linear infinite",
+                animation: "metalShimmer 4s linear infinite",
+                filter: "drop-shadow(0 0 6px rgba(0,229,255,0.55))",
               }}
             >
               <span>✦ Gana WLD publicando y conectando con humanos reales</span>
