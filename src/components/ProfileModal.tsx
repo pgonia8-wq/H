@@ -27,7 +27,6 @@ interface ProfileModalProps {
   currentUserId: string | null;
   showUpgradeButton?: boolean;
   onOpenChat?: (otherUserId: string) => void;
-  onOpenTokenApp?: () => void;
 }
 
 interface UserProfile {
@@ -80,7 +79,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   currentUserId,
   showUpgradeButton,
   onOpenChat,
-  onOpenTokenApp,
 }) => {
   const { t, language, setLanguage } = useLanguage();
   const [profile, setProfile] = useState<UserProfile>(emptyProfile);
@@ -884,7 +882,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                         </div>
                       )}
 
-                      {/* ── Idioma + Tema + Token Market ── */}
+                      {/* ── Idioma + Tema ── */}
                         <div className="flex gap-2">
                           {/* Toggle de idioma */}
                           <button
@@ -924,23 +922,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                             <span className="text-xs font-bold uppercase tracking-wide">{isDark ? "Light" : "Dark"}</span>
                           </button>
 
-                          {/* Token Market */}
-                          {onOpenTokenApp && (
-                            <button
-                              onClick={() => { onOpenTokenApp(); onClose(); }}
-                              className="flex-1 py-3 rounded-2xl text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 hover:scale-[1.02]"
-                              style={{
-                                background: isDark
-                                  ? "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(251,146,60,0.10))"
-                                  : "linear-gradient(135deg, rgba(245,158,11,0.10), rgba(251,146,60,0.08))",
-                                border: isDark ? "1px solid rgba(245,158,11,0.22)" : "1px solid rgba(245,158,11,0.20)",
-                                color: isDark ? "#fbbf24" : "#b45309",
-                              }}
-                            >
-                              <span className="text-sm leading-none">🪙</span>
-                              <span className="text-xs font-bold uppercase tracking-wide">Tokens</span>
-                            </button>
-                          )}
                         </div>
 
                       <button

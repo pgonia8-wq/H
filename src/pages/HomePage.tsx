@@ -33,10 +33,6 @@ import {
 } from "lucide-react";
 
 
-// URL de la token mini-app embebida. Pon VITE_TOKEN_APP_URL en tu .env
-const TOKEN_APP_URL: string =
-  (import.meta as any).env?.VITE_TOKEN_APP_URL ?? "";
-
 // Lazy load — no entran en el bundle inicial
 const ProfileModal = lazy(() => import("../components/ProfileModal"));
 const Inbox = lazy(() => import("./chat/Inbox"));
@@ -127,12 +123,6 @@ const HomePage: React.FC<HomePageProps> = ({
   const [checkingAccessHeader, setCheckingAccessHeader] = useState(true);
   const [showGlobalChatHeader, setShowGlobalChatHeader] = useState(false);
   const [headerChatLoading, setHeaderChatLoading] = useState(false);
-
-  // ── Token mini-app ──
-  const [showTokenApp, setShowTokenApp] = useState(false);
-  // El iframe no se monta hasta 10s después del inicio para no demorar la carga
-  const [tokenPreloaded, setTokenPreloaded] = useState(false);
-  const tokenIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ── Notificaciones ──
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -287,133 +277,6 @@ const HomePage: React.FC<HomePageProps> = ({
       globalFetching.current = false;
     }
   }, [globalHasMore]);
-
-  // ─────────────────────────────────────────────
-  // TOKEN MINI-APP — bridge postMessage
-  // ─────────────────────────────────────────────
-  const injectTokenContext = useCallback(() => {
-    const win = tokenIframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage(
-      {
-        type: "WORLD_APP_CONTEXT",
-        payload: {
-          userId: userId ?? "",
-          username: profile?.username ?? username ?? "",
-          profilePicture: profile?.avatar_url ?? "",
-          walletAddress: wallet ?? "",
-          balanceWld: 0,
-          balanceUsdc: 0,
-          verificationLevel: profile?.verification_level === "orb" ? "orb" : (verified ? "device" : "none"),
-        },
-      },
-      TOKEN_APP_URL || "*"
-    );
-  }, [userId, profile, username, verified, wallet]);
-
-  useEffect(() => {
-    const handler = async (e: MessageEvent) => {
-      
-        if (TOKEN_APP_URL && e.origin && e.origin !== TOKEN_APP_URL) return;
-  if (!e.data || typeof e.data !== "object") return;
-      const { type, payload } = e.data as { type: string; payload?: any };
-
-      if (type === "MINI_APP_READY") {
-        injectTokenContext();
-        return;
-      }
-
-      if (type === "REQUEST_ORB_VERIFY") {
-          console.log("[H] REQUEST_ORB_VERIFY received from token");
-          const win = tokenIframeRef.current?.contentWindow;
-          if (!win) { console.warn("[H] tokenIframeRef.contentWindow is null"); return; }
-          try {
-            const verifyRes = await MiniKit.commandsAsync.verify({
-              action: "user-orb",
-              signal: wallet ?? "",
-              verification_level: VerificationLevel.Orb,
-            });
-            const proof = verifyRes?.finalPayload;
-            if (proof?.status === "error") {
-              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: proof.error_code || "minikit_error" } }, TOKEN_APP_URL || "*");
-            } else if (proof && proof.verification_level === "orb") {
-              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: true, orbVerified: true, proof, userId: userId ?? "" } }, TOKEN_APP_URL || "*");
-                fetch("/api/verifyOrbStatus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, proof }) }).then(async (r) => {
-                    let result: any = {};
-                    try { result = await r.json(); } catch { console.error("[H] orb fetch err: respuesta no JSON"); return; }
-                    if (!result.success) { console.error("[H] orb backend err:", result.error); } else { console.log("[H] orb saved via backend"); await fetchOrUpsertProfile(); win.postMessage({ type: "ORB_VERIFIED_FROM_H", payload: { success: true, verificationLevel: "orb" } }, TOKEN_APP_URL || "*"); }
-                  }).catch(err => console.error("[H] orb fetch err:", err.message));
-            } else {
-              win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: "ORB verification not completed" } }, TOKEN_APP_URL || "*");
-            }
-          } catch (err: any) {
-            win.postMessage({ type: "ORB_VERIFY_RESULT", payload: { success: false, error: err.message } }, TOKEN_APP_URL || "*");
-          }
-          return;
-        }
-
-      if (type === "REQUEST_PAYMENT") {
-        const win = tokenIframeRef.current?.contentWindow;
-        if (!win) return;
-        try {
-          const payRes = await MiniKit.commandsAsync.pay({
-            reference: crypto.randomUUID(),
-            to: payload.to,
-            tokens: [
-              {
-                symbol: Tokens.WLD,
-                token_amount: tokenToDecimals(
-                  payload.amount,
-                  Tokens.WLD
-                ).toString(),
-              },
-            ],
-            description: payload.description || "Token Market",
-          });
-          if (payRes?.finalPayload?.status === "success") {
-            win.postMessage(
-              {
-                type: "PAYMENT_RESULT",
-                payload: {
-                  success: true,
-                  transactionId:
-                    payRes.finalPayload.transaction_id,
-                },
-              },
-              TOKEN_APP_URL || "*"
-            );
-          } else {
-            win.postMessage(
-              {
-                type: "PAYMENT_RESULT",
-                payload: {
-                  success: false,
-                  error: "Payment cancelled",
-                },
-              },
-              TOKEN_APP_URL || "*"
-            );
-          }
-        } catch (err: any) {
-          tokenIframeRef.current?.contentWindow?.postMessage(
-            {
-              type: "PAYMENT_RESULT",
-              payload: { success: false, error: err.message },
-            },
-            TOKEN_APP_URL || "*"
-          );
-        }
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [injectTokenContext]);
-
-  // Permite montar el iframe 10s después del inicio (no bloquea la carga inicial)
-  useEffect(() => {
-    const timer = setTimeout(() => setTokenPreloaded(true), 10000);
-    return () => clearTimeout(timer);
-  }, []);
 
   // ─────────────────────────────────────────────
   // INICIALIZACIÓN al tener userId
@@ -895,7 +758,6 @@ const HomePage: React.FC<HomePageProps> = ({
             currentUserId={userId}
             onClose={() => setShowProfileModal(false)}
             onProfileUpdated={handleProfileUpdated}
-            onOpenTokenApp={() => { setShowProfileModal(false); setShowTokenApp(true); }}
           />
         </Suspense>
       )}
@@ -1243,68 +1105,6 @@ const HomePage: React.FC<HomePageProps> = ({
                 )}
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── TOKEN MINI-APP OVERLAY ── */}
-      <AnimatePresence>
-        {showTokenApp && (
-          <motion.div
-            key="token-app-overlay"
-            className="fixed inset-0 z-50 flex flex-col"
-            initial={{ opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 340, damping: 28 }}
-            style={{ background: "#0a0a0a" }}
-          >
-            {/* Barra superior con botón cerrar */}
-            <div
-              className="flex items-center justify-between px-5 py-3 flex-shrink-0"
-              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-            >
-              <span className="text-white font-semibold text-sm flex items-center gap-2">
-                🪙 Token Market
-              </span>
-              <motion.button
-                onClick={() => setShowTokenApp(false)}
-                whileHover={{ scale: 1.1, rotate: 90 }}
-                whileTap={{ scale: 0.9 }}
-                transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-gray-500 hover:text-white hover:bg-white/10 transition"
-              >
-                <X size={16} />
-              </motion.button>
-            </div>
-
-            {/* iframe de la token app — solo se monta tras el delay de 10s */}
-            {!tokenPreloaded ? (
-              <div className="flex-1 flex items-center justify-center flex-col gap-3">
-                <div
-                  className="w-8 h-8 rounded-full border-2 border-transparent animate-spin"
-                  style={{ borderTopColor: "#a855f7", borderRightColor: "#6366f1" }}
-                />
-                <p className="text-gray-500 text-sm">Preparando Token Market…</p>
-              </div>
-            ) : TOKEN_APP_URL ? (
-              <iframe
-                ref={tokenIframeRef}
-                src={TOKEN_APP_URL}
-                className="flex-1 w-full border-0"
-                allow="camera; microphone; payment"
-                title="Token Market"
-              />
-            ) : (
-              <div className="flex-1 flex items-center justify-center flex-col gap-4 text-center px-6">
-                <span className="text-4xl">🪙</span>
-                <p className="text-white font-semibold text-lg">Token Market</p>
-                <p className="text-gray-500 text-sm max-w-xs">
-                  Define <code className="bg-white/10 px-1.5 py-0.5 rounded-lg text-violet-300">VITE_TOKEN_APP_URL</code> en tu{" "}
-                  <code className="bg-white/10 px-1.5 py-0.5 rounded-lg text-violet-300">.env</code> con la URL donde está desplegada la token app.
-                </p>
-              </div>
-            )}
           </motion.div>
         )}
       </AnimatePresence>

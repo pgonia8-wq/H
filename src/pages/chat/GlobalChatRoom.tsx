@@ -63,15 +63,11 @@
     const [extraRoomPayLoading, setExtraRoomPayLoading] = useState(false);
     const [errorToast, setErrorToast] = useState<string | null>(null);
     const [showConnectedPanel, setShowConnectedPanel] = useState(false);
-    const [showTokenApp, setShowTokenApp] = useState(false);
-    const [tokenPreloaded, setTokenPreloaded] = useState(false);
     const [newMsgCount, setNewMsgCount] = useState(0);
 
     const bottomRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const errorTimerRef = useRef<ReturnType<typeof setTimeout>>();
-    const tokenIframeRef = useRef<HTMLIFrameElement>(null);
-    const TOKEN_APP_URL: string = (import.meta as any).env?.VITE_TOKEN_APP_URL ?? "";
 
     const { hasClassicAccess, setHasClassicAccess, hasGoldAccess, setHasGoldAccess, subsLoading } = useSubscriptions(currentUserId, isOpen);
     const { myUsername, myAvatarUrl } = useProfile(currentUserId, isOpen);
@@ -99,11 +95,6 @@
 
     const extraRoomPrice = hasGoldAccess ? 12 : 18;
     const noAccess = roomType === "gold" ? !hasGoldAccess : !hasClassicAccess;
-
-    useEffect(() => {
-      const timer = setTimeout(() => setTokenPreloaded(true), 10000);
-      return () => clearTimeout(timer);
-    }, []);
 
     const showError = useCallback((msg: string) => {
       console.error("[Chat]", msg);
@@ -369,7 +360,7 @@
     return (
       <>
         <AnimatePresence>
-          {isOpen && !showTokenApp && (
+          {isOpen && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -504,12 +495,6 @@
                         </span>
                       )}
                     </button>
-                    <button
-                      onClick={() => setShowTokenApp(true)}
-                      className="p-1.5 rounded-xl transition-all cursor-pointer text-sm leading-none"
-                      style={{ color: "rgba(255,255,255,0.40)" }}
-                      title="Token Market"
-                    >🪙</button>
                     <button
                       onClick={onClose}
                       className="p-1.5 rounded-xl transition-all cursor-pointer"
@@ -739,42 +724,6 @@
           )}
         </AnimatePresence>
 
-        {/* Token mini-app */}
-        <AnimatePresence>
-          {showTokenApp && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[9999] bg-black">
-              <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 28, stiffness: 300 }} className="w-full h-full flex flex-col">
-                <div
-                  className="flex items-center justify-between px-3 pt-[env(safe-area-inset-top,8px)] pb-2 flex-shrink-0"
-                  style={{
-                    backdropFilter: "blur(36px)",
-                    WebkitBackdropFilter: "blur(36px)",
-                    background: "rgba(6,6,13,0.92)",
-                    borderBottom: "1px solid rgba(255,255,255,0.08)",
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.55)",
-                  }}
-                >
-                  <span className="text-sm font-black tracking-wide" style={{ color: "rgba(255,255,255,0.80)" }}>Token Market</span>
-                  <button
-                    onClick={() => setShowTokenApp(false)}
-                    className="p-1.5 rounded-xl cursor-pointer transition-all"
-                    style={{ color: "rgba(255,255,255,0.40)" }}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <iframe ref={tokenIframeRef} src={TOKEN_APP_URL || undefined}
-                  className="flex-1 w-full border-none bg-black" title="Token Market"
-                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {tokenPreloaded && TOKEN_APP_URL && !showTokenApp && (
-          <iframe src={TOKEN_APP_URL} className="hidden" title="Token Preload" tabIndex={-1} />
-        )}
       </>
     );
   }
