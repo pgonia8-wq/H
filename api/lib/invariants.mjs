@@ -1,0 +1,211 @@
+/**
+ * invariants.mjs — Cross-module invariant checks (off-chain ↔ on-chain consistency)
+ *
+ * RESPONSABILIDAD:
+ *   Verificar propiedades GLOBALES del sistema económico que deben mantenerse
+ *   ciertas a lo largo del tiempo y entre módulos. Útil para:
+ *     - smoke tests de deploy
+ *     - asserts en endpoints críticos (modo paranoia)
+ *     - regression detection cuando se actualiza un contrato
+ *
+ * NO ES:
+ *   - Tests unitarios (eso vive en el harness Node directo)
+ *   - Validación de inputs de usuario (eso es responsabilidad de cada endpoint)
+ *
+ * Cualquier invariant que falle indica drift entre el mirror off-chain y el
+ * contrato, o un bug que podría manifestarse económicamente.
+ */
+
+import * as Curve from "./curve.mjs";
+import { BondingCurve, Oracle, Stability, PROTOCOL_VERSION } from "./protocolConstants.mjs";
+import { SCORE_UNIT_ORACLE, INFLUENCE_UNIT_ORACLE, mapEngineToOracleScore } from "./units.mjs";
+import { calculateStress, getBuybackRate, repRisk } from "./stability.mjs";
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #1: Curve monotonicity
+// V(s) debe ser monótona no-decreciente en s ∈ [0, ∞)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function curveMonotonicity({ samples = 16 } = {}) {
+  const points = [];
+  for (let i = 0; i <= samples; i++) {
+    // Distribución log-ish para cubrir bajo y alto régimen
+    const s = i === 0 ? 0n : (10n ** BigInt(2 + i));
+    points.push(s);
+  }
+  for (let i = 1; i < points.length; i++) {
+    const v0 = Curve.V(points[i - 1]);
+    const v1 = Curve.V(points[i]);
+    if (v1 < v0) {
+      return {
+        ok: false,
+        invariant: "curveMonotonicity",
+        detail: `V(${points[i]})=${v1} < V(${points[i - 1]})=${v0}`,
+      };
+    }
+  }
+  return { ok: true, invariant: "curveMonotonicity" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #2: dV(s) > 0 (precio spot estrictamente positivo)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function spotPricePositive({ samples = 16 } = {}) {
+  for (let i = 0; i <= samples; i++) {
+    const s = i === 0 ? 0n : (10n ** BigInt(2 + i));
+    const p = Curve.dV(s);
+    if (p <= 0n) {
+      return { ok: false, invariant: "spotPricePositive", detail: `dV(${s})=${p}` };
+    }
+  }
+  return { ok: true, invariant: "spotPricePositive" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #3: Score bounds consistency
+// SCORE_UNIT_ORACLE ↔ Oracle.SCORE_MIN/MAX ↔ Curve.SCORE_MIN/MAX
+// ════════════════════════════════════════════════════════════════════════════
+
+export function scoreBoundsConsistency() {
+  const checks = [
+    ["SCORE_UNIT_ORACLE.min === Oracle.SCORE_MIN", BigInt(SCORE_UNIT_ORACLE.min) === Oracle.SCORE_MIN],
+    ["SCORE_UNIT_ORACLE.max === Oracle.SCORE_MAX", BigInt(SCORE_UNIT_ORACLE.max) === Oracle.SCORE_MAX],
+    ["SCORE_UNIT_ORACLE.min === BondingCurve.SCORE_MIN", BigInt(SCORE_UNIT_ORACLE.min) === BondingCurve.SCORE_MIN],
+    ["SCORE_UNIT_ORACLE.max === BondingCurve.SCORE_MAX", BigInt(SCORE_UNIT_ORACLE.max) === BondingCurve.SCORE_MAX],
+    ["INFLUENCE_UNIT_ORACLE.min === SCORE_UNIT_ORACLE.min", INFLUENCE_UNIT_ORACLE.min === SCORE_UNIT_ORACLE.min],
+    ["INFLUENCE_UNIT_ORACLE.max === SCORE_UNIT_ORACLE.max", INFLUENCE_UNIT_ORACLE.max === SCORE_UNIT_ORACLE.max],
+  ];
+  for (const [name, ok] of checks) {
+    if (!ok) return { ok: false, invariant: "scoreBoundsConsistency", detail: `failed: ${name}` };
+  }
+  return { ok: true, invariant: "scoreBoundsConsistency" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #4: Engine→Oracle mapping range guarantee
+// Para todo engineScore ∈ [0,10000], output ∈ [Oracle.SCORE_MIN, Oracle.SCORE_MAX]
+// ════════════════════════════════════════════════════════════════════════════
+
+export function engineMappingRange() {
+  for (let s = 0; s <= 10000; s += 137) {
+    const o = mapEngineToOracleScore(s);
+    if (o < Number(Oracle.SCORE_MIN) || o > Number(Oracle.SCORE_MAX)) {
+      return { ok: false, invariant: "engineMappingRange", detail: `map(${s})=${o} out of range` };
+    }
+  }
+  // Boundaries exactos
+  if (mapEngineToOracleScore(0) !== Number(Oracle.SCORE_MIN))
+    return { ok: false, invariant: "engineMappingRange", detail: `map(0) != SCORE_MIN` };
+  if (mapEngineToOracleScore(10000) !== Number(Oracle.SCORE_MAX))
+    return { ok: false, invariant: "engineMappingRange", detail: `map(10000) != SCORE_MAX` };
+  return { ok: true, invariant: "engineMappingRange" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #5: Fee invariants (buy + sell << denominator)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function feeInvariants() {
+  const buy = BondingCurve.BUY_FEE_BPS;
+  const sell = BondingCurve.SELL_FEE_BPS;
+  const denom = BondingCurve.FEE_DENOMINATOR;
+  if (buy < 0n || sell < 0n) return { ok: false, invariant: "feeInvariants", detail: "negative fees" };
+  if (buy + sell >= denom)   return { ok: false, invariant: "feeInvariants", detail: "buy+sell >= 100%" };
+  if (denom !== 10000n)      return { ok: false, invariant: "feeInvariants", detail: `FEE_DENOMINATOR=${denom} != 10000` };
+  // Round-trip ≥ 90% (sanity: si fees > 10% combined, diseño está roto)
+  if (buy + sell > 1000n)    return { ok: false, invariant: "feeInvariants", detail: "round-trip recovery < 90%" };
+  return { ok: true, invariant: "feeInvariants" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #6: Position caps coherentes (owner ≥ user)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function positionCapsCoherent() {
+  if (BondingCurve.OWNER_MAX_BPS < BondingCurve.USER_MAX_BPS) {
+    return { ok: false, invariant: "positionCapsCoherent",
+             detail: `OWNER_MAX_BPS=${BondingCurve.OWNER_MAX_BPS} < USER_MAX_BPS=${BondingCurve.USER_MAX_BPS}` };
+  }
+  if (BondingCurve.OWNER_MAX_BPS > 10000n || BondingCurve.USER_MAX_BPS > 10000n) {
+    return { ok: false, invariant: "positionCapsCoherent", detail: "cap > 100%" };
+  }
+  return { ok: true, invariant: "positionCapsCoherent" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #7: Stability piecewise correct at boundaries
+// (mirror exacto incluyendo no-monotonía documentada — esto valida la PARIDAD,
+// no la calidad del diseño on-chain)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function stabilityPiecewiseParity() {
+  // stress=0 → 40, stress=19 → 40, stress=20 → 40, stress=21 → 42
+  const cases = [
+    [0n,  40n],
+    [19n, 40n],
+    [20n, 40n],
+    [21n, 42n],
+    [49n, 98n],   // ⚠ no-monotonía intencional (documentada en stability.mjs)
+    [50n, 85n],
+    [100n, 85n],
+  ];
+  for (const [s, expected] of cases) {
+    const got = getBuybackRate(s);
+    if (got !== expected) {
+      return { ok: false, invariant: "stabilityPiecewiseParity",
+               detail: `getBuybackRate(${s})=${got} expected ${expected}` };
+    }
+  }
+  // repRisk degenerate branch: para todo Oracle score in [975,1025], repRisk=10
+  for (let s = 975n; s <= 1025n; s++) {
+    if (repRisk(s) !== Stability.REP_RISK_LOW) {
+      return { ok: false, invariant: "stabilityPiecewiseParity",
+               detail: `repRisk(${s})=${repRisk(s)} expected ${Stability.REP_RISK_LOW}` };
+    }
+  }
+  return { ok: true, invariant: "stabilityPiecewiseParity" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INVARIANT #8: Stress ∈ [0, 100] always (clamp efectivo)
+// ════════════════════════════════════════════════════════════════════════════
+
+export function stressBounded() {
+  // Caso extremo: priceDrop=100, volumeDrop=100, repRisk=30 → 230/3=76 (≤100, ok sin clamp)
+  // Caso teórico imposible pero defendido: clamp en stress > 100
+  const extremo = calculateStress({
+    lastPrice: 10n ** 18n, currentPrice: 0n,
+    lastVolume: 10n ** 18n, currentVolume: 0n,
+    avgReputation: 100n,  // forzar repRisk=30
+  });
+  if (extremo > 100n) return { ok: false, invariant: "stressBounded", detail: `stress=${extremo} > 100` };
+  if (extremo < 0n)   return { ok: false, invariant: "stressBounded", detail: `stress=${extremo} < 0` };
+  return { ok: true, invariant: "stressBounded" };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RUNNER — corre todos los invariants y reporta
+// ════════════════════════════════════════════════════════════════════════════
+
+export function runAllInvariants() {
+  const results = [
+    curveMonotonicity(),
+    spotPricePositive(),
+    scoreBoundsConsistency(),
+    engineMappingRange(),
+    feeInvariants(),
+    positionCapsCoherent(),
+    stabilityPiecewiseParity(),
+    stressBounded(),
+  ];
+  const failures = results.filter(r => !r.ok);
+  return {
+    ok: failures.length === 0,
+    protocolVersion: PROTOCOL_VERSION,
+    total: results.length,
+    passed: results.length - failures.length,
+    failed: failures.length,
+    results,
+  };
+}

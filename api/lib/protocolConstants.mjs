@@ -19,6 +19,18 @@ import * as Curve from "./curve.mjs";
 import { SCORE_UNIT_ORACLE, INFLUENCE_UNIT_ORACLE } from "./units.mjs";
 
 // ════════════════════════════════════════════════════════════════════════════
+// PROTOCOL VERSION — bump cuando cambien constantes del protocolo
+// ════════════════════════════════════════════════════════════════════════════
+//
+// SemVer del mirror off-chain respecto al deploy on-chain. Sirve para detectar
+// drift en auditorías y para que clientes (frontend, tests) puedan validar
+// que están hablando con la versión esperada.
+//
+//   0.1.0 — Fases 1-3: curve mirror + units + Oracle constants + Stability
+//
+export const PROTOCOL_VERSION = "0.1.0";
+
+// ════════════════════════════════════════════════════════════════════════════
 // BondingCurve — re-export del mirror canonical (curve.mjs)
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -63,3 +75,20 @@ export const Oracle = Object.freeze({
 // Aliases de seguridad: si alguien importa Influence pensando que es distinto,
 // le sale el mismo objeto que SCORE_UNIT_ORACLE (decisión: misma escala).
 export const OracleInfluence = INFLUENCE_UNIT_ORACLE;
+
+// ════════════════════════════════════════════════════════════════════════════
+// Stability — TotemStabilityModule.sol
+// ════════════════════════════════════════════════════════════════════════════
+
+export const Stability = Object.freeze({
+  BASE_BUYBACK_RATE:       40n,         // baseBuybackRate (mutable on-chain via owner, default 40)
+  MAX_BUYBACK_RATE:        85n,         // maxBuybackRate (mutable on-chain via owner, default 85)
+  COOLDOWN_SEC:            6n * 3600n,  // 6 hours
+  // Stress calculation
+  REP_RISK_THRESHOLD:      800n,        // avgReputation threshold para repRisk alto
+  REP_RISK_HIGH:           30n,         // repRisk si avgReputation < 800
+  REP_RISK_LOW:            10n,         // repRisk si avgReputation >= 800
+  STRESS_PIECEWISE_LOW:    20n,         // stress < 20  → baseBuybackRate
+  STRESS_PIECEWISE_HIGH:   50n,         // stress >= 50 → maxBuybackRate
+  STRESS_MAX:              100n,        // clamp final
+});

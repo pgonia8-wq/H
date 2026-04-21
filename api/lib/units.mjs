@@ -111,11 +111,53 @@ export function assertEngineScore(s) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// CROSS-UNIT INVARIANT GUARDS
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * REGLA GLOBAL DEL PROTOCOLO:
+ *   NO implicit scaling allowed outside units.mjs.
+ *
+ * Cualquier conversión entre unidades (Engine↔Oracle, WLD↔WLD-wei,
+ * tokens↔token-wei) DEBE pasar por una función exportada de este módulo.
+ * Si necesitas una conversión que no existe, agrégala aquí — no la inventes
+ * inline en otro archivo.
+ */
+
+/**
+ * Asserta que dos valores declaran la misma unidad nominal. Útil para puntos
+ * de paso entre módulos donde un mismatch silencioso causaría bugs semánticos.
+ *
+ *   assertSameUnit(WLD_UNIT, providedUnit, "trade.executePrice");
+ */
+export function assertSameUnit(expected, actual, label) {
+  if (expected !== actual) {
+    throw new UnitError(
+      "UnitMismatch",
+      `[${label ?? "unit-check"}] expected unit "${expected}", got "${actual}"`,
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MAPEO Engine [0,10000] → Oracle [975,1025]
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Mapeo lineal determinista de la escala Engine a la escala Oracle.
+ * SCORE_COMPRESSION_LAYER (Engine → Oracle)
+ * ─────────────────────────────────────────
+ * Sensibilidad del mapping: 0.5 oracle units por cada 100 engine points.
+ * Esto comprime el espacio [0, 10000] a [975, 1025] (rango 50 vs 10000).
+ *
+ * Consecuencia intencional: la señal del Oracle es "low entropy" — pequeñas
+ * variaciones de reputación no mueven el precio, solo extremos lo hacen.
+ * Esto es coherente con: bonding curve smoothing, anti-manipulation y
+ * estabilidad de pricing.
+ *
+ * IMPACTO DOCUMENTADO: cualquier consumer que necesite la señal sin comprimir
+ * debe usar engineScore directamente (NO derivar reputación desde Oracle).
+ *
+ * Mapeo lineal determinista:
  *
  *   oracleScore = SCORE_MIN + round(engineScore * (SCORE_MAX - SCORE_MIN) / SCORE_ENGINE_MAX)
  *               = 975 + round(engineScore * 50 / 10000)
