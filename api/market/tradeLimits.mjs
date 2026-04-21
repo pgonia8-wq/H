@@ -6,14 +6,18 @@
  * El contrato enforza el límite definitivo en producción.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient }  from "@supabase/supabase-js";
+import { BondingCurve } from "../lib/protocolConstants.mjs";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const SELL_DAILY_LIMIT = 0.45;
+// SELL_DAILY_LIMIT derivado del mirror (TotemBondingCurve.maxSellBps default
+// 4500 = 45%). NO hardcodear: el owner puede cambiarlo on-chain.
+const SELL_DAILY_LIMIT = Number(BondingCurve.MAX_SELL_BPS_DEFAULT) /
+                         Number(BondingCurve.FEE_DENOMINATOR);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });

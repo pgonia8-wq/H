@@ -11,13 +11,18 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { previewSell }   from "../lib/curve.mjs";
+import { BondingCurve }  from "../lib/protocolConstants.mjs";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const SELL_DAILY_LIMIT = 0.45;
+// SELL_DAILY_LIMIT se DERIVA del mirror (BondingCurve.MAX_SELL_BPS_DEFAULT
+// del contrato TotemBondingCurve.sol, default 4500 = 45%). NO hardcodear:
+// si el owner cambia maxSellBps on-chain, este endpoint debe seguirlo.
+const SELL_DAILY_LIMIT = Number(BondingCurve.MAX_SELL_BPS_DEFAULT) /
+                         Number(BondingCurve.FEE_DENOMINATOR);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });

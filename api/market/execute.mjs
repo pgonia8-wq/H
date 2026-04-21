@@ -22,6 +22,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { requireOrbSession } from "../_orbGuard.mjs";
+import { spotPrice }         from "../lib/curve.mjs";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -36,17 +37,9 @@ const IS_PRODUCTION      = BONDING_CURVE_ADDR.length === 42 && BONDING_CURVE_ADD
 const WORLD_CHAIN_RPC = process.env.WORLD_CHAIN_RPC
   || "https://worldchain-mainnet.g.alchemy.com/public";
 
-// ── Curva: helper para precio estimado (cache UI, no fuente de verdad) ────────
-// dV(s) = INITIAL_PRICE_WEI + CURVE_K * s² / SCALE
-const INITIAL_PRICE_WEI = 5.5e8;
-const CURVE_K           = 235;
-const SCALE             = 1e20;
-
-function estimatePriceFromSupply(supply) {
-  const s   = supply;
-  const dV  = INITIAL_PRICE_WEI + (CURVE_K * s * s) / SCALE;
-  return dV / 1e18;
-}
+// ── Precio estimado: SIEMPRE delega en el mirror BigInt de TotemBondingCurve.
+//    NO reimplementar la curva aquí — ONCHAIN ES VERDAD, mirror es la única
+//    representación off-chain válida. F8: eliminadas constantes inline duplicadas.
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
@@ -155,7 +148,7 @@ export default async function handler(req, res) {
     ? (totem.supply ?? 0) + tokenAmount
     : Math.max(0, (totem.supply ?? 0) - tokenAmount);
 
-  const newPrice     = estimatePriceFromSupply(newSupply);
+  const newPrice     = spotPrice(newSupply);
   const newVolume24h = (totem.volume_24h ?? 0) + wldAmount;
 
   await supabase.from("totems").update({
