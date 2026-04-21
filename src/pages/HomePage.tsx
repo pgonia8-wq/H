@@ -40,7 +40,9 @@ const Inbox = lazy(() => import("./chat/Inbox"));
 const GlobalChatRoom = lazy(() => import("./chat/GlobalChatRoom"));
 const AutonomousGrowthBrain = lazy(() => import("../components/AutonomousGrowthBrain"));
 const ScannerBrain = lazy(() => import("../components/ScannerBrain"));
-const TradeCenterPage = lazy(() => import("./trade/TradeCenterPage"));
+// Shell nuevo (estética token/): drop-in replacement de TradeCenterPage.
+// Mantiene API idéntica de props. El antiguo queda en disco como fallback.
+const TradeCenterPage = lazy(() => import("../trade-shell/TradeShell"));
 
 // ─────────────────────────────────────────────
 // TIPOS

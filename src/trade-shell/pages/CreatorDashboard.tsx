@@ -1,0 +1,247 @@
+/**
+ * CreatorDashboard — Wizard de creación de tótem.
+ * Adaptado: el contrato deriva address/emoji/symbol; aquí solo pedimos nombre.
+ * POST /api/totem/create requiere session token (Orb-verified wallet).
+ */
+import { useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Sparkles, ShieldCheck, Check } from "lucide-react";
+import { createTotem } from "../../lib/tradeApi";
+import type { TotemProfile } from "../../lib/tradeApi";
+import { deriveEmoji, deriveSymbol, formatUsd } from "../services/derive";
+import { useShell } from "../context/ShellContext";
+import OrbGateModal from "../components/OrbGateModal";
+
+type Step = "name" | "preview" | "confirm" | "done";
+
+// Address derivada idéntica a TradeCenterPage.CreateTotemModal (compat).
+function deriveAddress(wallet: string | null, userId: string, name: string): string {
+  const seedSrc = (wallet ?? userId ?? "anon") + ":" + name.trim().toLowerCase();
+  let h1 = 0xdeadbeef ^ seedSrc.length;
+  let h2 = 0x41c6ce57 ^ seedSrc.length;
+  for (let i = 0; i < seedSrc.length; i++) {
+    const ch = seedSrc.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = (h1 ^ (h1 >>> 16)) >>> 0;
+  h2 = (h2 ^ (h2 >>> 13)) >>> 0;
+  const hex = (h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0")).repeat(3).slice(0, 40);
+  return "0x" + hex;
+}
+
+export default function CreatorDashboard() {
+  const { userId, walletAddress, isOrbVerified, verifyOrb, onOrbVerifiedChange, openToken, closeCreator } = useShell();
+  const [step, setStep] = useState<Step>("name");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err,  setErr]  = useState<string | null>(null);
+  const [orbGate, setOrbGate] = useState(false);
+  const [created, setCreated] = useState<TotemProfile | null>(null);
+
+  const validName = name.trim().length >= 2 && name.trim().length <= 32;
+  const derivedAddr = useMemo(
+    () => validName ? deriveAddress(walletAddress, userId, name) : "",
+    [validName, walletAddress, userId, name],
+  );
+  const emoji  = useMemo(() => derivedAddr ? deriveEmoji(derivedAddr) : "✨", [derivedAddr]);
+  const symbol = useMemo(() => deriveSymbol(name || "XX"), [name]);
+
+  async function submitCreate() {
+    if (!validName || busy) return;
+    if (!isOrbVerified) { setOrbGate(true); return; }
+    setBusy(true); setErr(null);
+    try {
+      const t = await createTotem(derivedAddr, name.trim());
+      setCreated(t);
+      setStep("done");
+    } catch (e: any) {
+      setErr(e?.message ?? "No se pudo crear el tótem.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="h-full w-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+        <button onClick={closeCreator} className="p-2 -ml-2 rounded-lg hover:bg-white/5" aria-label="Volver">
+          <ArrowLeft size={20} color="#ffffff" />
+        </button>
+        <h1 className="text-lg font-semibold text-white">Crear tótem</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 pb-28 scrollbar-hide">
+        {/* Stepper */}
+        <div className="flex items-center gap-2 mb-6">
+          {(["name", "preview", "confirm"] as Step[]).map((s, i) => {
+            const active = step === s || (step === "done" && s === "confirm");
+            const done   = (step === "preview" && s === "name") ||
+                           (step === "confirm" && (s === "name" || s === "preview")) ||
+                           (step === "done");
+            return (
+              <div key={s} className="flex-1 flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold"
+                  style={{
+                    background: active ? "rgba(34,197,94,0.20)" : done ? "rgba(34,197,94,0.10)" : "rgba(255,255,255,0.05)",
+                    border:     `1px solid ${active || done ? "rgba(34,197,94,0.45)" : "rgba(255,255,255,0.10)"}`,
+                    color:      active || done ? "#22c55e" : "rgba(255,255,255,0.45)",
+                  }}>
+                  {done ? <Check size={12} /> : i + 1}
+                </div>
+                {i < 2 && <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />}
+              </div>
+            );
+          })}
+        </div>
+
+        <AnimatePresence mode="wait">
+          {step === "name" && (
+            <motion.div key="name" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <h2 className="text-xl font-bold text-white">Nombra tu tótem</h2>
+              <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+                Entre 2 y 32 caracteres. Es permanente on-chain.
+              </p>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value.slice(0, 32))}
+                placeholder="p. ej. Guardián del Agua"
+                className="mt-4 w-full px-4 py-3 rounded-xl text-white placeholder:text-white/30 focus:outline-none"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.10)" }}
+                autoFocus
+              />
+              <div className="mt-1 text-[11px]" style={{ color: "rgba(255,255,255,0.40)" }}>
+                {name.trim().length}/32
+              </div>
+              <button
+                onClick={() => validName && setStep("preview")}
+                disabled={!validName}
+                className="mt-6 w-full py-3 rounded-xl font-semibold disabled:opacity-40"
+                style={{ background: "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)", color: "#fff" }}
+              >
+                Continuar
+              </button>
+            </motion.div>
+          )}
+
+          {step === "preview" && (
+            <motion.div key="preview" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <h2 className="text-xl font-bold text-white">Identidad derivada</h2>
+              <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+                El emoji, símbolo y address se derivan de tu wallet + nombre.
+              </p>
+
+              <div className="mt-5 rounded-2xl p-5 text-center"
+                style={{
+                  background: "linear-gradient(135deg, rgba(34,197,94,0.15) 0%, rgba(167,139,250,0.15) 100%)",
+                  border: "1px solid rgba(255,255,255,0.10)",
+                }}>
+                <div className="text-6xl mb-3">{emoji}</div>
+                <div className="text-white font-bold text-lg">{name}</div>
+                <div className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.55)" }}>
+                  {symbol} · {derivedAddr.slice(0, 10)}…{derivedAddr.slice(-6)}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl p-3 text-xs"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.60)" }}>
+                <div className="flex items-center gap-2 mb-1" style={{ color: "#22c55e" }}>
+                  <Sparkles size={12} /> <span className="font-semibold">Precio inicial</span>
+                </div>
+                Curva bonding: inicia en {formatUsd(0.0001, 6)}. Precio sube cuadráticamente con el supply hasta graduación a 1M tokens.
+              </div>
+
+              <div className="mt-5 flex gap-2">
+                <button onClick={() => setStep("name")}
+                  className="flex-1 py-3 rounded-xl font-semibold"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.70)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  Atrás
+                </button>
+                <button onClick={() => setStep("confirm")}
+                  className="flex-1 py-3 rounded-xl font-semibold"
+                  style={{ background: "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)", color: "#fff" }}>
+                  Siguiente
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === "confirm" && (
+            <motion.div key="confirm" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <h2 className="text-xl font-bold text-white">Confirmar</h2>
+              <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.55)" }}>
+                Crear un tótem requiere verificación Orb. Un humano = un creador.
+              </p>
+
+              <div className="mt-4 rounded-xl p-4 space-y-2 text-sm"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex justify-between">
+                  <span style={{ color: "rgba(255,255,255,0.55)" }}>Nombre</span>
+                  <span className="text-white font-semibold">{name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: "rgba(255,255,255,0.55)" }}>Símbolo</span>
+                  <span className="text-white font-mono">{symbol}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: "rgba(255,255,255,0.55)" }}>Emoji</span>
+                  <span className="text-2xl">{emoji}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span style={{ color: "rgba(255,255,255,0.55)" }}>Verificación</span>
+                  <span className="flex items-center gap-1" style={{ color: isOrbVerified ? "#22c55e" : "#fbbf24" }}>
+                    <ShieldCheck size={14} /> {isOrbVerified ? "Verificado" : "Pendiente"}
+                  </span>
+                </div>
+              </div>
+
+              {err && (
+                <div className="mt-3 rounded-lg px-3 py-2 text-xs"
+                  style={{ background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.3)", color: "#fca5a5" }}>
+                  {err}
+                </div>
+              )}
+
+              <div className="mt-5 flex gap-2">
+                <button onClick={() => setStep("preview")} disabled={busy}
+                  className="flex-1 py-3 rounded-xl font-semibold disabled:opacity-50"
+                  style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.70)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  Atrás
+                </button>
+                <button onClick={submitCreate} disabled={busy || !validName}
+                  className="flex-1 py-3 rounded-xl font-semibold disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)", color: "#fff" }}>
+                  {busy ? "Creando…" : isOrbVerified ? "Crear tótem" : "Verificar y crear"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {step === "done" && created && (
+            <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center pt-8">
+              <div className="text-7xl mb-4">{deriveEmoji(created.address)}</div>
+              <h2 className="text-2xl font-bold text-white">¡Tótem creado!</h2>
+              <div className="text-white font-semibold mt-1">{created.name}</div>
+              <div className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.50)" }}>
+                {created.address.slice(0, 10)}…{created.address.slice(-6)}
+              </div>
+              <button
+                onClick={() => { closeCreator(); openToken(created.address); }}
+                className="mt-6 w-full py-3 rounded-xl font-semibold"
+                style={{ background: "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)", color: "#fff" }}>
+                Ver mi tótem
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {orbGate && (
+        <OrbGateModal
+          intent="create"
+          onClose={() => setOrbGate(false)}
+          onVerify={async () => { await verifyOrb(); onOrbVerifiedChange(true); }}
+        />
+      )}
+    </div>
+  );
+}
