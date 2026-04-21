@@ -26,6 +26,7 @@ import {
   buyPreview, sellPreview, executeTrade,
   type BuyPreview, type SellPreviewResult,
 } from "../../../lib/tradeApi";
+import AntiManipWidget from "./AntiManipWidget";
 
 // ── Env vars ────────────────────────────────────────────────────────────────
 const BONDING_CURVE_ADDRESS = import.meta.env.VITE_BONDING_CURVE_ADDRESS || "";
@@ -65,6 +66,12 @@ interface Props {
   /** Gate Orb: false → modo lectura, botones de ejecución reemplazados por CTA de verificación. */
   canTrade?:        boolean;
   onRequestVerify?: () => void;
+  /** Precio actual del totem en WLD. Si está presente → render AntiManipWidget.
+   *  Cuando ANTI_MANIP_ADDRESS exista, también pasar prevEmaWei/lastUpdateUnix
+   *  leídos vía RPC (defaults "0" = cold-start advisory). */
+  currentPriceWld?: number;
+  prevEmaWei?:      string;
+  lastUpdateUnix?:  string;
 }
 
 type Tab     = "buy" | "sell";
@@ -91,6 +98,9 @@ export default function TradePanel({
   onTradeSuccess,
   canTrade = true,
   onRequestVerify,
+  currentPriceWld,
+  prevEmaWei,
+  lastUpdateUnix,
 }: Props) {
   const [tab,         setTab]         = useState<Tab>("buy");
   const [amount,      setAmount]      = useState("");
@@ -523,6 +533,17 @@ export default function TradePanel({
           </div>
         )}
       </div>
+
+      {/* ── ANTI-MANIPULATION ADVISORY ────────────────────────────────── */}
+      {currentPriceWld !== undefined && currentPriceWld > 0 && (
+        <AntiManipWidget
+          totemAddress={totemAddress}
+          currentPriceWld={currentPriceWld}
+          prevEmaWei={prevEmaWei}
+          lastUpdateUnix={lastUpdateUnix}
+          isDark={isDark}
+        />
+      )}
 
       {/* ── BOTÓN EJECUTAR ────────────────────────────────────────────── */}
       {canTrade ? (

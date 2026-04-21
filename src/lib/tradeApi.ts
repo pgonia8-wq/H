@@ -278,3 +278,93 @@ export async function getStabilityStatus(): Promise<{
 }> {
   return apiFetch("/system/stability");
 }
+
+// ════════════════════════════════════════════════════════
+// ANTI-MANIPULATION (advisory — mirror EMA + cooldown)
+// ════════════════════════════════════════════════════════
+//
+// Calculator-pure: el endpoint NO consulta DB ni RPC. El cliente pasa
+// prev/newValue/lastUpdate como STRINGS (preserva BigInt sin pérdida).
+// El servidor proxea a updatePreview() de lib/antiManipulation.mjs (mirror
+// BigInt EXACTO de TotemAntiManipulationLayer.sol — solo EMA + cooldown,
+// sin heurísticas inventadas).
+//
+// Cuando el contrato esté deployado, el frontend lee prev/lastUpdate vía
+// RPC y los pasa aquí. Mientras tanto, "0" es el placeholder honesto.
+
+export interface AntiManipPreview {
+  advisory:           true;
+  nextEma:            string;            // bigint stringificado (wei)
+  canUpdateNow:       boolean;
+  secondsUntilUnlock: string;            // bigint stringificado (segundos)
+  blockedBy:          string | null;     // "ANTI_MANIP_COOLDOWN" o null
+  inputs: {
+    prev:       string;
+    newValue:   string;
+    lastUpdate: string;
+    now:        string;
+    alpha:      string;
+  };
+  constants: {
+    ALPHA:             string;
+    ALPHA_DENOMINATOR: string;
+    MIN_INTERVAL_SEC:  string;
+  };
+  note: string;
+}
+
+export interface AntiManipPreviewParams {
+  /** emaPrice anterior en wei (bigint stringificado). "0" si nunca actualizado. */
+  prev:       string;
+  /** Observación nueva en wei (bigint stringificado). */
+  newValue:   string;
+  /** Unix segundos del último updateOracle (bigint stringificado). "0" si nunca. */
+  lastUpdate: string;
+  /** Unix segundos actual (opcional, default Date.now()/1000 server-side). */
+  now?:       string;
+  /** Smoothing factor (opcional, default ALPHA=20). */
+  alpha?:     string;
+}
+
+export async function antiManipPreview(p: AntiManipPreviewParams): Promise<AntiManipPreview> {
+  return apiFetch("/system/antiManip-preview", {
+    method: "POST",
+    body:   JSON.stringify(p),
+  });
+}
+
+// ════════════════════════════════════════════════════════
+// TRADES & HOLDERS (lectura, derivados de tabla `trades`)
+// ════════════════════════════════════════════════════════
+
+export interface TotemTrade {
+  id:        string;
+  type:      "buy" | "sell";
+  user:      string;
+  totem:     string;
+  amount:    number; // WLD
+  tokens:    number;
+  tx_hash:   string;
+  timestamp: string;
+}
+
+export interface TotemHolder {
+  user_id:    string;
+  tokens:     number;
+  share_pct:  number;
+  last_trade: string | null;
+}
+
+export interface TotemHoldersResult {
+  total_holders:        number;
+  total_supply_derived: number;
+  holders:              TotemHolder[];
+}
+
+export async function getTotemTrades(address: string, limit = 50): Promise<TotemTrade[]> {
+  return apiFetch(`/totem/trades?address=${encodeURIComponent(address)}&limit=${limit}`);
+}
+
+export async function getTotemHolders(address: string, limit = 20): Promise<TotemHoldersResult> {
+  return apiFetch(`/totem/holders?address=${encodeURIComponent(address)}&limit=${limit}`);
+}
