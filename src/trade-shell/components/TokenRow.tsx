@@ -59,7 +59,7 @@ export default function TokenRow({ t, onClick, index = 0 }: Props) {
       <div className="text-right shrink-0">
         <div className="text-white font-semibold tabular-nums">{formatUsd(t.price, 6)}</div>
         <div className="text-[11px] tabular-nums" style={{ color: "rgba(255,255,255,0.45)" }}>
-          {t.curvePercent.toFixed(1)}% curva
+          Score {Math.round(t.score)}
         </div>
       </div>
     </motion.button>

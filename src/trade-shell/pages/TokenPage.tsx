@@ -1,25 +1,28 @@
 /**
  * TokenPage — Bloomberg fullscreen de un tótem.
- * Reusa BuySellFullscreen existente (MiniKit + TradePanel intactos).
- * ONCHAIN WINS: solo lectura + disparo buy/sell que SOLO firma con wallet.
+ * Render PURO del viewModel canónico (Ley P1). Cero derivación aquí.
+ * Todo número/color/texto viene pre-cocinado por /api/totem/viewModel.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { ArrowLeft, ShoppingCart, DollarSign, Users, Clock } from "lucide-react";
 import {
-  getTotemProfile, getTotemHistory, getTotemTrades, getTotemHolders,
+  getTotemHistory, getTotemTrades, getTotemHolders,
 } from "../../lib/tradeApi";
 import type {
-  TotemProfile, TotemHistory, TotemTrade, TotemHoldersResult,
+  TotemHistory, TotemTrade, TotemHoldersResult,
 } from "../../lib/tradeApi";
-import { enrich, formatUsd, formatWld, formatCount, shortAddr } from "../services/derive";
+import {
+  getTotemViewModel, fmtWld, fmtCount, fmtBps, fmtDelta, fmtAge,
+  shortAddr, STATUS_COLORS, STATUS_LABELS,
+} from "../services/viewModel";
+import type { TotemViewModel } from "../services/viewModel";
+import { deriveEmoji } from "../services/derive";
 import Sparkline from "../components/Sparkline";
 import Stat from "../components/Stat";
 import { useShell } from "../context/ShellContext";
 import OrbGateModal from "../components/OrbGateModal";
 
-// BuySellFullscreen → TradePanel → CURVE_ABI + MiniKit: pesado. Se baja solo
-// cuando el usuario toca Comprar/Vender, nunca en la carga inicial del tótem.
 const BuySellFullscreen = lazy(() => import("../../pages/trade/components/BuySellFullscreen"));
 
 type Tab = "trades" | "holders";
@@ -29,7 +32,7 @@ export default function TokenPage() {
     selectedAddress, userId, walletAddress, isOrbVerified, verifyOrb, onOrbVerifiedChange, closeToken,
   } = useShell();
 
-  const [profile,  setProfile]  = useState<TotemProfile | null>(null);
+  const [vm,       setVm]       = useState<TotemViewModel | null>(null);
   const [history,  setHistory]  = useState<TotemHistory[]>([]);
   const [trades,   setTrades]   = useState<TotemTrade[]>([]);
   const [holders,  setHolders]  = useState<TotemHoldersResult | null>(null);
@@ -43,13 +46,13 @@ export default function TokenPage() {
     if (!selectedAddress) return;
     setLoading(true); setErr(null);
     try {
-      const [p, h, tr, ho] = await Promise.all([
-        getTotemProfile(selectedAddress, userId || undefined),
+      const [v, h, tr, ho] = await Promise.all([
+        getTotemViewModel(selectedAddress, userId || undefined),
         getTotemHistory(selectedAddress, 48).catch(() => []),
         getTotemTrades(selectedAddress, 40).catch(() => []),
         getTotemHolders(selectedAddress, 20).catch(() => null),
       ]);
-      setProfile(p); setHistory(h); setTrades(tr); setHolders(ho);
+      setVm(v); setHistory(h); setTrades(tr); setHolders(ho);
     } catch (e: any) {
       setErr(e?.message ?? "No se pudo cargar el tótem.");
     } finally { setLoading(false); }
@@ -57,14 +60,25 @@ export default function TokenPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const enriched = useMemo(() => profile ? enrich(profile) : null, [profile]);
+  const emoji = useMemo(() => selectedAddress ? deriveEmoji(selectedAddress) : "", [selectedAddress]);
 
   if (!selectedAddress) return null;
 
   function requestTrade(s: "buy" | "sell") {
     if (!isOrbVerified) { setOrbGate(true); return; }
+    if (vm?.status.overall !== "OK") return; // backend ya decidió que no se puede
     setSide(s);
   }
+
+  const canTrade = vm?.status.overall === "OK";
+  const price    = vm ? Number(vm.market.price.value ?? 0) : 0;
+  const name     = vm?.identity.name.value ?? "…";
+  const symbol   = vm?.identity.symbol.value ?? "";
+  const statusColor = vm ? STATUS_COLORS[vm.status.overall] : "#666";
+  const statusLabel = vm ? STATUS_LABELS[vm.status.overall] : "";
+  const grad     = vm?.progression.graduation.value;
+  const scoreDelta = vm?.oracle.scoreDelta.value;
+  const infDelta   = vm?.oracle.influenceDelta.value;
 
   return (
     <div className="h-full w-full flex flex-col">
@@ -75,13 +89,18 @@ export default function TokenPage() {
         </button>
         <div className="flex-1 min-w-0">
           <div className="text-xs" style={{ color: "rgba(255,255,255,0.50)" }}>
-            {enriched ? shortAddr(enriched.address) : selectedAddress.slice(0, 10)}
+            {shortAddr(selectedAddress)}
           </div>
-          <div className="text-white font-semibold truncate">{profile?.name ?? "…"}</div>
+          <div className="text-white font-semibold truncate">{name}</div>
         </div>
+        {vm && (
+          <span className="text-[10px] uppercase tracking-wider px-2 py-1 rounded-md font-semibold"
+            style={{ background: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}55` }}>
+            {statusLabel}
+          </span>
+        )}
       </div>
 
-      {/* Body scroll */}
       <div className="flex-1 overflow-y-auto pb-32 scrollbar-hide">
         {loading && (
           <div className="text-center text-sm py-10" style={{ color: "rgba(255,255,255,0.50)" }}>
@@ -95,7 +114,7 @@ export default function TokenPage() {
           </div>
         )}
 
-        {enriched && (
+        {vm && (
           <>
             {/* Hero price */}
             <div className="px-4 mt-2">
@@ -105,14 +124,14 @@ export default function TokenPage() {
                     background: "linear-gradient(135deg, rgba(34,197,94,0.22), rgba(167,139,250,0.22))",
                     border: "1px solid rgba(255,255,255,0.10)",
                   }}>
-                  {enriched.emoji}
+                  {emoji}
                 </div>
                 <div className="flex-1">
                   <div className="text-[11px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.50)" }}>
-                    {enriched.symbol} · L{enriched.level} · {enriched.badge || "—"}
+                    {symbol} · L{vm.progression.level.value ?? "—"} · Badge {vm.progression.badge.value ?? "—"}
                   </div>
                   <div className="text-3xl font-bold text-white tabular-nums mt-0.5">
-                    {formatUsd(enriched.price, 6)}
+                    {fmtWld(price, 6)}
                   </div>
                 </div>
               </div>
@@ -124,14 +143,59 @@ export default function TokenPage() {
               <Sparkline data={history} height={150} width={340} />
             </div>
 
-            {/* Stats grid */}
+            {/* Stats grid — todo pre-cocinado */}
             <div className="px-4 mt-4 grid grid-cols-2 gap-2">
-              <Stat label="Supply"     value={formatCount(enriched.supply)}      hint={`${enriched.curvePercent.toFixed(1)}% a graduación`} color="#22c55e" />
-              <Stat label="Volumen 24h" value={formatWld(enriched.volume_24h, 2)} />
-              <Stat label="Score"      value={Math.round(enriched.score).toString()} color="#a78bfa" />
-              <Stat label="Influence"  value={enriched.influence.toFixed(2)} />
-              <Stat label="Holders"    value={holders ? formatCount(holders.total_holders) : "—"} />
-              <Stat label="Creado"     value={new Date(enriched.created_at).toLocaleDateString()} />
+              <Stat label="Supply"    value={fmtCount(Number(vm.market.supply.value ?? 0))}
+                    hint={grad ? `${(grad.overallBps / 100).toFixed(1)}% a graduación` : undefined} color="#22c55e" />
+              <Stat label="Vol 24h (verif.)" value={fmtWld(Number(vm.market.volumeShown.value ?? 0), 2)}
+                    hint={vm.market.verifiedVolume.stale ? "raw (indexer)" : "on-chain verified"} />
+              <Stat label="Score Δ"   value={fmtDelta(scoreDelta)} color={Number(scoreDelta ?? 0) >= 0 ? "#22c55e" : "#f87171"} />
+              <Stat label="Influence Δ" value={fmtDelta(infDelta)} />
+              <Stat label="Holders"   value={holders ? fmtCount(holders.total_holders) : "—"} />
+              <Stat label="Edad"      value={fmtAge(vm.market.ageSec.value)} />
+            </div>
+
+            {/* Graduation progress — 4 gates del viewModel */}
+            {grad && (
+              <div className="mx-4 mt-4 rounded-2xl p-3"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.50)" }}>
+                    Camino a graduación
+                  </span>
+                  <span className="text-xs font-semibold tabular-nums" style={{ color: "#22c55e" }}>
+                    {(grad.overallBps / 100).toFixed(1)}%
+                  </span>
+                </div>
+                {[
+                  { k: "level",  label: "Nivel",      r: grad.gates.level.ratioBps  },
+                  { k: "supply", label: "Supply",     r: grad.gates.supply.ratioBps },
+                  { k: "volume", label: "Vol verif.", r: grad.gates.volume.ratioBps },
+                  { k: "age",    label: "Edad",       r: grad.gates.age.ratioBps    },
+                ].map(g => (
+                  <div key={g.k} className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] w-20" style={{ color: "rgba(255,255,255,0.55)" }}>{g.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                      <div style={{ width: `${Math.min(100, g.r / 100)}%`, height: "100%", background: grad.bottleneckGate === g.k ? "#f59e0b" : "#22c55e" }} />
+                    </div>
+                    <span className="text-[10px] w-10 text-right tabular-nums" style={{ color: "rgba(255,255,255,0.50)" }}>
+                      {(g.r / 100).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
+                <div className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.40)" }}>
+                  Cuello de botella: <span style={{ color: "#f59e0b" }}>{grad.bottleneckGate}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Trading info */}
+            <div className="mx-4 mt-4 rounded-2xl p-3 grid grid-cols-2 gap-2 text-[11px]"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div><span style={{ color: "rgba(255,255,255,0.50)" }}>Buy fee:</span> <span className="text-white">{fmtBps(vm.trading.buyFeeBps.value)}</span></div>
+              <div><span style={{ color: "rgba(255,255,255,0.50)" }}>Sell fee:</span> <span className="text-white">{fmtBps(vm.trading.sellFeeBps.value)}</span></div>
+              <div><span style={{ color: "rgba(255,255,255,0.50)" }}>User cap:</span> <span className="text-white">{fmtBps(vm.trading.userCapBps.value)}</span></div>
+              <div><span style={{ color: "rgba(255,255,255,0.50)" }}>Owner cap:</span> <span className="text-white">{fmtBps(vm.trading.ownerCapBps.value)}</span></div>
             </div>
 
             {/* Tabs trades/holders */}
@@ -171,7 +235,7 @@ export default function TokenPage() {
                           <span style={{ color: "rgba(255,255,255,0.45)" }}>{shortAddr(t.user)}</span>
                         </div>
                         <div className="text-right">
-                          <div className="text-white tabular-nums">{formatWld(t.amount, 3)}</div>
+                          <div className="text-white tabular-nums">{fmtWld(t.amount, 3)}</div>
                           <div className="tabular-nums" style={{ color: "rgba(255,255,255,0.40)" }}>
                             {new Date(t.timestamp).toLocaleTimeString()}
                           </div>
@@ -187,7 +251,7 @@ export default function TokenPage() {
                         style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                         <span style={{ color: "rgba(255,255,255,0.65)" }}>{shortAddr(h.user_id)}</span>
                         <div className="text-right">
-                          <div className="text-white tabular-nums">{formatCount(h.tokens)}</div>
+                          <div className="text-white tabular-nums">{fmtCount(h.tokens)}</div>
                           <div className="tabular-nums" style={{ color: "rgba(255,255,255,0.40)" }}>
                             {h.share_pct.toFixed(2)}%
                           </div>
@@ -201,42 +265,47 @@ export default function TokenPage() {
       </div>
 
       {/* Buy/Sell bar */}
-      {enriched && walletAddress && (
+      {vm && walletAddress && (
         <div className="fixed left-0 right-0 z-[9995] px-4"
           style={{ bottom: "calc(env(safe-area-inset-bottom) + 72px)" }}>
           <div className="max-w-md mx-auto flex gap-2">
-            <button onClick={() => requestTrade("buy")}
+            <button onClick={() => requestTrade("buy")} disabled={!canTrade}
               className="flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
               style={{
-                background: "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)",
-                color: "#fff",
-                boxShadow: "0 6px 20px rgba(34,197,94,0.35)",
+                background: canTrade ? "linear-gradient(135deg,#22c55e 0%,#16a34a 100%)" : "rgba(255,255,255,0.08)",
+                color: canTrade ? "#fff" : "rgba(255,255,255,0.35)",
+                boxShadow: canTrade ? "0 6px 20px rgba(34,197,94,0.35)" : "none",
               }}>
               <ShoppingCart size={16} /> Comprar
             </button>
-            <button onClick={() => requestTrade("sell")}
+            <button onClick={() => requestTrade("sell")} disabled={!canTrade}
               className="flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
               style={{
-                background: "rgba(248,113,113,0.12)",
-                color: "#fca5a5",
-                border: "1px solid rgba(248,113,113,0.35)",
+                background: canTrade ? "rgba(248,113,113,0.12)" : "rgba(255,255,255,0.04)",
+                color: canTrade ? "#fca5a5" : "rgba(255,255,255,0.35)",
+                border: `1px solid ${canTrade ? "rgba(248,113,113,0.35)" : "rgba(255,255,255,0.08)"}`,
               }}>
               <DollarSign size={16} /> Vender
             </button>
           </div>
+          {!canTrade && vm && (
+            <div className="max-w-md mx-auto mt-2 text-center text-[11px]"
+              style={{ color: statusColor }}>
+              Trading no disponible — Estado: {statusLabel}
+            </div>
+          )}
         </div>
       )}
 
-      {/* BuySellFullscreen overlay — reusa lógica MiniKit existente (lazy) */}
       <AnimatePresence>
-        {side && enriched && walletAddress && (
+        {side && vm && walletAddress && (
           <Suspense fallback={null}>
             <BuySellFullscreen
               key="buysell"
               isDark
-              totemAddress={enriched.address}
-              totemName={enriched.name}
-              totemPrice={enriched.price}
+              totemAddress={vm.address}
+              totemName={name}
+              totemPrice={price}
               userId={userId}
               walletAddress={walletAddress}
               canTrade={isOrbVerified}

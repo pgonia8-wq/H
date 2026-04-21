@@ -12,6 +12,7 @@ import WhalesPanel from "./components/WhalesPanel";
 import IncidentPanel from "./components/IncidentPanel";
 import MoneyFlowPanel from "./components/MoneyFlowPanel";
 import InfraPanel from "./components/InfraPanel";
+import ContractsPanel from "./components/ContractsPanel";
 
 const TABS = [
   { id: "overview", label: "Panel General", icon: "📊" },
@@ -25,6 +26,7 @@ const TABS = [
   { id: "users", label: "Usuarios", icon: "👥" },
   { id: "reports", label: "Reportes", icon: "🚨" },
   { id: "tokens", label: "Tokens", icon: "💎" },
+  { id: "contracts", label: "Contratos", icon: "📜" },
   { id: "sessions", label: "Sesiones", icon: "🔑" },
 ] as const;
 
@@ -253,6 +255,7 @@ export default function AdminApp() {
           {activeTab === "users" && selectedUserId && <UserDetailPanel apiCall={apiCall} userId={selectedUserId} onBack={() => setSelectedUserId(null)} />}
           {activeTab === "reports" && <ReportsPanel apiCall={apiCall} onViewUser={handleViewUser} />}
           {activeTab === "tokens" && <TokensPanel tokens={stats?.tokens || []} trading={stats?.trading} />}
+          {activeTab === "contracts" && <ContractsPanel apiCall={apiCall} />}
           {activeTab === "sessions" && <SessionsPanel apiCall={apiCall} onViewUser={handleViewUser} />}
         </main>
       </div>

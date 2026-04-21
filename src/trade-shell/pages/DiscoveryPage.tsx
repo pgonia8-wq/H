@@ -84,7 +84,7 @@ export default function DiscoveryPage() {
             <div className="text-right">
               <div className="text-white font-bold tabular-nums">{formatUsd(top.price, 6)}</div>
               <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.60)" }}>
-                {top.curvePercent.toFixed(1)}% curva
+                Score {Math.round(top.score)}
               </div>
             </div>
           </div>
