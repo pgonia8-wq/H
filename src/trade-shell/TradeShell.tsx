@@ -12,10 +12,11 @@
  *   • Solo Orb-verified escribe (create/trade) — gate centralizado aquí.
  *   • Session token (HMAC) se envía automático por tradeApi.authHeaders.
  */
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ShellProvider, useShell } from "./context/ShellContext";
 import BottomTabBar from "./components/BottomTabBar";
+import SystemOverlay from "./components/SystemOverlay";
 
 // Cada pantalla se descarga bajo demanda — al abrir el shell solo viaja el
 // core + Discovery. Token/Creator/Profile viajan cuando el usuario navega.
@@ -76,9 +77,24 @@ export default function TradeShell(props: Props) {
 }
 
 function ShellBody() {
-  const { screen, onClose } = useShell();
+    const { screen, onClose } = useShell();
 
-  return (
+    // System Overlay (Cmd/Ctrl+K). Permanece dentro del shell para no
+    // afectar el contrato de props del componente.
+    const [sysOpen, setSysOpen] = useState(false);
+    useEffect(() => {
+      function onKey(e: KeyboardEvent) {
+        if (e.key === "Escape") setSysOpen(false);
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+          e.preventDefault();
+          setSysOpen((v) => !v);
+        }
+      }
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
+    return (
     <>
       {/* Backdrop */}
       <motion.div
@@ -102,7 +118,31 @@ function ShellBody() {
             borderRight: "1px solid rgba(255,255,255,0.06)",
           }}
         >
-          <Suspense fallback={<ScreenFallback />}>
+          {/* Floating "Sistema ⌘K" trigger */}
+            <button
+              onClick={() => setSysOpen(true)}
+              aria-label="Abrir estado del sistema"
+              className="absolute top-3 right-3 z-[9100] flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase backdrop-blur-md transition active:scale-95"
+              style={{
+                letterSpacing: "0.12em",
+                color: "rgba(255,255,255,0.85)",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                boxShadow: "0 8px 24px -10px rgba(0,0,0,0.6)",
+              }}
+            >
+              <span style={{
+                display: "inline-block", width: 6, height: 6, borderRadius: 999,
+                background: "#a78bfa", boxShadow: "0 0 8px #a78bfa",
+              }} />
+              Sistema
+              <span className="opacity-50">⌘K</span>
+            </button>
+
+            {/* System Overlay (Cmd/Ctrl+K) */}
+            <SystemOverlay open={sysOpen} onClose={() => setSysOpen(false)} />
+
+            <Suspense fallback={<ScreenFallback />}>
             <AnimatePresence mode="wait">
               {screen === "discovery" && (
                 <motion.div key="discovery"
