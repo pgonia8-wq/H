@@ -70,8 +70,6 @@ export default function TokenPage() {
           }
         }
         setErr(e?.message ?? "No se pudo cargar el totem.");
-      } catch (e: any) {
-      setErr(e?.message ?? "No se pudo cargar el totem.");
     } finally { setLoading(false); }
   }, [selectedAddress, userId]);
 
