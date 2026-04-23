@@ -1,5 +1,3 @@
-📦 "/api/events/ingest.mjs" — TIER 3 FINAL (ANTIFRÁGIL, PIPELINED, SHARDED)
-
 import { Redis } from "@upstash/redis"
 
 // =========================
@@ -8,27 +6,54 @@ import { Redis } from "@upstash/redis"
 
 const redis = Redis.fromEnv()
 
-const MAX_QUEUE_PACKS = 5000        // cantidad de packs por cola (control memoria)
-const MAX_PACK_SIZE = 50            // eventos por pack (latencia estable)
-const DEDUPE_TTL = 60               // segundos anti-replay
-const OVERFLOW_TTL = 120            // segundos señal de overflow
+const MAX_QUEUE_PACKS = 5000
+const MAX_PACK_SIZE = 50
+const DEDUPE_TTL = 60
+const OVERFLOW_TTL = 120
 
 // =========================
-// SHARDING
+// WORLD APP ID NORMALIZATION
 // =========================
 
-function shardOf(userId) {
-  if (!userId || typeof userId !== "string") return "00"
-  return userId.slice(0, 2)
+// En World App puedes recibir:
+// - user_id (backend)
+// - null (device anon)
+// - world_id (si luego lo integras)
+//
+// Nunca asumimos identidad fuerte aquí.
+
+function normalizeUserId(userId) {
+  if (!userId || typeof userId !== "string") return "anon"
+  return userId
 }
 
 // =========================
-// ROUTING (MULTI-QUEUE + PRIORIDAD)
+// SHARDING (ESTABLE)
+// =========================
+
+function shardOf(userId) {
+  const id = normalizeUserId(userId)
+
+  // hash ligero para evitar skew en "anon"
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i)
+    hash |= 0
+  }
+
+  const shard = Math.abs(hash % 256)
+  return shard.toString(16).padStart(2, "0")
+}
+
+// =========================
+// ROUTING INTELIGENTE (SIN SESGO ORB)
 // =========================
 
 function getQueueType(event, isTrusted, suspectedBot) {
-  if (!isTrusted || suspectedBot) return "critical"
+  // 🔥 CRITICAL solo si hay señal REAL de anomalía
+  if (suspectedBot) return "critical"
 
+  // Engagement explícito (alto valor semántico)
   if (
     event === "like" ||
     event === "share" ||
@@ -38,11 +63,29 @@ function getQueueType(event, isTrusted, suspectedBot) {
     return "engagement"
   }
 
+  // Raw stream (scroll, impression, etc.)
   return "raw"
 }
 
 // =========================
-// HELPERS
+// VALIDACIÓN LIGERA (NO BLOQUEANTE)
+// =========================
+
+function isValidEvent(ev) {
+  if (!ev) return false
+
+  if (typeof ev.event !== "string") return false
+  if (typeof ev.ts !== "number") return false
+  if (!ev.client_hash) return false
+
+  // Protección básica contra basura extrema
+  if (ev.ts < Date.now() - 1000 * 60 * 15) return false
+
+  return true
+}
+
+// =========================
+// RESPONSE HELPER
 // =========================
 
 function json(data, status = 200) {
@@ -58,44 +101,54 @@ function json(data, status = 200) {
 
 export async function POST(req) {
   try {
-    const { events, suspected_bot } = await req.json()
+    const body = await req.json()
+    const events = body?.events
+    const suspected_bot = body?.suspected_bot || false
 
     if (!events || !Array.isArray(events) || events.length === 0) {
       return json({ ok: true, queued: 0 })
     }
 
     // ==========================================
-    // 1. DEDUPE PIPELINE (SIN BLOQUEOS)
+    // 1. VALIDACIÓN + NORMALIZACIÓN
+    // ==========================================
+
+    const sanitized = []
+
+    for (const ev of events) {
+      if (!isValidEvent(ev)) continue
+
+      sanitized.push({
+        ...ev,
+        user_id: normalizeUserId(ev.user_id),
+        batch_suspected_bot: suspected_bot || false
+      })
+    }
+
+    if (sanitized.length === 0) {
+      return json({ ok: true, queued: 0 })
+    }
+
+    // ==========================================
+    // 2. DEDUPE PIPELINED (ANTI-REPLAY)
     // ==========================================
 
     const dedupePipe = redis.pipeline()
 
-    for (const ev of events) {
-      if (ev?.client_hash) {
-        dedupePipe.set(`dedupe:${ev.client_hash}`, 1, {
-          nx: true,
-          ex: DEDUPE_TTL
-        })
-      } else {
-        // si no hay hash, lo tratamos como inválido (no lo metemos)
-        dedupePipe.set(`dedupe:invalid:${Math.random()}`, 1, {
-          nx: true,
-          ex: 1
-        })
-      }
+    for (const ev of sanitized) {
+      dedupePipe.set(`dedupe:${ev.client_hash}`, 1, {
+        nx: true,
+        ex: DEDUPE_TTL
+      })
     }
 
     const dedupeResults = await dedupePipe.exec()
 
-    // ==========================================
-    // 2. FILTRADO (ANTI-REPLAY)
-    // ==========================================
-
     const validEvents = []
 
-    for (let i = 0; i < events.length; i++) {
+    for (let i = 0; i < sanitized.length; i++) {
       if (dedupeResults[i] === "OK") {
-        validEvents.push(events[i])
+        validEvents.push(sanitized[i])
       }
     }
 
@@ -103,12 +156,12 @@ export async function POST(req) {
       return json({
         ok: true,
         queued: 0,
-        deduped: events.length
+        deduped: sanitized.length
       })
     }
 
     // ==========================================
-    // 3. AGRUPACIÓN POR COLA (SHARD + TYPE)
+    // 3. AGRUPACIÓN (SHARD + TYPE)
     // ==========================================
 
     const packs = {}
@@ -119,37 +172,33 @@ export async function POST(req) {
       const type = getQueueType(
         ev.event,
         ev.is_trusted,
-        suspected_bot
+        ev.batch_suspected_bot
       )
 
       const queueKey = `totem_queue:${type}:${shard}`
 
       if (!packs[queueKey]) packs[queueKey] = []
 
-      // anotamos flag de batch
-      ev.batch_suspected_bot = suspected_bot || false
-
       packs[queueKey].push(ev)
     }
 
     // ==========================================
-    // 4. PIPELINE PUSH + BACKPRESSURE + OVERFLOW SIGNAL
+    // 4. PIPELINE PUSH + BACKPRESSURE + OVERFLOW
     // ==========================================
 
     const pushPipe = redis.pipeline()
 
     for (const [queueKey, arr] of Object.entries(packs)) {
-      // chunking estable
       for (let i = 0; i < arr.length; i += MAX_PACK_SIZE) {
         const chunk = arr.slice(i, i + MAX_PACK_SIZE)
 
-        // push del pack
+        // push pack
         pushPipe.rpush(queueKey, JSON.stringify(chunk))
 
-        // backpressure (mantiene últimos N packs)
+        // backpressure
         pushPipe.ltrim(queueKey, -MAX_QUEUE_PACKS, -1)
 
-        // señal de overflow (para TCE)
+        // overflow signal (TCE usa esto)
         const overflowKey = `queue_overflow:${queueKey}`
         pushPipe.incr(overflowKey)
         pushPipe.expire(overflowKey, OVERFLOW_TTL)
@@ -165,13 +214,14 @@ export async function POST(req) {
     return json({
       ok: true,
       received: events.length,
+      valid: validEvents.length,
       queued: validEvents.length,
-      deduped: events.length - validEvents.length
+      deduped: sanitized.length - validEvents.length
     })
   } catch (err) {
     console.error("[INGEST_ERROR]", err)
 
-    // fallback antifrágil: nunca forzar retry masivo del cliente
+    // antifrágil: jamás provocar retry storm
     return json({ ok: false }, 200)
   }
 }
