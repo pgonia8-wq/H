@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js"
 import { ethers } from "ethers"
 import { signTotemUpdate } from "../../lib/oracleSigner.mjs" // 👈 Importamos tu archivo intacto
 
+// ==========================================
+// CONFIGURACIÓN E INSTANCIAS
+// ==========================================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -10,6 +13,8 @@ const supabase = createClient(
 // Conexión rápida al RPC para leer el nonce directo del contrato (Seguridad Anti-Replay)
 const provider = new ethers.providers.JsonRpcProvider(process.env.RPC_URL_WORLDCHAIN)
 const ORACLE_ADDRESS = process.env.ORACLE_ADDRESS
+
+// ABI mínimo para leer el nonce (verificado según tu oracleSigner.mjs)
 const oracleAbi = ["function nonces(address totem) view returns (uint256)"]
 const oracleContract = new ethers.Contract(ORACLE_ADDRESS, oracleAbi, provider)
 
@@ -27,61 +32,61 @@ export async function POST(req) {
     }
 
     // ==========================================
-    // 1. LEER INTELIGENCIA (SUPABASE)
+    // 1. LEER INTELIGENCIA + SOCIAL (SUPABASE)
     // ==========================================
-    // Traemos la última sesión del usuario
+    
+    // A) Inteligencia Anti-Bot (Nuestras tablas biométricas)
     const { data: session } = await supabase
       .from("feed_sessions")
       .select("anomaly_score, fingerprint_entropy")
       .eq("user_id", caller_address)
       .order("created_at", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle() // maybeSingle evita errores 500 si no hay datos aún
 
-    // Traemos los últimos 5 buckets de este totem para ver si hay ataque coordinado
-    const { data: buckets } = await supabase
-      .from("feed_buckets")
-      .select("coordination_score")
-      // Idealmente tu tabla tiene una columna totem_address. Si es post_id, ajústalo aquí.
-      .order("created_at", { ascending: false })
-      .limit(5)
+    // B) Reputación Social Real (Tu tabla de usuarios)
+    // Buscamos el reputation_score real de World App
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("reputation_score")
+      .eq("wallet_address", caller_address)
+      .maybeSingle()
 
     // ==========================================
-    // 2. MATEMÁTICA DEL ORÁCULO
+    // 2. MATEMÁTICA SEPARADA (Social vs Bot)
     // ==========================================
-    let anomalyScore = session ? session.anomaly_score : 0
-    let entropy = session ? session.fingerprint_entropy : 50
-    let avgCoord = 0
-
-    if (buckets && buckets.length > 0) {
-      avgCoord = buckets.reduce((acc, b) => acc + b.coordination_score, 0) / buckets.length
-    }
-
-    // Independence Factor (Baja si hay bots coordinados)
-    const independenceFactor = Math.max(0, 1 - avgCoord)
     
-    // Anti-Manipulation Penalty (Sube por anomalías, baja por entropía humana real)
+    // --- CÁLCULO DE INFLUENCE (El motor de IA Anti-Bot) ---
+    let anomalyScore = session ? session.anomaly_score : 0
+    let entropy = session ? session.fingerprint_entropy : 50 // Entropía base humana
+    
     const anomalyRatio = Math.min(1, anomalyScore / 10)
     const entropyBonus = Math.min(0.2, entropy / 200)
-    const penalty = Math.max(0, anomalyRatio - entropyBonus)
-
-    // ==========================================
-    // 3. MAPEO A VALORES ON-CHAIN
-    // ==========================================
-    // Score: 1 - 10000
-    const finalScore = Math.max(1, Math.min(10000, Math.floor(10000 * (1 - penalty))))
     
-    // Influence: 925 - 1075 (El rango de tu Smart Contract)
-    const baseInfluence = 1000 + (75 * independenceFactor) - (75 * penalty)
+    // Penalización por comportamiento de bot
+    const botPenalty = Math.max(0, anomalyRatio - entropyBonus)
+
+    // Rango Influence: 925 - 1075 (El rango de tu Smart Contract)
+    // 1000 es el estado neutral. Baja si eres bot.
+    const baseInfluence = 1000 - (75 * botPenalty)
     const finalInfluence = Math.max(925, Math.min(1075, Math.floor(baseInfluence)))
 
-    // ==========================================
-    // 4. GENERAR FIRMA USANDO TU ARCHIVO
-    // ==========================================
-    const currentNonce = await oracleContract.nonces(totem_address)
-    const deadline = Math.floor(Date.now() / 1000) + 900 // Válido por 15 mins
+    // --- CÁLCULO DE SCORE (Tu Red Social) ---
+    // Tomamos el score real de interacciones, likes, tips (Rango 1 - 10000)
+    let baseScore = profile ? (profile.reputation_score || 1) : 1
+    const finalScore = Math.max(1, Math.min(10000, Math.floor(baseScore)))
 
-    // ⚡ AQUÍ LLAMAMOS A TU CÓDIGO ⚡
+    // ==========================================
+    // 3. GENERAR FIRMA USANDO TU ARCHIVO
+    // ==========================================
+    
+    // Obtenemos el nonce actual desde la blockchain
+    const currentNonce = await oracleContract.nonces(totem_address)
+    
+    // Válido por 15 mins (evita firmas zombies en el mempool)
+    const deadline = Math.floor(Date.now() / 1000) + 900 
+
+    // ⚡ AQUÍ LLAMAMOS A TU CÓDIGO (oracleSigner.mjs) ⚡
     const signature = await signTotemUpdate({
       totem: totem_address,
       caller: caller_address,
@@ -92,7 +97,7 @@ export async function POST(req) {
     })
 
     // ==========================================
-    // 5. RESPUESTA AL CLIENTE
+    // 4. RESPUESTA AL CLIENTE (FRONTEND)
     // ==========================================
     return json({
       ok: true,
@@ -109,6 +114,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error("[CLAIM_ERROR]", error)
-    return json({ error: true }, 500)
+    return json({ error: true, details: error.message }, 500)
   }
 }
