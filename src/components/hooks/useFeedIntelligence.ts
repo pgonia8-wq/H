@@ -1,4 +1,4 @@
-📦 "src/components/hooks/useFeedIntelligence.ts" — FINAL (FASE 1 COMPLETA)
+// 📦 "src/components/hooks/useFeedIntelligence.ts" — FINAL (FASE 1 COMPLETA)
 
 import { useEffect, useRef, useCallback } from "react"
 
