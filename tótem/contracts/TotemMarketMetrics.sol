@@ -55,7 +55,7 @@ contract TotemMarketMetrics is Ownable2Step, ReentrancyGuard {
         address _curve,
         address _signer,
         address _backup
-    ) {
+    ) Ownable(msg.sender) { // [COMPILE FIX] OZ v5 requiere initialOwner explícito
         require(_registry != address(0), "zero");
 
         registry = IRegistry(_registry);
