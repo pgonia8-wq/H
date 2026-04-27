@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IRegistry {
     function isTotem(address user) external view returns (bool);
@@ -17,8 +18,10 @@ contract TotemOracle is ReentrancyGuard, Ownable2Step {
 
     address public immutable PRIMARY_SIGNER;
     IRegistry public immutable registry;
+    IERC20 public immutable wldToken;
 
-    uint256 public constant UPDATE_FEE = 0.01 ether;
+    // [FEE FIX] Cobro en WLD (ERC20), no en ETH nativo. 0.03 WLD por update.
+    uint256 public constant UPDATE_FEE = 0.03 ether; // 0.03 * 1e18 = 0.03 WLD (18 decimales)
     uint256 public constant MIN_INTERVAL = 1 hours;
 
     // 🔥 ALINEADO CON CURVE
@@ -84,11 +87,12 @@ contract TotemOracle is ReentrancyGuard, Ownable2Step {
         _;
     }
 
-    constructor(address _primarySigner, address _registry) Ownable(msg.sender) {
-        if (_primarySigner == address(0) || _registry == address(0)) revert ZeroAddress();
+    constructor(address _primarySigner, address _registry, address _wld) Ownable(msg.sender) {
+        if (_primarySigner == address(0) || _registry == address(0) || _wld == address(0)) revert ZeroAddress();
 
         PRIMARY_SIGNER = _primarySigner;
         registry = IRegistry(_registry);
+        wldToken = IERC20(_wld);
 
         authorizedSigners[_primarySigner] = true;
 
@@ -113,10 +117,13 @@ contract TotemOracle is ReentrancyGuard, Ownable2Step {
         uint256 nonce,
         uint256 deadline,
         bytes calldata signature
-    ) external payable whenNotPaused nonReentrant {
+    ) external whenNotPaused nonReentrant {
 
         if (!registry.isTotem(totem)) revert NotATotem();
-        if (msg.value < UPDATE_FEE) revert FeeNotPaid();
+
+        // [FEE FIX] Cobro en WLD via transferFrom (no en ETH nativo).
+        // El caller debe haber aprobado UPDATE_FEE de WLD a este contrato.
+        if (!wldToken.transferFrom(msg.sender, address(this), UPDATE_FEE)) revert FeeNotPaid();
 
         // 🔥 RANGO CONSISTENTE
         if (score < SCORE_MIN || score > SCORE_MAX) revert InvalidRange();
@@ -202,14 +209,10 @@ contract TotemOracle is ReentrancyGuard, Ownable2Step {
     function withdrawFees(address to) external onlyOwner {
         if (to == address(0)) revert ZeroAddress();
 
-        uint256 amount = address(this).balance;
-
-        // ✅ SAFE TRANSFER (multisig compatible)
-        (bool success, ) = to.call{value: amount}("");
-        require(success, "transfer failed");
+        // [FEE FIX] Withdraw WLD acumulado, no ETH nativo.
+        uint256 amount = wldToken.balanceOf(address(this));
+        require(wldToken.transfer(to, amount), "transfer failed");
 
         emit FeeWithdrawn(to, amount);
     }
-
-    receive() external payable {}
 }

@@ -30,8 +30,11 @@ import { SCORE_UNIT_ORACLE, INFLUENCE_UNIT_ORACLE } from "./units.mjs";
 //   0.2.0 — Fase 14: cobertura C7..C20 (HumanTotem, Tótem, FeeRouter mirrors;
 //                     Registry/AccessGateway/Attestation/Control/Governance/
 //                     MarketMetrics/Treasury constants).
+//   0.2.1 — Fee Fix: Oracle.UPDATE_FEE pasa de 0.01 ETH nativo a 0.03 WLD
+//                     ERC20 (transferFrom). Renombre UPDATE_FEE_WEI →
+//                     UPDATE_FEE_WLD. Re-deploy completo en Base Sepolia.
 //
-export const PROTOCOL_VERSION = "0.2.0";
+export const PROTOCOL_VERSION = "0.2.1";
 
 // ════════════════════════════════════════════════════════════════════════════
 // BondingCurve — re-export del mirror canonical (curve.mjs)
@@ -63,7 +66,9 @@ export const BondingCurve = Object.freeze({
 // ════════════════════════════════════════════════════════════════════════════
 
 export const Oracle = Object.freeze({
-  UPDATE_FEE_WEI:    10n ** 16n,        // 0.01 ether
+  // [FEE FIX] El contrato cobra 0.03 WLD ERC20 vía transferFrom, no ETH nativo.
+  // El caller debe haber hecho wld.approve(oracle, UPDATE_FEE_WLD) antes de update().
+  UPDATE_FEE_WLD:    3n * 10n ** 16n,   // 0.03 WLD (18 decimales)
   MIN_INTERVAL_SEC:  3600n,             // 1 hours
   // Rangos validados on-chain (mismos que SCORE_UNIT_ORACLE de units.mjs)
   SCORE_MIN:         BigInt(SCORE_UNIT_ORACLE.min),
