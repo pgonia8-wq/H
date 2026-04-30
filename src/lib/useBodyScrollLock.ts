@@ -1,50 +1,47 @@
 import { useEffect } from "react";
 
-let lockCount = 0;
-let savedScrollY = 0;
+  /**
+   * useBodyScrollLock — Bloquea scroll del background cuando un modal está abierto.
+   * Soluciona el iOS WebKit rubber-band/bounce del fondo bajo overlays fullscreen.
+   *
+   * Uso:
+   *   useBodyScrollLock(isOpen);
+   *
+   * Soporta múltiples modales simultáneos vía contador interno.
+   */
 
-function applyLock() {
-  if (lockCount === 0) {
-    const root = document.getElementById("root");
-    savedScrollY = root ? root.scrollTop : window.scrollY;
-    document.body.classList.add("modal-open");
-    if (root) {
-      root.style.top = `-${savedScrollY}px`;
+  let lockCount = 0;
+  let savedScrollY = 0;
+
+  function applyLock() {
+    if (lockCount === 0) {
+      const root = document.getElementById("root");
+      savedScrollY = root ? root.scrollTop : window.scrollY;
+      document.body.classList.add("modal-open");
+      if (root) root.style.top = `-${savedScrollY}px`;
     }
+    lockCount += 1;
   }
-  lockCount += 1;
-}
 
-function releaseLock() {
-  lockCount = Math.max(0, lockCount - 1);
-  if (lockCount === 0) {
-    const root = document.getElementById("root");
-    document.body.classList.remove("modal-open");
-    
-    if (root) {
-      root.style.top = "";
-      
-      // EL TRUCO PARA ANDROID: Al pedirle el offsetHeight, 
-      // obligamos al navegador a redibujar la pantalla inmediatamente (Force Repaint).
-      void root.offsetHeight; 
-      
-      // El pequeño retraso para que iOS/Safari no colapse
-      setTimeout(() => {
+  function releaseLock() {
+    lockCount = Math.max(0, lockCount - 1);
+    if (lockCount === 0) {
+      const root = document.getElementById("root");
+      document.body.classList.remove("modal-open");
+      if (root) {
+        root.style.top = "";
         root.scrollTop = savedScrollY;
-      }, 10);
+      }
     }
   }
-}
 
-export function useBodyScrollLock(active: boolean): void {
-  useEffect(() => {
-    // Si está activo, aplicamos candado.
-    if (active) {
+  export function useBodyScrollLock(active: boolean): void {
+    useEffect(() => {
+      if (!active) return;
       applyLock();
-      // Solo liberamos cuando este modal en específico se cierre.
-      return () => releaseLock();
-    }
-  }, [active]);
-}
+      return () => { releaseLock(); };
+    }, [active]);
+  }
 
-export default useBodyScrollLock;
+  export default useBodyScrollLock;
+  
