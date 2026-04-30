@@ -8,7 +8,9 @@ function applyLock() {
     const root = document.getElementById("root");
     savedScrollY = root ? root.scrollTop : window.scrollY;
     document.body.classList.add("modal-open");
-    if (root) root.style.top = `-${savedScrollY}px`;
+    if (root) {
+      root.style.top = `-${savedScrollY}px`;
+    }
   }
   lockCount += 1;
 }
@@ -18,28 +20,30 @@ function releaseLock() {
   if (lockCount === 0) {
     const root = document.getElementById("root");
     document.body.classList.remove("modal-open");
+    
     if (root) {
       root.style.top = "";
-      root.scrollTop = savedScrollY;
+      
+      // EL TRUCO PARA ANDROID: Al pedirle el offsetHeight, 
+      // obligamos al navegador a redibujar la pantalla inmediatamente (Force Repaint).
+      void root.offsetHeight; 
+      
+      // El pequeño retraso para que iOS/Safari no colapse
+      setTimeout(() => {
+        root.scrollTop = savedScrollY;
+      }, 10);
     }
   }
 }
 
 export function useBodyScrollLock(active: boolean): void {
   useEffect(() => {
-    let isLocked = false; // Flag local para este useEffect
-
+    // Si está activo, aplicamos candado.
     if (active) {
       applyLock();
-      isLocked = true;
+      // Solo liberamos cuando este modal en específico se cierre.
+      return () => releaseLock();
     }
-
-    return () => {
-      // SOLO liberar si este useEffect específico activó el lock
-      if (isLocked) {
-        releaseLock();
-      }
-    };
   }, [active]);
 }
 
