@@ -1,47 +1,46 @@
 import { useEffect } from "react";
 
-  /**
-   * useBodyScrollLock — Bloquea scroll del background cuando un modal está abierto.
-   * Soluciona el iOS WebKit rubber-band/bounce del fondo bajo overlays fullscreen.
-   *
-   * Uso:
-   *   useBodyScrollLock(isOpen);
-   *
-   * Soporta múltiples modales simultáneos vía contador interno.
-   */
+let lockCount = 0;
+let savedScrollY = 0;
 
-  let lockCount = 0;
-  let savedScrollY = 0;
-
-  function applyLock() {
-    if (lockCount === 0) {
-      const root = document.getElementById("root");
-      savedScrollY = root ? root.scrollTop : window.scrollY;
-      document.body.classList.add("modal-open");
-      if (root) root.style.top = `-${savedScrollY}px`;
-    }
-    lockCount += 1;
+function applyLock() {
+  if (lockCount === 0) {
+    const root = document.getElementById("root");
+    savedScrollY = root ? root.scrollTop : window.scrollY;
+    document.body.classList.add("modal-open");
+    if (root) root.style.top = `-${savedScrollY}px`;
   }
+  lockCount += 1;
+}
 
-  function releaseLock() {
-    lockCount = Math.max(0, lockCount - 1);
-    if (lockCount === 0) {
-      const root = document.getElementById("root");
-      document.body.classList.remove("modal-open");
-      if (root) {
-        root.style.top = "";
-        root.scrollTop = savedScrollY;
-      }
+function releaseLock() {
+  lockCount = Math.max(0, lockCount - 1);
+  if (lockCount === 0) {
+    const root = document.getElementById("root");
+    document.body.classList.remove("modal-open");
+    if (root) {
+      root.style.top = "";
+      root.scrollTop = savedScrollY;
     }
   }
+}
 
-  export function useBodyScrollLock(active: boolean): void {
-    useEffect(() => {
-      if (!active) return;
+export function useBodyScrollLock(active: boolean): void {
+  useEffect(() => {
+    let isLocked = false; // Flag local para este useEffect
+
+    if (active) {
       applyLock();
-      return () => { releaseLock(); };
-    }, [active]);
-  }
+      isLocked = true;
+    }
 
-  export default useBodyScrollLock;
-  
+    return () => {
+      // SOLO liberar si este useEffect específico activó el lock
+      if (isLocked) {
+        releaseLock();
+      }
+    };
+  }, [active]);
+}
+
+export default useBodyScrollLock;
