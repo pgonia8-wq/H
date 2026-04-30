@@ -502,6 +502,17 @@ const HomePage: React.FC<HomePageProps> = ({
   // ─────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────
+  // iOS scroll-bounce fix: bloquea body cuando hay modales abiertos
+  useBodyScrollLock(
+    showNewPostModal ||
+    showProfileModal ||
+    showInbox ||
+    showNotifications ||
+    showGlobalChatHeader ||
+    showTradeCenter ||
+    selectedChatUserId !== null
+  );
+
   return (
     <div
       className={`min-h-screen overflow-y-auto overflow-x-hidden ${isDark ? "text-white" : "text-black"}`}

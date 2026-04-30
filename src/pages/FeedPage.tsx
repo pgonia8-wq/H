@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useCallback } from "react";
+import useBodyScrollLock from "../lib/useBodyScrollLock";
 import PostCard from "../components/PostCard";
 import { supabase } from "../supabaseClient";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
@@ -448,6 +449,9 @@ const FeedPage: React.FC<FeedPageProps> = ({
   // ─────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────
+  // iOS scroll-bounce fix: bloquea body cuando un modal está abierto
+  useBodyScrollLock(showUpgradeOptions || showSlideModal);
+
   return (
     <div
       ref={scrollRef}

@@ -173,13 +173,6 @@ export default function SystemOverlay({ open, onClose }: Props) {
                     <PhysicsCell label="Volatilidad"      m={data.volatilityBps} />
                     <PhysicsCell label="Drift precio 24h" m={data.priceDriftAvg} numeric />
                   </div>
-
-                  <p
-                    className="mt-4 text-[10px]"
-                    style={{ color: "rgba(255,255,255,0.38)", letterSpacing: "0.06em" }}
-                  >
-                    Ley P1 · render-only · campos sin datos se marcan, no se inventan
-                  </p>
                 </div>
               )}
             </GlassCard>

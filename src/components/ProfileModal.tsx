@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useContext, lazy, Suspense } from "react";
+import useBodyScrollLock from "../lib/useBodyScrollLock";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
 import { MiniKit, Tokens, tokenToDecimals } from "@worldcoin/minikit-js";
@@ -432,6 +433,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     "basic": "bg-blue-600 text-white",
     "free": "bg-gray-600 text-white",
   };
+
+  // Bloquea scroll del background mientras el modal está abierto (iOS bounce fix)
+  useBodyScrollLock(true);
 
   return (
     <>
