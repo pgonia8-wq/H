@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, lazy, Suspense } from "react";
+import useBodyScrollLock from "../lib/useBodyScrollLock";
 import { trackImpression, trackClick } from "../../dashboard/src/lib/tracking";
 import { supabase } from "../supabaseClient";
 import { ThemeContext } from "../lib/ThemeContext";
@@ -178,6 +179,15 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   }, [currentUserId]);
 
   const [showWldAnimation, setShowWldAnimation] = useState(false);
+
+  // Body scroll lock para los modales fullscreen del PostCard (iOS bounce fix)
+  useBodyScrollLock(
+    fullscreenImage ||
+    showGlobalChat ||
+    showReportModal ||
+    showOptionsMenu ||
+    profileModalUserId !== null
+  );
   const [hasSeenTooltip] = useState(() => {
     try { return localStorage.getItem("h_like_tooltip_seen") === "1"; } catch { return false; }
   });
@@ -334,51 +344,43 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId }) => {
   };
 
   const handleComment = async () => {
-    if (!currentUserId) return setError(t("debes_estar_logueado"));
-    if (!commentInput.trim()) return setError(t("escribe_comentario"));
-    setError(null);
-    setLoadingAction("comment");
-    try {
-      const { data: newComment, error } = await supabase
-        .from("comments")
-        .insert({
-          post_id: post.id,
-          user_id: currentUserId,
-          content: commentInput.trim(),
-          timestamp: new Date().toISOString(),
-        })
-        .select()
-        .single();
-      if (error) throw error;
+      if (!currentUserId) return setError(t("debes_estar_logueado"));
+      if (!commentInput.trim()) return setError(t("escribe_comentario"));
+      setError(null);
+      setLoadingAction("comment");
+      try {
+        // Inserta via endpoint serverless (service_role) → bypassa RLS.
+        // El insert directo desde el cliente con anon key fallaba con
+        // "new row violates row-level security policy for table comments".
+        const res = await fetch("/api/createComment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            post_id: post.id,
+            user_id: currentUserId,
+            content: commentInput.trim(),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        const newComment = data?.comment;
+        if (!newComment) throw new Error("Respuesta sin comentario");
 
-      await supabase
-        .from("posts")
-        .update({ comments: comments + 1 })
-        .eq("id", post.id);
+        setCommentInput("");
+        setShowCommentInput(false);
+        setShowComments(true);
+        setComments((prev: number) => prev + 1);
 
-      setCommentInput("");
-      setShowCommentInput(false);
-      setShowComments(true);
-      setComments((prev: number) => prev + 1);
+        // El backend devuelve { comment: { ..., profiles: { username, avatar_url } } }
+        setCommentsList((prev) => [newComment, ...prev]);
+      } catch (err: any) {
+        setError(t("error_al_comentar") + ": " + (err?.message || "desconocido"));
+      } finally {
+        setLoadingAction(null);
+      }
+    };
 
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("username, avatar_url")
-        .eq("id", currentUserId)
-        .single();
-
-      setCommentsList((prev) => [
-        { ...newComment, profiles: profileData },
-        ...prev,
-      ]);
-    } catch (err: any) {
-      setError(t("error_al_comentar") + ": " + err.message);
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  const handleRepost = () => {
+    const handleRepost = () => {
     if (!currentUserId) {
       setError(t("debes_estar_logueado"));
       return;
